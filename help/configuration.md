@@ -32,35 +32,29 @@ DriveTest Analyzer separates application settings, storage roots and Docker depl
 | `DRIVETEST_ANALYZER_DEVELOPMENT_COPY_OF` | Names the server that holds the data in use (its address, or a name) on a development copy of it. A development copy works as any server; every page says that the data in use is on the other server, with a link when it is named by its address, and that what is changed on the copy stays on its computer; `/healthz` reports it as `development_copy_of`. A server started without environment variables (the macOS launcher) takes it from a `development-copy-of` file in `APP_CONFIG_DIR`, read without a restart. | Not set |
 | `TZ` | IANA timezone used by Docker and displayed/persisted timestamps. | `Europe/Madrid` |
 | `IGNORE_EVENT_TIME_FILTERING` | When true, ignores date and template filters based on Event_Start_Time or Event_End_Time. | `false` |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY` | Default SMTP server, port and encryption (`starttls`, `ssl` or `none`) for [Reporting](reporting.md) emails. Application Config → Email Delivery overrides them. | Not set; `587`; `starttls` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY` | Default SMTP server, port and encryption (`starttls`, `ssl` or `none`) of the emails of the tool. Application Config → [Email Delivery](app-config.md#email-delivery) overrides these and the next email variables. | Not set; `587`; `starttls` |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | Default SMTP account. The password is used whenever no password is saved in Application Config. | Not set |
-| `SMTP_FROM`, `SMTP_FROM_NAME` | Default sender address and name of [Reporting](reporting.md) emails. | Not set; `DriveTest Analyzer` |
+| `SMTP_FROM`, `SMTP_FROM_NAME` | Default sender address and name of the emails. | Not set; `DriveTest Analyzer` |
 | `SMTP_MAX_ATTACHMENTS_MB` | Default limit for the total size of a [Reporting](reporting.md) email's attachments. | `20` |
-| `EMAIL_TRANSPORT` | How the tool sends its emails: `smtp` (an SMTP server) or `webhook` (a Power Automate flow, see [Email Delivery](app-config.md#email-delivery)). Application Config → Email Delivery overrides it. | `smtp` |
-| `EMAIL_WEBHOOK_URL` | Default HTTP POST address of the Power Automate flow, used whenever none is saved in Application Config. | Not set |
+| `EMAIL_TRANSPORT` | How the tool sends its emails: `smtp` (an SMTP server) or `webhook` (a Power Automate flow). | `smtp` |
+| `EMAIL_WEBHOOK_URL` | Default HTTP POST address of the Power Automate flow, used whenever none is saved. | Not set |
 | `EMAIL_LINK_DAYS` | Default days the View Online and Download links of the [Reporting](reporting.md) emails work. | `60` |
 
 Before version 0.6.0 the application was named Dashboard Analytic. Variables with the former `DASHBOARD_ANALYTIC_` prefix are still read when the matching `DRIVETEST_ANALYZER_` variable is not set, and export packages, JSON exports and backups created with the former name (format identifiers and backup files starting with `dashboard-analytic-`) are still imported and restored.
 
 ## Application Config page
 
-`user-editor`, `admin` and `super-admin` accounts can choose **Config → Application Config** to persist runtime settings in the application database. Values saved there take precedence over Docker and environment variables, and apply to every workspace.
-
-- **Timezone** accepts an IANA name such as `Europe/Madrid`. It controls displayed timestamps and newly stored local timestamps. Without it, or `TZ`, the server's own timezone is used (UTC when the server has none).
-- **Report Chart Renderer** selects `canvas` or the legacy `pil` renderer.
-- **Chromium Executable** accepts an absolute executable path. Saving it restarts the shared Canvas renderer, so the next chart uses the selected browser.
-- **Ignore event time filtering** ignores Design, CDR Analysis and template conditions based on `Event_Start_Time` or `Event_End_Time`. Use it when source timestamps are incomplete and must not exclude valid rows.
-- **Maximum simultaneous tasks** sets the background concurrency from 1 to 32, which is also how many datasets of a workspace are processed in parallel; the effective limit reserves one logical CPU for interactive requests.
-- **Public address of the server** (`https://name[:port]`) is the address of the links of the presentations and of their previews; empty, they take the address each user opened the application with (the links of the emails, only an address a super-admin has signed in at). Admins and super-admins change it, and the Chromium Executable.
-- **Email Delivery** sets how the tool sends its emails (SMTP server or Power Automate flow, sender, validity of the report links and who gets every ticket) and sends a test email; see [Email Delivery](app-config.md#email-delivery).
-
-See [Application Config](app-config.md) for the complete in-app workflow. Workspace-owned chart mappings are managed separately in [Workspace Config](workspace-config.md), and the PPT Templates in [PPT Designer](ppt-designer.md#ppt-templates); they require an active workspace.
+`user-editor`, `admin` and `super-admin` accounts persist runtime settings in the application database with **Config → Application Config**: the timezone, chart renderer, Chromium executable, event time filtering, simultaneous tasks, public address of the server and [Email Delivery](app-config.md#email-delivery). Saved values take precedence over Docker and environment variables and apply to every workspace; see [Application Config](app-config.md#runtime-settings). Workspace-owned chart mappings are in [Workspace Config](workspace-config.md) and the PPT Templates in [PPT Designer](ppt-designer.md#ppt-templates); both need an active workspace.
 
 `0.0.0.0` is a server bind address, not a browser destination. When the application binds to it locally, open `http://127.0.0.1:7278` or `http://localhost:7278`. From another computer, use the server's reachable hostname or IP address and the published host port.
 
 Always replace `APP_SECRET_KEY` outside local development.
 
-A login ends after one hour without activity in its browser; the owner account of the tool keeps it for 90 days. A session still valid goes on across restarts and updates of the application: only the hash of its token is kept, in the **User Login Sessions** table of the application database. While it is valid, the login page opens the application. It ends when the user signs out, changes their password (on their other browsers) or has it reset, and when the account is deactivated or deleted. A change of role applies within a minute. A session token is a credential: serve the application over HTTPS outside local development.
+**Sessions.** A login ends after one hour without activity in its browser; the owner account of the tool keeps it for 90 days.
+
+- A valid session goes on across restarts and updates of the application: only the hash of its token is kept, in the **User Login Sessions** table of the application database. While it is valid, the login page opens the application.
+- It ends when the user signs out, changes their password (on their other browsers) or has it reset, and when the account is deactivated or deleted. A change of role applies within a minute.
+- A session token is a credential: serve the application over HTTPS outside local development.
 
 ## Storage roots
 
@@ -86,14 +80,10 @@ The process needs read/write access to `APP_CONFIG_DIR` and `APP_DATA_DIR`, incl
 
 ## Code asset overrides
 
-These advanced environment variables relocate application code assets and are not valid entries in `storage-paths.conf`:
+These advanced environment variables relocate application code assets; they are not valid entries in `storage-paths.conf` nor workspace storage locations, and ordinary source and Docker installations keep their defaults:
 
-| Variable | Default | Use |
-| --- | --- | --- |
-| `APP_TEMPLATE_DIR` | `src/web_interface/templates` | Jinja HTML templates. |
-| `APP_STATIC_DIR` | `src/web_interface/static` | CSS, JavaScript, images and fonts served below `/static`. |
-
-Ordinary source and Docker installations should retain these defaults. They are deployment overrides, not workspace storage locations.
+- `APP_TEMPLATE_DIR` (default `src/web_interface/templates`): Jinja HTML templates.
+- `APP_STATIC_DIR` (default `src/web_interface/static`): CSS, JavaScript, images and fonts served below `/static`.
 
 ## Docker settings
 

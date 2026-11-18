@@ -27,51 +27,43 @@ cdr-analysis
 
 ## Eligible datasets
 
-- CDR-Data
-- CDR-Voice
-- CDR-Speech
-
-Mappings, logs and generic datasets are excluded from the CDR Analysis selector.
+Only processed CDR-Data, CDR-Voice and CDR-Speech datasets are listed; mappings, logs and generic datasets are excluded from the selector.
 
 ## Analysis workflow
 
 1. Select a processed dataset: **Input Type** (All CDR Types, CDR-Data, CDR-Voice or CDR-Speech) narrows the **Dataset** list.
-2. Choose one or more metrics; every available metric is selected by default.
-3. Apply the available categorical/date filters.
-4. Choose an aggregation where offered.
-5. Click **Update Analysis**.
-6. Confirm the filtered sample count.
-7. Review charts, scorecards and processed metrics.
-8. Export only after validating the analytical context.
+2. Choose the metrics, apply the filters and choose an aggregation where offered.
+3. Click **Update Analysis** and confirm the filtered sample count.
+4. Review charts, scorecards and processed metrics, and export only after validating the analytical context.
 
 ## Analysis Controls
 
 Controls adapt to the selected dataset.
 
-- **Metrics** lists only measurements: the service KPIs first (POLQA LQ, LQ, Mean Data Rate, call setup time, delays, RTT, throughput, jitter and packet loss), then the radio and service measurements of the CDR (RSRP, RSRQ, SINR, CQI, MCS, BLER, transmit power and throughput averages). Identifiers, phone numbers, IMEI/IMSI/MSISDN, software versions, timestamps, durations, transferred bytes, bands, PCI/ARFCN, quarters, speeds and minimum or maximum columns are not offered. Every available metric is selected by default.
-- Filters follow the order Source Sheet, Operator, **Operator_Vendor** (`<Operator>_<Vendor>`), **Vendor_Operator** (`<Vendor>_<Operator>`), **Vendor** (the vendor alone), Market, Region, **Cluster**, City, Test Name and the remaining dimensions; dimensions without values in the CDR are disabled. **Operator_Vendor**, **Vendor_Operator** and **Vendor** stay in sync: selecting values in Operator_Vendor or Vendor_Operator selects the same identities in the other and their Vendors in Vendor, and selecting Vendors selects every Operator_Vendor and Vendor_Operator value of those Vendors. Every filter lists the values found in the rows of the open CDR.
-- **Open Dataset** shows the analysis at once. The last metrics and filters applied with **Update Analysis** to each CDR are shared by every user of the workspace and restored in every session, each CDR with its own (opening another CDR and coming back keeps them); **Reset** clears them and shows the default analysis. A filter applied with every value selected (**All values**) stays open: values that appear later in the CDR, for example after a mapping change, are selected too.
-- **Date From** and **Date To** limit the analysis to a date range; they are disabled while **Ignore event time filtering** is on in [Application Config](app-config.md).
-- Technical identifiers and coordinates are not offered as KPIs.
-- Filter choices are retained for the requested analysis, not written back to source data.
+- **Metrics:** only measurements, every available one selected by default.
+  - First the service KPIs (POLQA LQ, LQ, Mean Data Rate, call setup time, delays, RTT, throughput, jitter and packet loss), then the radio and service measurements (RSRP, RSRQ, SINR, CQI, MCS, BLER, transmit power and throughput averages).
+  - Not offered: identifiers, coordinates, phone numbers, IMEI/IMSI/MSISDN, software versions, timestamps, durations, transferred bytes, bands, PCI/ARFCN, quarters, speeds and minimum or maximum columns.
+- **Filters:** in the order Source Sheet, Operator, **Operator_Vendor** (`<Operator>_<Vendor>`), **Vendor_Operator** (`<Vendor>_<Operator>`), **Vendor** (the vendor alone), Market, Region, **Cluster**, City, Test Name and the remaining dimensions. Each lists the values found in the rows of the open CDR; dimensions without values are disabled.
+  - **Operator_Vendor**, **Vendor_Operator** and **Vendor** stay in sync: selecting identities in one selects them in the other and their Vendors in Vendor; selecting Vendors selects every identity of those Vendors.
+  - A filter applied with every value selected (**All values**) stays open: values that appear later in the CDR, for example after a mapping change, are selected too.
+- **Date From** and **Date To:** limit the analysis to a date range; disabled while **Ignore event time filtering** is on in [Application Config](app-config.md).
+- **Saved per CDR:** **Open Dataset** shows the analysis at once. The last metrics and filters applied with **Update Analysis** are kept for each CDR, shared by every user of the workspace and restored in every session (opening another CDR and coming back keeps them). **Reset** clears them and shows the default analysis.
+- **Source data untouched:** filters apply only to the analysis; they never overwrite the stored dataset rows.
 
 ## Dataset Summary
 
-- Dataset identity and current context.
-- Global summary cards.
-- Per-KPI headline values.
-- Percentile scorecards.
-- Filtered sample counts.
-- The operators out of scope in the NR Mode of the CDR (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), named beside **Global Metrics** (*Out of scope: SA · Three*): their rows are left out of the analysis.
+- Dataset identity and current context, global summary cards, per-KPI headline values, percentile scorecards and filtered sample counts.
+- **Out of scope:** the operators out of scope in the NR Mode of the CDR (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA) are named beside **Global Metrics** (*Out of scope: SA · Three*); their rows are left out of the analysis.
 
 ## Charts and Scorecards
 
 - **CDF Curve** shows the empirical KPI distribution. **Global CDF Comparison** and **Compare CDF by** draw one curve per value of the chosen dimension (Operator by default, listed first), up to eight curves.
-- **Group Benchmark** compares the selected aggregation. Bar labels that do not fit are rotated.
-- **Zoom:** every chart has floating zoom controls in its top-right corner (−, level, + and reset) and, as in PPT Designer, zooms into a rectangle dragged over it: a CDF narrows its X and Y range, and a bar chart widens to fit the selected bars and scrolls to them.
-- **Values:** hovering a bar shows its value, and hovering a CDF shows the probability of every curve at that value.
-- **Visible X Range** has two handles to adjust the start and the end of the CDF axis. By default it starts where the first curve reaches 5% of its samples and ends where every curve reaches 95%, leaving out nearly empty tails; a rectangle zoom moves both handles and reset returns to these defaults.
-- **Grouped Percentiles** and **Processed Metrics** show decimal values with two digits; Processed Metrics lists Cluster after Region. Grouped by Operator, Vendor or Operator_Vendor, the tables, the percentiles, the bars and the CDF curves follow the order of the Operator Maps and Vendor Maps tables of Workspace Config; values that are not in the maps follow alphabetically (mixed groups before operators without a vendor).
+- **Group Benchmark** compares the selected aggregation; bar labels that do not fit are rotated.
+- **Zoom:** floating controls at the top right of every chart (−, level, + and reset); dragging a rectangle zooms into it, as in PPT Designer: a CDF narrows its X and Y range, a bar chart widens to fit the selected bars and scrolls to them.
+- **Values:** hovering a bar shows its value; hovering a CDF shows the probability of every curve at that value.
+- **Visible X Range:** two handles set the start and end of the CDF axis. By default it starts where the first curve reaches 5% of its samples and ends where every curve reaches 95%, leaving out nearly empty tails; a rectangle zoom moves both handles and reset returns to these defaults.
+- **Grouped Percentiles** and **Processed Metrics** show two decimals; Processed Metrics lists Cluster after Region.
+- **Order:** grouped by Operator, Vendor or Operator_Vendor, tables, percentiles, bars and CDF curves follow the Operator Maps and Vendor Maps order of Workspace Config; values not in the maps follow alphabetically (mixed groups before operators without a vendor).
 - Metric cards provide compact numerical summaries.
 
 ## Processed Metrics
@@ -82,45 +74,23 @@ The table shows the calculated records for the active request. Use it to verify 
 
 ### Inspect persisted rows
 
-**Preview Dataset** opens stored CDR fields in 100-row pages. Use the searchable Dataset selector to switch to another ready dataset, and <kbd>Shift</kbd> with the mouse wheel to scroll a wide table sideways.
-
-| Control | Effect |
-| --- | --- |
-| Column search / field selection | Narrow a wide table without removing rows. |
-| Column value menu | Filter using the complete column's distinct values. Filters on different columns combine. |
-| Label multiselect | Show selected field families: Derived, Auto-calculated, CDR-Main or source CDR type. |
-| Hover / select a field label | Read its rule in a tooltip or the complete rule panel (<kbd>Esc</kbd> closes it). |
-
-| Field family | Preview appearance |
-| --- | --- |
-| Source_File, Source_Sheet, Dataset_Kind | Yellow origin fields, shown first. |
-| Main CDR fields | Blue, labelled CDR-Main. |
-| Derived fields, including Operator_Vendor and Vendor | Light green. |
-| Auto-calculated Fields | Purple. |
-
-Empty fixed, derived and Auto-calculated fields remain visible. Stronger header colours distinguish labels from values. After origin fields, Preview groups the identity/fixed fields, Auto-calculated Fields, other derived fields and remaining source fields.
-
-### Read field values correctly
-
-- Field references ignore letter case and differences between spaces, underscores and hyphens. Subscriber also accepts the legacy Suscriber spelling.
-- Campaign source text is preserved. Recognised chart/filter labels can use YYYY-Qn, YYYY-Qn_SA or YYYY-Qn_NSA; equality keeps these three campaign forms separate.
-- Campaign Year, Campaign Quarter, Period and Market derive from Campaign with a Benchmark fallback.
-- Zone and City fall back to G_Level_3 and G_Level_4 when their source field is empty.
-- Event Start/End values use YYYY-MM-DD HH:MM:SS.ffffff.
+**Preview Dataset** opens the stored rows of the CDR in the dataset preview described in [Dataset Preview](workspace-management.md#dataset-preview): 100-row pages, a searchable Dataset selector, column and label selectors, Excel-style column filters, field labels and their rule tooltips. Field naming and fallback rules are in [Fixed CDR Fields](workspace-management.md#fixed-cdr-fields).
 
 ### Export the analysis
 
-**Export PowerPoint** and **Export Word** open one dialog. With **Use the current filters, metrics and chart settings** (checked when an analysis is open) the document is the open CDR exactly as on screen: its metrics and filters, each chart's **Compare by** and **Compare CDF by**, and each CDF's **Visible X Range**. Unchecking it exports the CDRs selected in the dialog (the open CDR by default; CDR Data, Voice and Speech panels with **Select All** each) with every KPI and no filters. CDR Analysis is also a section of the reports of [Reporting](reporting.md#the-report-editor), with the CDR types, parts of the analysis and metrics chosen there.
+**Export PowerPoint** and **Export Word** open one dialog:
 
-Word exports contain the same report as PowerPoint, one landscape page per slide (rendered with LibreOffice when it is installed, as in the Docker image). PowerPoint exports use the workspace PowerPoint template (`assets/powerpoint-templates/Template_VodafoneThree.pptx`): a title slide names the CDR and lists its type, metrics and every filter, the content slides use the template's title layout and the deck ends with its closing slide. Exported documents are also kept in the `output/reports/cdr-analysis/` folder of the workspace, where an identical export of the open CDR is reused instead of generated again.
+- **Use the current filters, metrics and chart settings** (checked when an analysis is open): the document is the open CDR exactly as on screen, with its metrics and filters, each chart's **Compare by** and **Compare CDF by**, and each CDF's **Visible X Range**.
+- **Unchecked:** exports the CDRs selected in the dialog (the open CDR by default; CDR Data, Voice and Speech panels with **Select All** each) with every KPI and no filters.
+- **PowerPoint:** uses the workspace PowerPoint template (`assets/powerpoint-templates/Template_VodafoneThree.pptx`): a title slide names the CDR and lists its type, metrics and every filter, the content slides use the template's title layout, and the deck ends with its closing slide.
+- **Word:** the same report, one landscape page per slide (rendered with LibreOffice when it is installed, as in the Docker image).
+- **Kept:** exported documents are also kept in the `output/reports/cdr-analysis/` folder of the workspace, where an identical export of the open CDR is reused instead of generated again.
+- CDR Analysis is also a section of the reports of [Reporting](reporting.md#the-report-editor), with the CDR types, parts of the analysis and metrics chosen there. For a complete template-driven report, use PPT Designer.
 
-**Theme**, at the start of the floating section bar of the page (always in sight while reading it), colours the page and the PowerPoint and Word exports with the themes of [Scoring & GAP Analysis](scoring-gap-analysis.md): **Ericsson** by default, **NetCheck**, **Umlaut**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**.
+**Theme**, at the start of the floating section bar of the page, applies the themes of [Scoring & GAP Analysis](scoring-gap-analysis.md#choose-a-theme) (**Ericsson** by default; one theme per user and workspace, shared with the other themed modules, recorded in App Events):
 
-- **On the page:** its charts, chart and metric cards, statistic tiles, table headers and alternate rows, labels and accents.
-- **In the exports:** the CDF curves and the bars without an Operator or Vendor colour, the chart cards, the metric cards, the table headers and alternate rows, and the titles and subtitles of the content slides in the title style of the theme (the title slide and the closing slide keep the template look). **Midnight** gives the content slides a night-blue background with the logos in white and every table, card and chart on them dark.
-- **One theme per user:** each user keeps one theme per workspace for every themed module (choosing it here chooses it in Scoring & GAP Analysis, Network Insights and PPT Designer too). Changing it recolours the page at once; it is kept for the next visit and the exports, and is recorded in the App Events log.
-
-Analysis filters do not overwrite stored dataset rows. For a complete template-driven report, use PPT Designer.
+- **On the page:** charts, chart and metric cards, statistic tiles, table headers and alternate rows, labels and accents.
+- **In the exports:** the CDF curves and the bars without an Operator or Vendor colour, chart and metric cards, table headers and alternate rows, and the titles and subtitles of the content slides (the title and closing slides keep the template look). **Midnight** gives the content slides a night-blue background with white logos and every table, card and chart dark.
 
 ## Example investigation
 
@@ -139,15 +109,12 @@ First compare group sample counts. Then inspect the CDF and group benchmark. If 
 
 - Opening the page reads cached metadata; which metrics have values in each CDR is checked once and kept until the CDR changes.
 - Full analysis starts only after **Update Analysis**.
-- The page shows the first four metrics at once; the other metrics and the Processed Metrics table appear as they are calculated, a few at a time, while you already work with the first ones.
-- Repeated dataset/filter/metric combinations reuse in-memory cache entries.
-- Large caches are process-local and are cleared by an application restart.
+- The first four metrics show at once; the other metrics and the Processed Metrics table appear a few at a time as they are calculated, while you already work with the first ones.
+- Repeated dataset/filter/metric combinations reuse process-local in-memory cache entries, cleared by an application restart.
 
 ## Tips & shortcuts
 
-The charts and the preview of the rows react to the mouse as below. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-**Charts**
+The charts react to the mouse as below. The gestures of **Preview Dataset** are in [Workspace Management](workspace-management.md#tips-shortcuts); the shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
 
 | To… | Do this |
 | --- | --- |
@@ -155,11 +122,3 @@ The charts and the preview of the rows react to the mouse as below. The shortcut
 | Zoom into some bars | Drag a rectangle over them: the chart widens to fit them and scrolls to them |
 | Go back to the whole chart | The reset button of the zoom controls at its top right corner |
 | Read a value | Hover a bar, or hover a CDF to read the probability of every curve at that value |
-
-**Preview Dataset**
-
-| To… | Do this |
-| --- | --- |
-| Scroll a wide table sideways | <kbd>Shift</kbd> + mouse wheel over the table |
-| Read how a field is calculated | Hover its `Derived`, `Auto-calculated` or `Analysis-derived` badge |
-| See the complete rule of a field | Click its badge; <kbd>Esc</kbd>, its close button or a click outside closes the panel |

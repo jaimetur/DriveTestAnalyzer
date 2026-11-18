@@ -23,223 +23,169 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 
 ## Navigation
 
-The dark application bar at the top, in a darker shade of the colour of the module open (dark blue and teal outside the modules), holds the name of the tool with its version, the active workspace and the user (with a dot of the colour of its role) with **Logout**. Under it, one white panel holds the tabs: the administrative tabs, as buttons, on its upper row, and under a line the primary module tabs, as folder tabs with a line of the colour of their module on top and their icon in that colour, the open one filled with that colour; on a narrower window the main tabs take their short names and wrap to a second row when they do not fit. On small screens a bar at the bottom of the screen takes the place of both rows (see [Small screens](#small-screens)).
+The dark application bar at the top, in a darker shade of the colour of the module open (dark blue and teal outside the modules), holds the name of the tool with its version, the active workspace, and the user (with a dot of the colour of its role) with **Logout**. Under it, one white panel holds the tabs:
 
-Primary tabs, in their default order (super-admins change their order, titles, icons and colours in **Super Admin → Interface Settings**):
+- **Upper row:** the administrative tabs as buttons, each with an icon: Help, App Logs, Config (Application Config and Workspace Config, for `user-editor`, `admin` and `super-admin`), Admin (Administrator Config, for `admin` and `super-admin`) and Super Admin (for `super-admin`). They never share a line with the main tabs.
+- **Main tabs**, under a line: folder tabs with a line of the colour of their module on top and their icon in that colour, the open one filled with that colour. Each is a module, by default in this order: **Workspace**, CDR Analysis, PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls (in development), **Reporting**, **Builders** (Chart Builder and Query Builder), AI Assistant and Ticket Center.
+- **Narrow windows:** the main tabs take their short names (Analysis, Designer, Scoring, Network, NQ Calls, Reporting, Builders, AI Assistant, Tickets), then drop their icons, and wrap to further rows when they still do not fit, so the rows never overlap. On small screens a bar at the bottom replaces both rows (see [Small screens](#small-screens)).
+- **Who sees what:** an account sees the modules of its [Modules Profile](super-admin.md#modules-profiles) (a super-admin every module until it is given one). Every module except Workspace and Ticket Center needs an open workspace.
+- **Look:** super-admins change the order, titles, short titles, icons, colours and stage labels of the main tabs in [Interface Settings](super-admin.md#interface-settings). By default CDR Analysis is blue, Network Insights electric indigo, PPT Designer muted violet, Scoring & GAP Analysis the navy-to-green gradient of its header, Non-Qualified Calls raspberry and **Reporting** green; Network Insights and Non-Qualified Calls also use their colour for their header, buttons, tables and dialogs. Each module header shows a subtle decoration of the module (for example CDF curves in CDR Analysis or an antenna with radio waves in Network Insights), only as tall as its content; the controls of the module, such as the workspace or dataset selectors, follow in their own panel.
+- **Stage labels:** once a super-admin turns them on (off on a new deployment), a small label in the top-right corner of a tab shows its stage without taking space from its name: a red **ALPHA** in development (Network Insights, Non-Qualified Calls, and the AI Assistant with a sparkle), a yellow **BETA** while validated (**Reporting** and **Builders**) and a blue **NEW** once consolidated (Scoring & GAP Analysis, with a star, and Ticket Center); established modules (Workspace, CDR Analysis and PPT Designer) have none.
+- **Staying in sight:** the tabs stay at the top of the window while you scroll (unless they would take more than a third of it), and so does the application bar when both take no more than a third of the window; on small screens the bar of the modules stays instead.
 
-- **Workspace**
-- CDR Analysis
-- PPT Designer
-- Scoring & GAP Analysis
-- Network Insights
-- Non-Qualified Calls (in development)
-- **Reporting**
-- **Builders** (dropdown with Chart Builder and Query Builder)
-- AI Assistant
-- Ticket Center (opens without a workspace)
+**Browser tab titles** read `DT Analyzer - ` plus the module's Short title (`DT Analyzer - Scoring`, `DT Analyzer - Tickets`; CDR Analysis, PPT Designer, Network Insights and AI Assistant use their Module Title), the page name (Chart Builder, Query Builder, Workspace Config, Application Config, Readme, Changelog), `Presentations` for Product Presentations, or the title of a linked presentation.
 
-Each main tab is a module. An account sees the modules of its Modules Profile (**Super Admin → Modules Profiles**), and a super-admin every module until it is given one; a module an account does not see disappears from its tabs and Modules menu, and its pages and API answer 403. When the tabs do not fit on one line they wrap onto further lines, and main module tabs never share a line with the administrative tabs.
+**Section lists.** Hovering or focusing a tab opens the list of its sections below it, with icons in the module colour (<kbd>Esc</kbd> or scrolling closes it):
 
-Other tabs:
-
-- Help
-- App Logs
-- Config (dropdown with Application Config and Workspace Config, each with the list of its sections on hover), for `user-editor`, `admin` and `super-admin` roles
-- Admin, for `admin` and `super-admin` roles
-- Super Admin, for the `super-admin` role
-
-The browser tab of each page shows `DT Analyzer - ` and its module, so several open tabs can be told apart: the main modules by their Short title of **Super Admin → Interface Settings** (for example `DT Analyzer - Scoring` or `DT Analyzer - Tickets`; CDR Analysis, PPT Designer, Network Insights and AI Assistant by their Module Title), and Chart Builder, Query Builder, Workspace Config, Application Config, Readme and Changelog by their own name. The Product Presentations chapter shows `DT Analyzer - Presentations`, and the link of a presentation its title.
-
-In the header, the logo of the application takes the page back to its top, its name opens **About** (the version, release date, author and the links to the Help, Readme and Changelog), and the badge with the version and release date opens the Changelog.
-
-Help Home opens by default after login. The login page also offers **Request Access** to new users (see [Super Admin › Access Requests](super-admin.md#access-requests)) and, when [Email Delivery](app-config.md#email-delivery) is set up, **Forgot your password?** (see [Forgotten passwords](super-admin.md#forgotten-passwords)). The menu of the user badge, at the top right, has **Change password** and **Email address**, the address the emails of the tool go to (empty: none). Help, the Readme, the Changelog and the tickets of Ticket Center are also available without signing in, with a prominent **Sign in** button at the top right that returns to the page after signing in. Every module except Workspace and Ticket Center requires an open workspace. After five wrong passwords in a row for a username, its next tries wait (30 seconds, then longer, up to five minutes), also for the password an access request asks an existing account for; a right password, or half an hour, starts over.
-
-**Section lists of the tabs.** Hovering a tab, or focusing it with the keyboard, opens below it the list of its sections, each with an icon and in the colour of the module (<kbd>Esc</kbd> or scrolling closes it):
-
-- **Main modules:** their panels, for example Scoring Calculation, Scoring & GAP Analysis and Favourite Scorings in Scoring & GAP Analysis, where Scoring & GAP Analysis lists beside it Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis and Points Lost to open that results tab. On small screens these lists appear below their page, indented.
-- **App Logs:** App Events and Execution Log.
-- **Admin and Super Admin:** their panels.
+- **Main modules:** their panels (for example Scoring Calculation, Scoring & GAP Analysis, with its results tabs beside it, and Favourite Scorings). On small screens these lists appear indented below their page.
+- **App Logs:** App Events and Execution Log. **Admin** and **Super Admin:** their panels.
+- **Config:** Application Config (Application Runtime and Email Delivery) and Workspace Config (Main Cities, Mappings & Reference Data with its Operator, Vendor and Campaign Maps, Map Areas and Spectrum Holdings, and Scoring & GAP Analysis Setup). **Builders:** Chart Builder and Query Builder, each with its sections. Both open their menu on hover too.
 - **Readme and Changelog:** the chapters of the Readme and the latest releases of the Changelog.
-- **Help:** Help Home and, beside each group, the chapters of General, Main Modules, Administrative Modules and Reference (with the Readme and the Changelog), ending with **About**, the credits of the application: its logo, name, version, release date and author.
-- **Choosing a section:** opens that page with that section at its top (the Scoring & GAP Analysis entries bring the results tabs there), unfolding it when it was folded, and keeps it there while the page fills its panels, until you scroll. In Non-Qualified Calls it stays there until every panel is drawn, however long a large workspace takes (a reload then returns to where the page was being read, with its results tab).
-- **Clicking the tab itself:** still opens the module, at its top when it is the page being shown.
-- **Builders, Config and the User badge:** open their menu on hover too. The **User** badge has **Change password**, **Email address**, **API keys** while an LLM writer of the generated comments takes each user's key (your own keys for the LLM writers that Super Admin sets to each user's key, see [AI Comment Writers](super-admin.md#ai-comment-writers)) and, for admins and super-admins, **Start Demo Mode…** (see [Demo Mode](#demo-mode)).
+- **Help:** Help Home and, beside each group, the chapters of General, Main Modules, Administrative Modules and Reference, ending with **About**.
+- **Choosing a section** opens the page with that section (or results tab) at its top, unfolded, and keeps it there while the page fills, until you scroll; in Non-Qualified Calls until every panel is drawn, however long it takes (a reload then returns to where you were reading, with its results tab).
+- **Clicking the tab itself** still opens the module, at its top when it is the page being shown.
 
-The tabs stay at the top of the window while you scroll, so you can change module from anywhere in a page (unless they would take more than a third of the window); on small screens the menu bar stays there instead. When the window is tall enough for the application bar and the tabs (or the menu bar) to take no more than a third of it, the application bar stays at the top too, above them.
+**Sections bar.** A page with two or more sections shows them in a floating bar in its module colour, below its introduction, that stays below the tabs while you scroll (on small screens, above the bar of the modules) and holds the entries of its tab list.
 
-Every page with two or more sections also shows them in a floating **sections bar**, in the colour of its module, below the introduction of the page: it stays at the top of the window, below the tabs, while you scroll (on small screens, just above the bar of the modules at the bottom of the screen, see [Small screens](#small-screens)) and holds every entry of the list of its tab (or of its Config or Builders page). Its first entry, an arrow, goes back to the top of the page; choosing a section opens it at the top of the page, as from the list, and the bar marks the section being read as you scroll (the arrow while no section has reached the bar). An entry with parts of its own (Scoring & GAP Analysis with Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis and Points Lost, or Mappings & Reference Data with Operator Maps, Vendor Maps, Campaign Maps, Map Areas, Spectrum Holdings and Serving Networks in Workspace Config) shows an arrow and opens them below it (above it when the bar is at the bottom of the screen) on hover, on focus or with a click on the arrow. When the bar does not fit, its labels get smaller and then lose their icons, and on a narrow window it scrolls sideways. Non-Qualified Calls has its own bar, with the number of calls and the NQ Analysis Configuration beside it.
+- Its first entry, an arrow, goes to the top of the page; it marks the section being read (the arrow before the first).
+- An entry with parts (Scoring & GAP Analysis with its results tabs; Mappings & Reference Data with Operator, Vendor and Campaign Maps, Map Areas, Spectrum Holdings and Serving Networks) shows an arrow that opens them below it (above, when the bar is at the bottom) on hover, focus or click.
+- When it does not fit, its labels shrink, then lose their icons, then scroll sideways. Non-Qualified Calls has its own bar, with the number of calls and the NQ Analysis Configuration.
+
+**Modules & Sections** is a collapsed tab at the left edge of screens 1200 px wide or more, at the right edge below. Move the pointer near that edge (or touch it), or focus it, to reveal it; its hover area responds even while tasks run, task cards leave the edge clear, and it recedes when the pointer leaves. It opens the tree of Main Modules, Administrative Modules (App Logs, Administrator Config, still the **Admin** tab, and Super Admin) and Documentation, with every section and part (Help with its chapters and, in a chapter, its headings). The current module is open and marked; choosing an entry goes there and closes the drawer. It is nearly as tall as the window, scrolls when needed and stands above every floating card.
+
+**Help navigation** lists every chapter, for every reader, below Help Home: General (Docker Deployment after Deployment Configuration), Main Modules in tab order ([Workspace Management](workspace-management.md) to Ticket Center, with Chart Builder and Query Builder for **Builders**), Administrative Modules (App Logs, Administrator Config, Super Admin) and Reference (Readme and Changelog, then Project Structure and Roadmap). It highlights the open chapter, as the **Releases** list of the Changelog highlights the release being read; both lists grow to the end of the document and only scroll beyond it.
 
 A round button at the bottom left, in the colour of the current module, appears once a page is scrolled down and takes it back to the top.
 
-Open **Builders** to choose **Chart Builder** or **Query Builder**, each with the list of its sections on hover. The **Modules & Sections** drawer lists each builder with its sections. Within its Administrative Modules group, App Logs is first, then Administrator Config and Super Admin. The top tab for Administrator Config remains **Admin**.
-
-Move the pointer near the edge of the window to reveal the collapsed Modules & Sections tab (on a touch screen, touch that edge): the left edge on large screens (1200 px wide and more), the right edge on smaller ones. An invisible hover area beside the tab responds even while background tasks are running; task cards leave that edge clear. The tab recedes when the pointer leaves, and keyboard focus also reveals it.
-
-**Modules & Sections**, the tab at the left edge of large screens (at the right edge below 1200 px wide), opens the whole tree of the modules: Main Modules, Administrative Modules and Documentation, each module with its sections and their parts (as the lists of the tabs; Help with its chapters in their groups and, in a chapter, the headings of the document being read). The module of the page is open and marked; the other modules open with their arrow, and choosing a module or a section goes there and closes the drawer. It uses nearly the full height of the window, scrolls if the window is too short for every entry and, open, stands above every floating card.
-
-Open **Config** and choose **Application Config** for application-wide runtime settings or **Workspace Config** for Operator Mappings, Vendor Mappings, Spectrum Holdings, Serving Networks, Main Cities and the Scoring hierarchy/KPI/GAP settings in the active workspace. The **Modules & Sections** tab at the edge of the window jumps between the panels of Workspace Config. Hovering **Application Config** or **Workspace Config** in the menu opens the list of their sections (Application Runtime and Email Delivery; Main Cities, Mappings & Reference Data with its Operator, Vendor and Campaign Maps, Map Areas and Spectrum Holdings, and Scoring & GAP Analysis Setup): choosing one opens that page at that section, unfolding it when it was folded.
-
-Help Navigation lists unnumbered documents under General, Main Modules, Administrative Modules and Reference. Main Modules follow the order of the main tabs, by default: [Workspace Management](workspace-management.md), CDR Analysis, PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, [Reporting](reporting.md), Chart Builder, Query Builder, AI Assistant and Ticket Center. Docker Deployment follows Deployment Configuration in General. App Logs is the first administrative document and Super Admin the last, after Administrator Config. Readme and Changelog open Reference before Project Structure and Roadmap.
-
-The Help Home link stays above the groups. Every chapter is available to every reader.
-
-The Changelog adds a **Releases** list that jumps to each release; it highlights the release being read, as Help Navigation highlights the open document. Both lists grow down to the end of the document and only scroll beyond it.
-
 ## Header controls
 
-- Click the active-workspace badge to switch workspace.
-- The workspace-size badge is recalculated after dataset and report operations.
-- The username badge shows the role and the Modules Profile of the account (Full Access for a super-admin without one), with a left edge in the colour of the role for admins and super-admins and in that of the profile for the other users; hover or focus it for its menu (**Change password**, **Email address**, **API keys** and **Start Demo Mode…**, see [Navigation](#navigation)).
-- While a demo is on, its users see the **DEMO MODE · until …** pill (see [Demo Mode](#demo-mode)).
-- Use Logout to end the session.
+- **Logo:** takes the page back to its top. **Name of the application:** opens **About** (logo, version, release date, author and links to the Help, Readme and Changelog). **Version badge:** opens the Changelog.
+- **Active-workspace badge:** switches workspace. The workspace-size badge is recalculated after dataset and report operations.
+- **Username badge:** shows the role and the Modules Profile of the account (Full Access for a super-admin without one), with a left edge in the colour of the role for admins and super-admins and in that of the profile for the other users. Hover or focus it for its menu:
+  - **Change password**;
+  - **Email address**, where the emails of the tool go (empty: none);
+  - **API keys**, your own keys for the LLM writers that Super Admin sets to each user's key (see [AI Comment Writers](super-admin.md#ai-comment-writers));
+  - **Start Demo Mode…**, for admins and super-admins (see [Demo Mode](#demo-mode)).
+- **DEMO MODE · until …** pill: shown to the users of a running demo.
+- **Logout** ends the session.
+
+**Signing in.** Help Home opens by default after login. The login page also offers **Request Access** to new users (see [Access Requests](super-admin.md#access-requests)) and, when [Email Delivery](app-config.md#email-delivery) is set up, **Forgot your password?** (see [Forgotten passwords](super-admin.md#forgotten-passwords)). Help, the Readme, the Changelog and the tickets of Ticket Center open without signing in, with a prominent **Sign in** button at the top right that returns to the page. After five wrong passwords in a row for a username, its next tries wait (30 seconds, then longer, up to five minutes), also for the password an access request asks an existing account for; a right password, or half an hour, starts over.
 
 ## Demo Mode
 
-Demo Mode keeps the platform for the users of a live demo: everybody else is signed out and cannot sign in until it is over. Admins and super-admins start it with **Start Demo Mode…** in the menu of the user badge, which asks:
+Demo Mode keeps the platform for the users of a live demo: everybody else is signed out and cannot sign in until it is over. Admins and super-admins start it with **Start Demo Mode…**, which asks:
 
-- **Expected end of the demo**: a date and time (**+30 min**, **+1 h** and **+2 h** set it from now).
-- **Message for the users**: a proposed text that can be changed, shown to the users who are signed out with who started the demo and its expected end.
-- **Users with access during the demo**: every active account, with a green dot for those online now (as in the Users table of [Super Admin](super-admin.md#users)) and a tag for those with unsaved changes. The user who starts the demo always keeps access and, when an admin starts it (or changes its users), so does every super-admin; a super-admin can leave the other super-admins out. A summary tells how many users keep access and which online users will be warned or asked to save first.
+- **Expected end of the demo:** a date and time (**+30 min**, **+1 h** and **+2 h** set it from now).
+- **Message for the users:** a proposed text that can be changed, shown to the users signed out with who started the demo and its expected end.
+- **Users with access during the demo:** every active account, a green dot for those online and a tag for those with unsaved changes. Its starter always keeps access and, when an admin starts it or changes its users, so does every super-admin (a super-admin can leave the others out). A summary counts who keeps access and which online users will be warned or asked to save.
 
 Then:
 
-- A signed-in user without access and with a page open is warned (who started the demo, until when, and the message) and signed out within **5 minutes** at most, or at once with **Sign out now**.
-- A user with unsaved changes (a PPT Design, a report of [Reporting](reporting.md), a Scoring Methodology, an Auto-calculated Field, an NQ call or the NQ Prioritization Rules, a chart template or Operator and Vendor Map labels) is asked to save them first: a banner stays at the top of the page and the user is signed out as soon as nothing is left to save (saved or discarded), however long it takes, or when its pages are closed. Meanwhile the buttons that start new changes (New, Create, Add, Edit, Duplicate, Import, Upload, Generate…) are refused, and once a user has nothing left to save the server refuses its changes too.
-- A user with a session but no page open is signed out at once.
-- The sign-in page refuses the users without access and says who is using the platform for a demo, until when and the message; a user who was signed out sees why, and the page tells when the demo is over.
+- **Users without access with a page open** are warned (who, until when, the message) and signed out within **5 minutes**, or at once with **Sign out now**.
+- **Users with unsaved changes** (a PPT Design, a report of [Reporting](reporting.md), a Scoring Methodology, an Auto-calculated Field, an NQ call or the NQ Prioritization Rules, a chart template, Operator and Vendor Map labels) see a banner asking them to save; they are signed out once nothing is left to save (saved or discarded), however long it takes, or when their pages close. Meanwhile buttons that start new changes (New, Create, Add, Edit, Duplicate, Import, Upload, Generate…) are refused, and then the server refuses their changes too.
+- **Users with a session but no page open** are signed out at once.
+- **The sign-in page** refuses users without access, saying who runs the demo, until when and the message; a signed-out user sees why, and the page tells when the demo is over.
 
-The users with access see a **DEMO MODE · until …** pill in the app bar, with how many users are still leaving or saving; for its admins and super-admins it opens a menu listing the users still being signed out (with their unsaved changes or the time left), **Change end time…**, **Users and message…** and **End Demo Mode now**. Demo Mode never ends by itself: at the expected end the user who started it (or, while that user has no page open, the other admins and super-admins of the demo) is asked to **extend it by 5, 15, 30, 45 or 60 minutes**, **Remind me in 5 min** or **End Demo Mode now**; meanwhile the sign-in page says the demo is taking longer than expected.
+Users with access see the **DEMO MODE · until …** pill, with how many users are still leaving or saving; for admins and super-admins it opens a menu with those users (their unsaved changes or time left), **Change end time…**, **Users and message…** and **End Demo Mode now**.
 
-Starting, changing, extending and ending the demo, every user warned, signed out (and why) or refused at sign-in, and every change refused are recorded in [App Events](app-logs.md). Demo Mode outlives a restart of the server; it describes what the server is doing now, so no export, transfer or backup carries it.
+Demo Mode never ends by itself: at the expected end its starter (or, while that user has no page open, the demo's other admins and super-admins) is asked to **extend it by 5, 15, 30, 45 or 60 minutes**, **Remind me in 5 min** or **End Demo Mode now**, while the sign-in page says the demo is taking longer than expected. [App Events](app-logs.md) records its start, changes, extensions and end, every user warned, signed out (and why) or refused at sign-in, and every change refused. It survives a server restart; describing what the server does now, it is never exported, transferred or backed up.
 
 ## Panels
 
-- A panel heading explains its purpose.
-- Collapsible panels remember their open/closed state where supported.
+- A panel heading explains its purpose; collapsible panels remember their open/closed state where supported.
 - Status pills distinguish ready, processing, failed and stopped work.
 - Destructive actions use red styling and request confirmation when appropriate.
+- On every screen, the fields to create a workspace, a user, a Modules Profile, a Workspace Group, an Operator or Vendor label, a term of the AI Assistant Glossary or a PPT Design are not shown all the time: a **New …** button opens them in a dialog.
 
 ## Searchable selectors
 
-Single-select and multi-select controls share a compact searchable style.
+Single-select and multi-select controls share a compact searchable style and open the application's own list below their field, layered above their active dialog.
 
-- Type in the search field to narrow values. In a list without a search field, typing the first letters of a value jumps to it.
-- Multi-select controls preserve the order in which values are selected when order has meaning.
+- Type in the search field to narrow values; in a list without a search field, typing the first letters of a value jumps to it.
+- Multi-select controls keep the order in which values are selected when order has meaning.
 - **Select all / none** toggles the currently available options.
-- Open menus are layered above their active dialog and positioned against their field.
 
 ### Operator patterns
 
-Every **Operator** filter (Scoring & GAP Analysis, CDR Analysis, PPT Designer, Network Insights, Non-Qualified Calls, the common filters of the reports of [Reporting](reporting.md) and the scenarios of the Scoring report editor and its saved configurations) takes patterns besides the operators listed: type one in the filter of the list and press Enter (or **＋ Add pattern**, which tells how many operators it takes now). A pattern is saved as such, travels with what keeps it (Saved Scorings, favourites, reports, Designs, exports, transfers and backups) and is resolved each time the filter is used, so it also takes the operators that appear later:
+Every **Operator** filter (Scoring & GAP Analysis, CDR Analysis, PPT Designer, Network Insights, Non-Qualified Calls, the common filters of the reports of [Reporting](reporting.md), and the scenarios of the Scoring report editor and its saved configurations) takes patterns besides the operators listed: type one in the search of the list and press Enter (or **＋ Add pattern**, which tells how many operators it takes now).
 
-- `*` stands for any characters, whatever the case: `VF*` takes VF, VF SA, VF VoNR, VF SM… and `*O2*` every operator with O2 in its name;
-- `-` or `NOT` (followed by a space) before a value leaves it out: `-Lebara` or `NOT Lebara` is every operator but Lebara, `NOT Leb*` every operator but those that start with Leb, and several exclusions leave out each one;
-- values and exclusions together take the values but the excluded ones: `VF*` with `-VF SM` is every VF variant but VF SM.
+- `*` stands for any characters, whatever the case: `VF*` takes VF, VF SA, VF VoNR, VF SM… and `*O2*` every operator with O2 in its name.
+- `-` or `NOT` (followed by a space) before a value leaves it out: `-Lebara` or `NOT Lebara` is every operator but Lebara, `NOT Leb*` every operator but those that start with Leb; several exclusions leave out each one.
+- Values and exclusions together take the values but the excluded ones: `VF*` with `-VF SM` is every VF variant but VF SM.
 
-Patterns come first in their list, tagged **pattern** or **except**, and an operator of the Operator Maps is taken or left out with the spellings of the CDRs it stands for. A pattern added while every operator is ticked chooses on its own (the operators are unticked), and the list shows what it takes: `-Three` alone shows **All except Three**. An operator that every filter must leave out needs no pattern: give it the **Exclude** role in [Operator Maps](workspace-config.md#operator-maps).
+A pattern is saved as such, travels with what keeps it (Saved Scorings, favourites, reports, Designs, exports, transfers and backups) and is resolved each time the filter is used, so it also takes operators that appear later. Patterns come first in their list, tagged **pattern** or **except**, and an operator of the Operator Maps is taken or left out with the spellings of the CDRs it stands for. A pattern added while every operator is ticked chooses on its own (the operators are unticked), and the list shows what it takes: `-Three` alone shows **All except Three**. An operator that every filter must leave out needs no pattern: give it the **Exclude** role in [Operator Maps](workspace-config.md#operator-maps).
 
 ## Filter Builder
 
-The shared Filter Builder is used by Chart Builder and Report Template Chart Preview.
-
-- The field selector is searchable.
-- Operators adapt to list, text and numeric conditions.
-- Add or remove conditions without editing raw syntax.
-- The parsed filter appears beneath the builder.
-- `IN`/`NOT IN` lists may be typed without parentheses; the parser adds them.
+The shared Filter Builder of Chart Builder and the Report Template Chart Preview adds or removes conditions without editing raw syntax: its field selector is searchable, its operators adapt to list, text and numeric conditions, and the parsed filter appears beneath it. `IN`/`NOT IN` lists may be typed without parentheses; the parser adds them.
 
 ## Tables
 
-- Wide desktop tables use fixed action areas where needed.
-- Database and filtered-dataset tables paginate on the server.
-- Excel-style header menus search distinct values from the complete filtered source.
-- Horizontal/vertical scrolling stays inside the table viewport when controls must remain visible.
+- Wide desktop tables use fixed action areas where needed; horizontal and vertical scrolling stays inside the table when controls must remain visible.
+- Database and filtered-dataset tables paginate on the server, and their Excel-style header menus search the distinct values of the complete filtered source.
+- Every pager has the same look: a white pill with round arrow buttons (first, previous, next, last) and the page between them.
+- The dataset dialog of the PPT Designer viewer, which groups charts by Slide and opens the PPT Filters in a floating panel, provides pagination and CSV export.
 
 ## Dialogs and progress
 
-Long operations use progress dialogs for stages such as:
+Long operations use progress dialogs, for example while preparing an export, sending or receiving a server transfer, processing an import, loading a Chart Data Preview or a filtered dataset. Server-transfer dialogs can be hidden while the transfer goes on (see [Transfer to other server](administrator-config.md#transfer-to-other-server)).
 
-- preparing an export;
-- transmitting or receiving a server transfer;
-- processing an import;
-- loading a Chart Data Preview;
-- loading a filtered dataset.
-
-Server-transfer dialogs can be hidden with **Hide** while the transfer continues as a background task, and are restored after a browser reload while the transfer remains active. On the destination, once the package has arrived, a dialog without **Hide** keeps every open page out of use until the import ends; on the source, the dialog comes back once when that import starts and can be hidden again.
-
-After signing in and while signed in, a super-admin is told in the same style as an incoming server transfer of the [access requests](super-admin.md#access-requests) waiting for activation and of the new [tickets](ticket-center.md#who-can-do-what) it has not been told of, once each, on any page: the poll of incoming transfers checks for them every few seconds (every 30 seconds in a hidden tab), and an open dialog takes in what arrives meanwhile. The dialog waits for any other dialog or running operation of the page to close first, and a dialog that opens while it is shown goes over it.
+A super-admin is told on any page, in the same style as an incoming transfer, of the access requests waiting for activation and of new tickets (see [Access Requests](super-admin.md#access-requests)). That dialog waits for any other dialog or running operation of the page to close first, and a dialog that opens while it is shown goes over it.
 
 ## Floating background-task cards
 
-Every authenticated page polls active background work (every 2 seconds while work runs, every 8 seconds otherwise and every 30 seconds in a hidden tab) and shows compact floating cards until it finishes. Work for the open workspace appears at the lower right. Work for one or more other accessible workspaces appears in differently coloured lower-left cards, grouped by workspace name; changing the active workspace moves each running task to the appropriate side.
+Every signed-in page polls background work (every 2 seconds while work runs, 8 seconds otherwise, 30 seconds in a hidden tab) and shows a floating card per task until it finishes.
 
-Each card preserves its expanded or minimized state when moving between modules or reloading the page. Except on phones, drag a card by its header to move it out of the way (the browser remembers where); its button with four corners puts it back in its default position.
-
-Each card shows the task, its current stage and progress when the job reports one. The red circular **Stop Job** control is available only for interruptible work in a workspace the user can access and asks for confirmation before requesting a stop.
-
-Browser dataset uploads retain their latest measured percentage between progress events and can be interrupted while their request is active; dataset jobs already accepted by the server then appear separately and can be stopped at their safe checkpoints. Auto-calculated Field and combined-CDR work use the same cooperative stop behaviour.
-
-A stopped duplication removes its partial workspace; stopped exports remove temporary output; imports cannot be stopped after importing has begun.
+- **Where:** work of the open workspace at the lower right; work of other accessible workspaces in differently coloured lower-left cards, grouped by workspace name. Changing the active workspace moves each running task to its side.
+- **Each card** shows the task, its current stage and its progress when the job reports one, and keeps its expanded or minimized state (**−** / **+**) across modules and reloads. Except on phones, drag it by its header to move it (the browser remembers where); its button with four corners puts it back.
+- **Stop Job**, the red round control, appears only for interruptible work in a workspace the user can access and asks for confirmation.
+- **Uploads** keep their last measured percentage and can be interrupted while their request is active; dataset jobs the server already accepted appear separately and stop at safe checkpoints, as do Auto-calculated Field and combined-CDR work.
+- **After a stop:** a stopped duplication removes its partial workspace and a stopped export its temporary output; an import cannot be stopped once importing has begun.
 
 ## Unassigned values card
 
-While the ready CDRs of the open workspace have Operators, Vendors or Campaigns that no Operator, Vendor or Campaign Map assigns, a red card at the bottom centre of every page lists them until they are assigned. With task cards on screen it takes the middle of their row, between those of other workspaces and of the open workspace and as wide as them, and stands above the system task cards when there are any; on a phone the row takes the whole width of the screen and the button back to the top rises above it. Editors open the assignment table from its buttons; the user-viewer role is asked to inform an administrator. On a [laptop screen](#laptop-screens) it starts minimized to its title line, and **+** opens it. See [Unassigned values warning](workspace-config.md#unassigned-values-warning).
+While the ready CDRs of the open workspace have Operators, Vendors or Campaigns that no Operator, Vendor or Campaign Map assigns, a red card at the bottom centre of every page lists them until they are assigned (see [Unassigned values warning](workspace-config.md#unassigned-values-warning)). Editors open the assignment table from its buttons; the user-viewer role is asked to inform an administrator.
+
+- With task cards on screen it takes the middle of their row, between those of other workspaces and of the open workspace and as wide as them, above the system task cards when there are any.
+- On a [laptop screen](#laptop-screens) it starts minimized to its title line, and on a phone as a small pill at the bottom right (a round badge beside the button back to the top while task cards take the row); **+** opens it, as wide as the screen on a phone, where the button back to the top rises above it.
 
 ## Images of charts and tables
 
-The charts, maps and tables of [Scoring & GAP Analysis](scoring-gap-analysis.md#results-tabs), [Network Insights](network-insights.md), [Non-Qualified Calls](non-qualified-calls.md), [Chart Builder](chart-builder.md#interactive-preview) and [PPT Designer](ppt-designer.md#live-and-expanded-chart-controls) download as an image, or copy to the clipboard as a screenshot, from two floating buttons at their top right corner, shown while the pointer is over them (on touch screens, a tap shows them for a few seconds, until a tap elsewhere):
+The charts, maps and tables of [Scoring & GAP Analysis](scoring-gap-analysis.md#results-tabs), [Network Insights](network-insights.md), [Non-Qualified Calls](non-qualified-calls.md), [Chart Builder](chart-builder.md#interactive-preview) and [PPT Designer](ppt-designer.md#live-and-expanded-chart-controls) download as an image, or copy to the clipboard, from two floating buttons at their top right corner, shown while the pointer is over them (on touch screens, a tap shows them for a few seconds, until a tap elsewhere):
 
-| Button | What it does |
-| --- | --- |
-| Download (an arrow) | Saves a PNG image of what is shown: the theme, the choices of the section and the zoom of a chart or map, without the buttons of the page; a table that scrolls sideways or downwards, or a card taller than the window, is saved whole. A browser that does not let a page save what it draws saves an SVG image instead |
-| Screenshot (a camera), on the left | Copies the same image to the clipboard, to paste it elsewhere (a presentation, an email or a chat); it turns green a moment once copied. The browser lets a page copy images only at a secure address (https, or the application opened on this computer): elsewhere the image opens in a window, to copy it from its menu (right-click it, or keep it pressed, and choose **Copy Image**) or download it |
+- **Download** (arrow): a PNG of what is shown, with the theme, the section's choices and the zoom, without the page's buttons; a scrolling table or a card taller than the window is saved whole. Where the browser does not let a page save what it draws, an SVG.
+- **Screenshot** (camera, on the left): copies the same image to the clipboard, turning green a moment. Browsers allow it only at a secure address (https, or the application opened on this computer); elsewhere the image opens in a window, to copy it (right-click or long-press, **Copy Image**) or download it.
 
-The buttons of a whole card (a panel, a slide) are blue and stand on its top edge, at its right; in a card that holds several charts or tables, the one under the pointer shows buttons of its own in light blue, at its own top right corner. They keep clear of the buttons of the page (zoom, Collapse, the controls of a PPT chart), stay at the top of their card, chart or table, and show only while it is in sight, below the floating bars. The larger view of a chart, map or table (a double-click) has them in its corner. The file is named after the title of what it shows, and App Events records each download or copy, with `destination: clipboard` for a copy or `copy-dialog` when it opened in the window, or the reason it failed.
+A whole card (a panel, a slide) has blue buttons on its top edge, at the right; inside it, the chart or table under the pointer has its own, light blue. They avoid the page's own buttons (zoom, Collapse, PPT chart controls), stay at the top of what they capture while it is in sight, below the floating bars, and sit in the corner of the larger view (double-click). The file takes the title of what it shows; App Events records each download or copy (`destination: clipboard`, or `copy-dialog` when it opened in the window) or why it failed.
 
 ## Laptop screens
 
-On a short screen (a 13" to 15" laptop, about 860 px of height or less in the browser, or a large zoom of the browser), wider than a phone, the page gives its content more room: the header of the application loses its line above the brand and takes less height with its tabs, the hero of each module shows its title on one line and its description on two (cut with *…*), the panels are closer to each other, and the notice of the unassigned values of the CDRs starts minimized at the bottom (**+** opens it). In the [Non-Qualified Calls](non-qualified-calls.md#call-details-and-activity) the panel of a call scrolls as a whole there. Larger screens keep the full layout.
+On a short screen (a 13" to 15" laptop, about 860 px of height or less in the browser, or a large browser zoom) wider than a phone, the page gives its content more room: the header loses its line above the brand and takes less height with its tabs, the hero of each module shows its title on one line and its description on two (cut with *…*), the panels are closer to each other and the unassigned values card starts minimized. In [Non-Qualified Calls](non-qualified-calls.md#call-details-and-activity) the panel of a call scrolls as a whole. Larger screens keep the full layout.
 
 ## Small screens
 
-The interface targets compact screens around the iPhone 17 base viewport (`402 × 874`).
+The interface targets compact screens around the iPhone 17 base viewport (`402 × 874`). Use portrait for forms and landscape for very wide tables.
 
-- The application bar is two short lines: the name of the tool with its version and, under it, the active workspace, the user and **Logout**. The header of each module is short: its title of the size of the title of a panel and two lines of its description (its Help chapter has it whole).
-
-- **Bar of the modules.** Instead of the rows of tabs, a bar at the bottom of the screen (phones up to 640 px wide, and phones in landscape) holds every main module you have, in the order of their tabs, the one open marked in its colour, then **Config**, **App Logs**, **Help**, **Changes** (the Changelog), **Readme**, **Slides** ([Product Presentations](presentations.md)) and **Roadmap**, with **Menu** last. Its buttons are large enough to read and tap at a glance.
-  - **One row or every module:** when they do not fit in one row, every page shows them in one row that scrolls sideways (the side where more modules wait fades, and the module open is in sight) while **Menu** stays fixed at its end. A swipe up on the bar, or a tap on the handle at its top, shows every module in rows of six with **Menu** at the end of the last one, and a swipe down (or a tap on the handle) returns to one row. A swipe up or down on the bar never scrolls the page, and the next page starts with one row again.
-  - **Builders and Config:** **Builders** opens above the bar the list of its builders (Chart Builder and Query Builder), and **Config** the list of the configuration pages of your role (Application Config and Workspace Config, Administrator Config for admins and Super Admin for super-admins), each in the colour of its module; a user without them has no **Config**.
-  - **Opening a module:** a module (or a page of Builders or Config) chosen in the bar opens where you left it; the module open, chosen again, goes back to the top of its page.
-  - **Menu:** opens, from the top of the screen down to the bar, the tree of **Modules & Sections**: Main Modules, Administrative Modules and Documentation, each module with its sections and their parts, the module of the page open and marked, and **About**. While it is open its button shows **×** and **Close** and closes it; choosing a module or a section goes there and closes it too, as do the **×** of its header and Escape.
-- **Sections bar.** The sections bar of the page floats just above the bar of the modules and fits the screen without scrolling sideways. It shows the section being read (**Sections** at the top of the page) between **‹** and **›**, which go to the previous and the next section.
-  - A tap on it opens above the bar, in the colour of the bar, the list of every section of the page with its parts, the one being read marked. A section whose panel is hidden, such as the Charts Panel of PPT Designer before any PPT is generated, is left out; the views of Ticket Center, shown one at a time, are all listed, and each opens its view.
-  - The colour theme of the themed modules is its palette icon at the start.
-  - Once the page is scrolled down, the button back to the top stands at its left, in the same row.
-- **What floats at the bottom.** The tasks in the background and the card of the unassigned values stand above both bars, and the Modules & Sections tab stays at the right edge, above them.
-- Added to the Home Screen of the phone (in Safari, **Share** › **Add to Home Screen**), the tool opens as an application on the whole screen, without the bars of the browser, so the bar of the modules stays still at the bottom while you scroll; in the browser, the bars of the browser come and go as you scroll and the bar of the modules moves with them. Its sign-in is its own: sign in once in it.
-- Panels use reduced side margins and never widen the page: wide content scrolls inside its own container.
-- Forms stack vertically, filters go two per row and action buttons are as wide as their text, sharing a row.
-- The tables that change to cards (the workspaces of Workspace Management, the PPT Templates and the PPT Generation Jobs of PPT Designer, the maps and the CDR Field Dictionary of Workspace Config, the packages received in Administrator Config) are compact cards as those of [Reporting](reporting.md): the name in bold on top with its state beside it, the NR Mode, scope, slides, charts and filters as small chips, who made it and when in one small line, the other values two per row, each under the name of its column, the progress only while it is not done, and the actions at the bottom, five cards per page (the Charts Panel, four charts per page), with the pager below them; another page starts at its first card. The Super Admin tables of Modules Profiles, Workspace Groups and interface settings change to cards too, each value under the name of its column. While a dialog is open, the bars at the bottom of the screen give way to it. On every screen, the fields to create a workspace, a user, a Modules Profile, a Workspace Group, an Operator or Vendor label, a term of the AI Assistant Glossary or a PPT Design are not shown all the time: a **New …** button opens them in a dialog. The Charts Panel of PPT Designer shows its selection as small chips and its filters two per row, and Select Workspace its counts as small pills and the workspace to open with **Open** and **Close** in one row.
-- The Designs of PPT Designer are a list of cards, as the reports of [Reporting](reporting.md): the name of each Design (which opens it in the viewer) with its state, its NR Mode and PPT Template, who changed it and when, **View PPT** and **Generate PPT**, and **⋯** with Edit Design, Edit details (its name, NR Mode and PPT Template), Duplicate, Export Design and Delete. Larger screens keep the table.
-- In [Reporting](reporting.md), the report editor takes the whole screen and each run of History is a card.
-- The Datasets of Workspace Management (all their tables, with their campaign bands), the Super Admin tables of users and of the Database Viewer, Datasets Management, the App Events of Application Logs and the Non-Qualified Calls stay tables, scrolled sideways, so a row is found at a glance; the App Events take at most 70% of the screen, with their pages right below them.
-- Every pager of the application, on phones and on larger screens, has the same look: a white pill with round arrow buttons (first, previous, next, last) and the page between them.
-- Chart navigation appears below the chart and before Interactive Preview.
-- In Scoring & GAP Analysis, the tabs of the results (Summary, Scoring Charts, Scoring Tables…) are one row scrolled sideways, with the tab shown brought into view, also while it stays at the top of the results; the bar that moves, updates and deletes the Favourite Scorings scrolls away with the page.
-- The card of the unassigned values of the CDRs starts minimized, as a small pill at the bottom right; **+** opens it.
-- The panels of the tasks in the background stay in their place above the bar (on larger screens they can be dragged by their header): **−** minimizes one and **+** opens it again. With the card of the unassigned values on screen, the tasks take the row and the card, minimized, is a round badge beside the button back to the top; opened, it is as wide as the screen.
-- Wide data tables scroll inside their own containers rather than widening the page; in the Non-Qualified Calls tables their first column stays in view.
-- Workspace Management remains visible when expanded.
-
-On a phone, use portrait orientation for forms and landscape orientation when inspecting a very wide data table.
-
-## PPT navigation and overlays
-
-By default the analytical tabs are ordered **CDR Analysis** → **PPT Designer** → **Scoring & GAP Analysis** → **Network Insights** → **Non-Qualified Calls** → **Reporting** for users with each feature. CDR Analysis uses blue, Network Insights electric indigo, PPT Designer muted violet, Scoring & GAP Analysis the navy-to-green gradient of its header, Non-Qualified Calls raspberry and **Reporting** green; Network Insights and Non-Qualified Calls also use their colour for their header, buttons, tables and dialogs. Once a super-admin turns them on in **Super Admin → Interface Settings** (they are off on a new deployment), module tabs show their stage in a small label in the top-right corner, without taking space from their name: a red **ALPHA** while in development (Network Insights and Non-Qualified Calls, and the AI Assistant with a sparkle), a yellow **BETA** while being validated (**Reporting** and **Builders**) and a blue **NEW** once consolidated (Scoring & GAP Analysis, with a star, and Ticket Center); established modules (Workspace, CDR Analysis and PPT Designer) have no label. Super-admins choose in Interface Settings the order of the main tabs, the title of each one and its short title for narrow windows, its icon and its colour, and the label of each module with its colour and optional icon, or hide every label. Each module header shows a subtle decoration that represents the module (for example CDF curves in CDR Analysis or an antenna with radio waves in Network Insights) and is only as tall as its content; the controls of the module, such as the workspace or dataset selectors, follow in their own panel. The administrative tabs (Help, App Logs, Config and Admin) show an icon too, on the upper row of the same white panel as the main tabs. Scoring offers NR Mode and CDR selection, aggregation controls, saved background jobs and tables/charts/GAP exports. Network Insights analyses RSRP/SINR, coverage and interference maps, sites, spectrum and network deployment. Each main tab shows a representative icon before its name. On narrower windows the main tabs switch to their short names (Analysis, Designer, Scoring, Network, NQ Calls, Reporting, Builders, AI Assistant, Tickets) and then drop their icons, so the tab rows never overlap.
-
-**Reporting** is shown only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it; on a new deployment it is in every profile. The design viewer groups charts by Slide and opens the same PPT Filters controls in a floating panel. Its dataset dialog provides pagination and CSV export.
-
-App Logs is available from the utility navigation and includes App Events for the active workspace plus the live Execution Log for the running server. See [App Logs](app-logs.md).
+- **Header:** two short lines (the tool and version; the workspace, the user and **Logout**). Module headers show a panel-size title and two lines of description (the Help chapter has it whole).
+- **Bar of the modules:** on phones (up to 640 px wide, and in landscape) a bar at the bottom replaces the tabs, with large buttons: your main modules in tab order (the open one in its colour), **Config**, **App Logs**, **Help**, **Changes** (Changelog), **Readme**, **Slides** ([Product Presentations](presentations.md)), **Roadmap** and **Menu**.
+  - When they do not fit, they form one row that scrolls sideways (fading on the side where more wait, the open module in sight), **Menu** fixed at its end. Swipe up on the bar, or tap its handle, for rows of six; swipe down (or tap the handle) for one row. A vertical swipe on the bar never scrolls the page, and each page starts with one row.
+  - **Builders** opens its builders above the bar, **Config** the configuration pages of your role (Application Config, Workspace Config, Administrator Config for admins, Super Admin for super-admins), each in its colour; without any, there is no **Config**.
+  - A module opens where you left it; the open one, chosen again, goes back to its top.
+  - **Menu** opens the **Modules & Sections** tree, with **About**, from the top down to the bar. Its button becomes **×** **Close**; choosing an entry, the **×** of its header or Escape also close it.
+- **Sections bar:** floats above the bar of the modules without scrolling sideways, showing the section being read (**Sections** at the top) between **‹** and **›** (previous and next section).
+  - A tap opens the list of every section and part, the current one marked. Hidden panels (such as the Charts Panel of PPT Designer before any PPT is generated) are left out; the views of Ticket Center are all listed, each opening its view.
+  - Themed modules show their palette icon at its start; the button back to the top stands at its left once the page is scrolled.
+- **At the bottom:** task cards (fixed in place) and the unassigned values card stand above both bars, and the Modules & Sections tab at the right edge above them. The bars give way to an open dialog.
+- **Home Screen:** added to the Home Screen (Safari **Share** › **Add to Home Screen**), the tool opens full screen without the browser bars, so the bar of the modules stays still while you scroll (in the browser it moves with the browser bars). It has its own sign-in: sign in once in it.
+- **Layout:** panels have reduced margins and never widen the page (wide content and tables scroll in their own container); forms stack, filters go two per row and action buttons are as wide as their text, sharing a row.
+- **Cards instead of tables:** the workspaces of Workspace Management, the PPT Templates and PPT Generation Jobs of PPT Designer, the maps and CDR Field Dictionary of Workspace Config and the packages received in Administrator Config become compact cards like those of [Reporting](reporting.md): the name in bold with its state; NR Mode, scope, slides, charts and filters as small chips; who made it and when in one line; other values two per row under their column name; progress only while not done; the actions at the bottom. Five cards per page (the Charts Panel, four charts), the pager below, a new page starting at its first card. The Super Admin tables of Modules Profiles, Workspace Groups and Interface Settings also become cards.
+  - PPT Designer's Designs are cards with the name (opening the viewer), state, NR Mode, PPT Template, who changed it and when, **View PPT**, **Generate PPT** and **⋯** (Edit Design, Edit details (name, NR Mode and PPT Template), Duplicate, Export Design, Delete).
+  - In [Reporting](reporting.md) the report editor takes the whole screen and each History run is a card.
+  - The Charts Panel of PPT Designer shows its selection as chips and filters two per row; Select Workspace its counts as small pills, with **Open** and **Close** in one row.
+- **Tables that stay tables**, scrolled sideways: the Datasets of Workspace Management (with campaign bands), the Super Admin users and Database Viewer, Datasets Management, App Events (at most 70% of the screen, the pager right below) and Non-Qualified Calls (first column kept in view).
+- **Charts:** navigation sits below the chart, before Interactive Preview.
+- **Scoring & GAP Analysis:** the results tabs are one sideways-scrolling row with the current tab in view, also while it stays at the top; the Favourite Scorings bar scrolls away with the page.
+- Workspace Management stays visible when expanded; stage labels never show on the tabs.
 
 ## Tips & shortcuts
 

@@ -1,19 +1,9 @@
 # AI Assistant
 
-Use the **AI Assistant** to ask the active workspace questions in your own words, in any language, and get the answer in the same chat. For example:
-
-- the scoring of an operator broken down by vendor, where it loses points against the leader, or a global commentary of the scoring of the campaigns, operators or vendors you name;
-- how many Non-Qualified Calls each operator has and why, or the list of their JOIN_IDs by any condition (in a Cluster and a Time-Window issue of at least 4 calls);
-- any count, average or distribution of the rows of the CDRs;
-- the radio coverage and quality of Network Insights;
-- a commentary on the charts of a PPT Designer Design;
-- a chart of the scoring of the operators, of a PPT Designer Design or of any result, drawn in the chat;
-- which campaigns and methodologies there are, or how to do something in the tool.
-
-The assistant reads the workspace with the same calculations as its modules, answers with tables and charts when they help, says how it calculated every figure and proposes the next questions to ask.
+Use the **AI Assistant** to ask the active workspace questions in your own words, in any language, and get the answer in the same chat: the scoring of the operators and where they lose points, the Non-Qualified Calls and their JOIN_IDs, any figure of the rows of the CDRs, the radio coverage and quality of Network Insights, comments and charts of PPT Designer Designs, which campaigns and methodologies there are, or how to do something in the tool. It reads the workspace with the same calculations as its modules, answers with tables and charts when they help, says how it calculated every figure and proposes the next questions to ask.
 
 > [!IMPORTANT]
-> **No customer name leaves the server.** Before a question, the workspace context or the result of a calculation is sent to the AI engine, every name of an operator, vendor, region, cluster, city, campaign, methodology, workspace or user is replaced by a code (`OP1`, `VN2`, `RG3`, `CL4`, `CT5`, `CP6`, `MT7`, `WS1`, `US1`), also in the words of your question and inside identifiers (`OP1_Voice`). The engine reasons on the codes; the tool puts the real names back in the answer you read. Only codes, figures, dates, the words of the question and the values a calculation needs (such as JOIN_IDs, KPI values or site IDs, at most 200 rows of a query) travel. Coordinates, subscriber identifiers (IMSI, IMEI, MSISDN, dialled number), IP addresses and the paths of the files never do: no table of the assistant holds them. A long list of an answer is shown by the tool itself, without passing through the engine. **What was sent**, below every answer, shows exactly what the engine received and what it replied.
+> **No customer name leaves the server.** Every name of the workspace is replaced by a code (`OP1`, `VN2`…) before anything is sent to the AI engine, and the tool puts the real names back in the answer you read. Coordinates, subscriber identifiers, IP addresses and file paths never travel. **What was sent**, below every answer, shows exactly what the engine received. See [Privacy: the names sent as codes](#privacy-the-names-sent-as-codes).
 
 > [!NOTE]
 > **Module access.** The AI Assistant is in every Modules Profile and needs a workspace: each workspace has its own conversations and glossary. Super-admins choose who sees it in **Super Admin → Modules Profiles** and can rename it in **Super Admin → Interface Settings**. It answers only once a super-admin enables an AI engine (see [Engines](#engines)).
@@ -77,13 +67,11 @@ Ask for a chart (*draw*, *plot*, *show a chart of…*) and the answer shows it a
 
 The engine never gives the figures of a chart: it only names the data the tools gave for the question and how to draw it, and the tool draws it from that data, with the real names. A chart can show:
 
-| Chart | What it draws |
-| --- | --- |
-| Scoring | A result of the scoring tool as Scoring & GAP Analysis shows it, in the colours of the Operator Maps and the order of their operators: the points of each group (by the split asked, such as Vendor or Region), the points per environment or per category, the GAP to the reference operator, the points of each operator over several campaigns (a trend) or the KPIs that lose most points. |
-| PPT Designer | A chart of a Design read for the question, exactly as the viewer of the Design draws it (its chart type, format, colours and legend), named after its Design and slide. |
-| Query | The rows of a query result: the categories of some columns, the values of others, a bar, line or pie per value of a column (one line per operator over the campaigns, for example). |
-| Table | A table of the answer (whose figures are checked as those of the text), as bars, horizontal bars, lines or a pie. |
-| Earlier chart | A chart of an earlier answer of the conversation, drawn again with another style or title without calculating anything. |
+- **Scoring:** a result of the scoring tool as Scoring & GAP Analysis shows it, in the colours and operator order of the Operator Maps: the points of each group (by the split asked, such as Vendor or Region), per environment or category, the GAP to the reference operator, the points of each operator over several campaigns (a trend) or the KPIs that lose most points.
+- **PPT Designer:** a chart of a Design read for the question, exactly as the viewer of the Design draws it (chart type, format, colours and legend), named after its Design and slide.
+- **Query:** the rows of a query result: the categories of some columns, the values of others, a bar, line or pie per value of a column (one line per operator over the campaigns, for example).
+- **Table:** a table of the answer (its figures checked as those of the text), as bars, horizontal bars, lines or a pie.
+- **Earlier chart:** a chart of an earlier answer of the conversation, drawn again with another style or title without calculating anything.
 
 Each operator keeps its colour of the Operator Maps, also when its name is part of the name of a series (*EE UK_Q3_NSA_2026*): when an operator has several lines, the one of its latest campaign is solid and the earlier ones dashed, then dotted.
 
@@ -123,7 +111,7 @@ The assistant only reads; it changes nothing in the workspace. When asked to cha
 
 ## Privacy: the names sent as codes
 
-Every name of the workspace is replaced by a code before anything is sent:
+Before a question, the workspace context or the result of a calculation is sent to the AI engine, every name is replaced by a code: `OP1` (operator), `VN2` (vendor), `RG3` (region), `CL4` (cluster), `CT5` (city), `CP6` (campaign), `MT7` (methodology), `WS1` (workspace), `US1` (user). The engine reasons on the codes; the tool puts the real names back in the answer.
 
 - **Which names:** those of its Operator Maps (with their aliases), CDRs (operators, vendors, regions, clusters, cities and campaigns), methodologies and the workspace itself; the user names and full names of the users of the tool (and the names of the analysts of the Non-Qualified Calls without account); and the names of well-known operators and vendors.
 - **Where:** everywhere: in the question, the workspace context, the glossary, the conversation so far and every result, also inside identifiers joined by underscores (a test name `Vodafone_Voice_MO` is sent as `OP1_Voice_MO`).
@@ -132,7 +120,7 @@ Every name of the workspace is replaced by a code before anything is sent:
 - **Stable codes:** the codes of a conversation never change: a name that appears later takes the next free code, so earlier answers keep meaning the same thing.
 - **Last check:** before every request the tool checks that no known name is left; if one were, nothing is sent and the chat says so.
 
-What still travels: the words of the question that are not names (a name the workspace does not have, or a misspelled one, travels as written), figures, dates, quarters, KPI and category names of the methodology, the instructions of the assistant, and the values a query or a chart reads that are not names (JOIN_IDs, site and cell IDs, test names without the names of the workspace, KPI values). Which provider receives them, and under which terms, is chosen by the super-admins of the deployment (see [Engines](#engines)).
+What still travels: the words of the question that are not names (a name the workspace does not have, or a misspelled one, travels as written), figures, dates, quarters, KPI and category names of the methodology, the instructions of the assistant, and the values a query or a chart reads that are not names (JOIN_IDs, site and cell IDs, test names without the names of the workspace, KPI values; at most 200 rows of a query). Coordinates, subscriber identifiers (IMSI, IMEI, MSISDN, dialled number), IP addresses and file paths never do: no table of the assistant holds them. A long list of an answer is shown by the tool itself, without passing through the engine. Which provider receives them, and under which terms, is chosen by the super-admins of the deployment (see [Engines](#engines)).
 
 ## The glossary of the workspace
 
@@ -150,11 +138,11 @@ The list on the left holds your conversations of the active workspace, the lates
 
 ## Engines
 
-The assistant answers with the AI engines a super-admin enables in **Super Admin → AI Comment Writers**, the same ones that write the comments of PPT Designer: **Kiro CLI** (run on the server, headless and without tools of its own) and **Claude**, each with the API key of the server or of each user, as the super-admin chooses (users save theirs in the user menu, **API keys**). The engine selector beside **Ask** offers the enabled ones, the default one first. Without an enabled engine the chat explains it and asks nothing. The engine never reads the workspace: it asks for the tools above, the tool runs them on the server and sends back their results with the names as codes. Another engine, such as a model of the organisation run on its own servers, plugs into the same interface.
+The assistant answers with the engines a super-admin enables in [AI Comment Writers](super-admin.md#ai-comment-writers), the same that write the comments of PPT Designer: **Kiro CLI** (run on the server, headless and without tools of its own) and **Claude**, each with the key of the server or of each user (users save theirs in the user menu, **API keys**). The engine selector beside **Ask** offers the enabled ones, the default first; without one the chat explains it and asks nothing. The engine never reads the workspace: it asks for the tools above, which the tool runs on the server, sending back their results with the names as codes. Another engine, such as a model of the organisation run on its own servers, plugs into the same interface.
 
 ## App Events
 
-Every action is recorded in App Events (module AI Assistant): each question (with its conversation, engine and text), each answer (its duration, steps, the tools used with their duration and errors, the tokens, the size of what was sent any figure that could not be traced and the charts it drew), each failed or stopped question with its reason, the feedback, the suggestions and the changes of the glossary, and the conversations renamed and deleted.
+Every action is recorded in App Events (module AI Assistant): each question (with its conversation, engine and text), each answer (its duration, steps, the tools used with their duration and errors, the tokens, the size of what was sent, any figure that could not be traced and the charts it drew), each failed or stopped question with its reason, the feedback, the suggestions and the changes of the glossary, and the conversations renamed and deleted.
 
 ## Tips & shortcuts
 

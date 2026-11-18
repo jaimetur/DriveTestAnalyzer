@@ -28,75 +28,73 @@ ticket-center
 
 ## Dashboard
 
-The header of the module sums up every ticket with its tiles, and its tabs choose the view shown below the floating bar of its sections: **New Ticket**, **All Tickets**, the list of tickets, **Dashboard** (by default; New Ticket while there is no ticket), **Statistics** or **Time Spent**. Each browser remembers the tab chosen. The sections menu of the tab of Ticket Center and the floating bar list the same views in the same order, and a link to the tickets of a status (such as those of the notices of new tickets) opens All Tickets.
+The header of the module sums up every ticket with its tiles, and its tabs choose the view shown below the floating bar of its sections: **New Ticket**, **All Tickets** (the list), **Dashboard** (by default; New Ticket while there is no ticket), **Statistics** or **Time Spent**. Each browser remembers the tab chosen. The sections menu of the tab and the floating bar list the same views in the same order, and a link to the tickets of a status (such as those of the notices of new tickets) opens All Tickets.
 
-The **Dashboard** panel shows the tickets of a period: **Period**, at its top, chooses **All time** (by default), **This week**, **This month**, **This quarter** or **This year**, the same choice as Statistics and Time Spent, which follow it. As in Statistics, it counts the tickets opened in the period, and those resolved or closed in it for the times to resolve and the tickets resolved last; its latest activity is that of the period. Each tile, and each count, bar and cell of the panel, lists its tickets in **All Tickets** (opening that tab and clearing the other filters; all those of its value, of any period) and tells what it is when the mouse is over it.
+**Period.** Dashboard, Statistics and Time Spent share one **Period**, chosen at the top of each: **All time** (by default), **This week** (from Monday), **This month**, **This quarter** or **This year**; the browser remembers it. They count the tickets opened in the period, and those resolved or closed in it for the times to resolve, the tickets resolved last and the versions that fixed them. **All time** covers every ticket since the first, drawn over time by months when it spans 8 months or more, else by weeks (by days under 4 weeks). Each tile, count, bar, cell or chart part that lists tickets opens them in **All Tickets** (clearing its other filters), all those of its value of any period, and tells what it is when the mouse is over it.
 
 - **Tiles** (in the header): the **Open** tickets (New, In Progress and Waiting for Info), each of those three statuses, those **Resolved** or closed in the last 30 days and, signed in, **My open** tickets. A tile pressed again lists the open tickets.
-- **Created vs resolved**: the tickets opened and those resolved or closed in each day (this week and this month), week (this quarter) or month (this year) of the period, up to today, with the count over each bar; all time as Statistics draws it. Per day, the weekends are shaded. With more than 24 periods (the days of this month), each has a single bar: the resolved tickets, narrow and solid, inside the created ones, wide and light, with both counts over it (created first) and the number of each day under it.
-- **At a glance**: a ring of the tickets opened in the period, open, resolved or closed, and rejected, with the open ones in its centre (**All clear** when none is open); a part of the ring or its line lists those tickets. Below it, the tickets opened and those resolved or closed in the period, the **age of the oldest open ticket**, with a link to it, and the open tickets nobody attends.
-- **Tickets by type and status**: a row per type and a column per status, with the totals of each row and column; click a count to list those tickets.
-- **Tickets per module**: the tickets of each module, its open ones in the colour of the module, those with most open tickets first; a module lists all its tickets.
-- **A card per type**: its open tickets out of all of them, a bar with its tickets by status, the median time its tickets resolved or closed in the period took and, while it has open tickets, those by priority (P1 to P5).
-- **Needs attention**: up to 5 open tickets opened in the period, the most urgent priority first and then the oldest, with their status, module, assignee and age (green under a week, amber under a month, red after it), and a link to the others; with no open ticket, **All caught up**. Below, the tickets **resolved last** in the period, with the version that fixed them, the time they took and when.
-- **Latest activity**: the newest entries of the period (tickets opened, comments and changes, a change of status with the new one), who made them and how long ago, as many as fit beside Needs attention.
+- **Created vs resolved:** the tickets opened and those resolved or closed in each day (this week and this month), week (this quarter) or month (this year) of the period, up to today, with the count over each bar; weekends are shaded. With more than 24 periods (the days of this month), each has a single bar: the resolved tickets, narrow and solid, inside the created ones, wide and light, with both counts over it (created first) and the day under it.
+- **At a glance:** a ring of the tickets opened in the period, open, resolved or closed, and rejected, with the open ones in its centre (**All clear** when none is open); a part of the ring or its line lists them. Below it, the tickets opened and those resolved or closed in the period, the **age of the oldest open ticket** with a link to it, and the open tickets nobody attends.
+- **Tickets by type and status:** a row per type and a column per status, with totals; click a count to list those tickets.
+- **Tickets per module:** each module's tickets, its open ones in its colour, those with most open tickets first.
+- **A card per type:** its open tickets out of all, a bar with its tickets by status, the median time its tickets resolved or closed in the period took and, while it has open tickets, those by priority (P1 to P5).
+- **Needs attention:** up to 5 open tickets opened in the period, the most urgent priority and then the oldest first, with status, module, assignee and age (green under a week, amber under a month, red after), and a link to the others; with none, **All caught up**. Below, the tickets **resolved last** in the period, with the version that fixed them, the time they took and when.
+- **Latest activity:** the newest entries of the period (tickets opened, comments and changes, a change of status with the new one), who made them and how long ago, as many as fit beside Needs attention.
 
 ## Statistics
 
-The **Statistics** tab shows how the tickets of a period are going, with every bar coloured by type (Bug, Improvement, New Feature) and what each part is when the mouse is over it. **Period**, at its top, chooses **All time** (by default), **This week** (from Monday), **This month**, **This quarter** or **This year**; Time Spent follows the same choice, and the browser remembers it. Each view counts the tickets opened in the period, and those resolved or closed in it for the times to resolve and the versions that fixed them; the comparisons are with the period before (last week, last month…), and All time has none: it covers every ticket since the first one, drawn over time by months when it spans 8 months or more, else by weeks (by days under 4 weeks). A part that lists its tickets lists all those of its value, of any period.
+The **Statistics** tab shows how the tickets of the [period](#dashboard) are going, every bar coloured by type (Bug, Improvement, New Feature), with what each part is when the mouse is over it. Comparisons are with the period before (last week, last month…); All time has none. Each browser remembers the view chosen in each card.
 
-- **Resolution rate**: the share of the tickets opened in the period already resolved or closed, as a ring. **Time to resolve**: the median time from opened to resolved of the tickets resolved in the period, and how much faster or slower it is than in the period before. **Tickets opened**: those opened in the period and how many more or fewer than in the period before. **Comments per ticket**, with the attachments (screenshots and files) per ticket.
-- **Every ticket**: three donuts of the tickets opened in the period by type, status and priority, with the count and share of each; a part, or its line in the legend, lists its tickets.
-- **Time to resolve**: the tickets resolved or closed by the time they took (under a day, 1–3 days, 3–7 days, 1–2 weeks, 2–4 weeks, 1–3 months, more), with their median, average and the time 9 in 10 of them took, and the median of each type and priority. **Open** shows instead the age of the open tickets by the same groups.
-- **Backlog**: the tickets created, resolved (or closed) and open by the end of each day (this week and this month), week (this quarter) or month (this year) of the period, up to today. A ticket is open from the day it was opened to the day it was resolved, closed or rejected.
-- **Tickets fixed in each version**: the tickets resolved or closed in each of the latest 10 versions of the tool, as the Changelog lists them (also those without tickets), by their **Fixed in version**; **Opened with** shows those opened with each version.
-- **Tickets per module**: the tickets of each module, the module with most first; a row lists its tickets.
-- **Tickets per reporter**: the tickets each user opened; **Assignees** shows those of each assignee, open, resolved or closed, and rejected, and how many open tickets nobody attends. A row lists the tickets of that reporter or assignee.
-- **Activity**: this week and this month, a calendar of their days, a row per week from Monday, each day with its number and how many tickets were opened, commented and changed, darker the busier and its weekends underlined; this quarter, this year and all time, a small calendar of each month in a box of its own (three or six in a row), each day darker the busier, its weekends underlined and the days still to come faint; all time from the first activity, the last 53 weeks at most (over 12 months, a heat map with a column per week from Monday), each day darker the more tickets were opened, commented and changed in it; below, the totals and the busiest day.
-
-Each browser remembers the view chosen in each card.
+- **Resolution rate:** the share of the tickets opened in the period already resolved or closed, as a ring. **Time to resolve:** the median time from opened to resolved of the tickets resolved in the period, against the period before. **Tickets opened:** how many, against the period before. **Comments per ticket**, with the attachments (screenshots and files) per ticket.
+- **Every ticket:** three donuts of the tickets opened in the period by type, status and priority, with the count and share of each.
+- **Time to resolve:** the tickets resolved or closed by the time they took (under a day, 1–3 days, 3–7 days, 1–2 weeks, 2–4 weeks, 1–3 months, more), with their median, average and the time 9 in 10 of them took, and the median of each type and priority. **Open** shows instead the age of the open tickets by the same groups.
+- **Backlog:** the tickets created, resolved (or closed) and open by the end of each day, week or month of the period, up to today. A ticket is open from the day it was opened to the day it was resolved, closed or rejected.
+- **Tickets fixed in each version:** the tickets resolved or closed in each of the latest 10 versions, as the Changelog lists them (also those without tickets), by their **Fixed in version**; **Opened with** shows those opened with each version.
+- **Tickets per module:** the module with most first.
+- **Tickets per reporter:** the tickets each user opened; **Assignees** shows those of each assignee, open, resolved or closed, and rejected, and how many open tickets nobody attends.
+- **Activity:** how many tickets were opened, commented and changed each day, darker the busier, weekends underlined, with the totals and the busiest day below. This week and this month: a calendar of their days, a row per week from Monday, each day with its number. This quarter, this year and all time: a small calendar of each month in its own box (three or six in a row), the days still to come faint; all time from the first activity, the last 53 weeks at most (over 12 months, a heat map with a column per week from Monday).
 
 ## Time Spent
 
-The **Time Spent** tab adds up the time from opened to resolved or closed of the tickets resolved or closed in the period chosen at its top (**All time** by default, **This week**, **This month**, **This quarter** or **This year**, the same choice as Statistics). A note at its top says how it is measured:
+The **Time Spent** tab adds up the time from opened to resolved or closed of the tickets resolved or closed in the [period](#dashboard). A note at its top says how it is measured:
 
-- The time of a ticket is the **calendar time** from the moment it was opened to the moment it was resolved or closed, 24 hours a day (nights and weekends included): the tool does not record working hours.
-- Only the tickets resolved or closed in the period count; the open and rejected ones are left out. The totals add up the time of those tickets; the average and the median are per ticket.
+- The time of a ticket is the **calendar time** from opened to resolved or closed, 24 hours a day (nights and weekends included): the tool does not record working hours.
+- Only the tickets resolved or closed in the period count; open and rejected ones are left out. Totals add up their time; the average and the median are per ticket.
 - Times are written in hours and minutes (`316h`, `7h 12m`, `42m`), never in days, as everywhere in Ticket Center.
 
 It shows:
 
-- **Figures**: the time spent in all, the tickets resolved or closed, the average and the median per ticket, and the longest one, with a link to it.
-- **Where the time goes**: the time those tickets spent **New**, **In Progress** and **Waiting for Info** until resolved, by the changes of status of their timelines (a ticket starts New), with its share and its average per ticket.
-- **Time spent per day** (this week and this month), **per week** (this quarter) or **per month** (this year; all time as Statistics draws it): the time of the tickets resolved in each. Per day, the weekends have a shaded column, a slate axis and slate bars.
-- **By module**, **By type** and **By priority**, then **By assignee**, **By reporter** and **By version that fixed them**, three in a row: the time of each in all, with its tickets and its average per ticket under its name, the most time first (types and priorities in their order, versions the latest first); a row lists its tickets.
+- **Figures:** the time spent in all, the tickets resolved or closed, the average and median per ticket, and the longest one, with a link to it.
+- **Where the time goes:** the time those tickets spent **New**, **In Progress** and **Waiting for Info** until resolved, by the changes of status of their timelines (a ticket starts New), with its share and average per ticket.
+- **Time spent per day** (this week and this month), **per week** (this quarter) or **per month** (this year; all time as Statistics draws it): the time of the tickets resolved in each. Per day, weekends have a shaded column, a slate axis and slate bars.
+- **By module**, **By type** and **By priority**, then **By assignee**, **By reporter** and **By version that fixed them**, three in a row: the time of each in all, with its tickets and average per ticket under its name, the most time first (types and priorities in their order, versions the latest first); a row lists its tickets.
 
 ## New Ticket
 
 **New Ticket**, the first tab (also the button of the header, the floating bar and the menu of the tab), shows the form of a new ticket; without signing in it shows dimmed, with a note and a **Sign in** button, and cannot be filled:
 
-- **Type** (required): **Bug** (something does not work as it should), **Improvement** (something that works could work better) or **New Feature** (something the tool cannot do yet). The description shows the guide of the chosen type.
-- **Title**: what it is about, in a few words (required).
-- **Module**: the main module it is about, or **General**.
-- **Priority**: from **P1 · Critical** to **P5 · Trivial** (**P3 · Medium** by default).
-- **Description**: for a bug, what you did, what happened and what you expected (the steps to reproduce it help a lot); for an improvement, how it works today and how it could work better; for a new feature, what you need and how the tool could do it. It reads as written below.
-- **Screenshots and files**: paste them with Ctrl+V (⌘V on a Mac) anywhere in the form, drop them on the zone or click it to choose them. Up to 10 of 100 MB each at once. PNG, JPEG, GIF and WebP images are screenshots and show as their image; any other file (a log, a CDR sample, an Excel, PowerPoint, Word or PDF file, a ZIP…) shows its type, name and size. Programs and scripts (`.exe`, `.bat`, `.cmd`, `.ps1`, `.sh`, `.jar`, `.js`, `.msi`…) are not taken: zip them to attach them. Each one shows a preview that can be removed before sending.
+- **Type** (required): **Bug** (red: something does not work as it should), **Improvement** (teal: something that works could work better) or **New Feature** (magenta: something the tool cannot do yet). The description shows the guide of the chosen type. Tickets opened before the types existed are bugs.
+- **Title** (required): what it is about, in a few words.
+- **Module:** the main module it is about, or **General**.
+- **Priority:** **P1 · Critical** to **P5 · Trivial** (**P3 · Medium** by default; see [Types, priorities and statuses](#types-priorities-and-statuses)).
+- **Description:** for a bug, what you did, what happened and what you expected (the steps to reproduce it help a lot); for an improvement, how it works today and how it could work better; for a new feature, what you need and how the tool could do it.
+- **Screenshots and files:** paste them with Ctrl+V (⌘V on a Mac) anywhere in the form, drop them on the zone or click it to choose them; up to 10 of 100 MB each at once, each with a preview that can be removed before sending. PNG, JPEG, GIF and WebP images are screenshots and show as their image; any other file (a log, a CDR sample, an Excel, PowerPoint, Word or PDF file, a ZIP…) shows its type, name and size. Programs and scripts (`.exe`, `.bat`, `.cmd`, `.ps1`, `.sh`, `.jar`, `.js`, `.msi`…) are not taken: zip them to attach them.
 
-**Open Ticket** saves it with the version of the tool and the date, and opens its page. The browser it was opened from is kept too, to help reproduce a bug.
+**Open Ticket** saves it with the version of the tool, the date and the browser it was opened from (to help reproduce a bug), and opens its page.
 
 ### Writing descriptions and comments
 
-Descriptions and comments are written in Markdown and read the same while they are written: the editor shows every line as the page shows it (an empty one shows the guide of the type of the ticket in grey). Use the toolbar above the text or its keys (⌘ instead of Ctrl on a Mac), or type the Markdown, which takes its format as you write it:
+Descriptions and comments are written in Markdown and read the same while they are written: the editor shows every line as the page shows it (an empty one shows the guide of the type of the ticket in grey). Use the toolbar above the text, its keys (see [Tips & shortcuts](#tips-shortcuts)) or type the Markdown, which takes its format as you write:
 
 | Write | It reads as |
 |---|---|
-| `# Heading`, `## Heading`, `### Heading` (up to six `#`) | A heading, larger with fewer `#` (**Ctrl+Alt+1**, **2** and **3**) |
+| `# Heading`, `## Heading`, `### Heading` (up to six `#`) | A heading, larger with fewer `#` |
 | A short line ending with a colon (`Problem:`), or followed by a list (`Steps to reproduce`) | A title in blue; a bullet ending with a colon is in blue too |
-| `- item` (also `*`, `+`, `·` or `•`) | A bullet (**Ctrl+Shift+8**) |
-| `1. item`, `1) item`, `a) item`, `A) item` or `1.1. item` | A numbered item (**Ctrl+Shift+7**), numbered from the first number of its list; a `1.1.` item takes the numbers of the items above it |
-| `- [ ] task` or `- [x] done` | A task (**Ctrl+Shift+9**); a click on its box ticks it |
-| A text between two asterisks, one asterisk, two tildes, two equal signs or backticks | Bold (**Ctrl+B**), italic (**Ctrl+I**), strikethrough (**Ctrl+Shift+X**), highlight (**Ctrl+Shift+H**) and code (**Ctrl+E**) |
-| `[text](https://…)` or a web address | A link (**Ctrl+K**); in the editor, Ctrl and a click open it |
+| `- item` (also `*`, `+`, `·` or `•`) | A bullet |
+| `1. item`, `1) item`, `a) item`, `A) item` or `1.1. item` | A numbered item, numbered from the first number of its list; a `1.1.` item takes the numbers of the items above it |
+| `- [ ] task` or `- [x] done` | A task; a click on its box ticks it |
+| A text between two asterisks, one asterisk, two tildes, two equal signs or backticks | Bold, italic, strikethrough, highlight and code |
+| `[text](https://…)` or a web address | A link; in the editor, Ctrl and a click open it |
 | `#` and the number of a ticket (`#7`) | A link to that ticket, which shows its title and status when pointed at; a number of no ticket, one inside a word, a web address or code, or one with a backslash before its `#` stays text. In the editor a number typed links once the text is saved |
 | `> [!TIP] Title` and its lines starting with `>` | A card with its title (or the name of its kind): **NOTE**, **INFO**, **TIP**, **SUCCESS**, **QUESTION**, **IMPORTANT**, **WARNING**, **CAUTION** or **ERROR** |
 | `> text` | A quote |
@@ -107,12 +105,9 @@ Descriptions and comments are written in Markdown and read the same while they a
 In the editor:
 
 - **Enter** goes on with a list at the level of the item above (a bullet, a number or a task), and on an empty item goes up a level and then out of the list (or out of a card); **Shift+Enter** goes on in the same item.
-- **Tab** and **Shift+Tab** nest an item under the one above it or bring it back; **Backspace** at the start of an item takes it up a level and then makes it text.
-- **Ctrl+Alt+0** turns a heading back into text.
+- **Tab** and **Shift+Tab** nest an item under the one above or bring it back; **Backspace** at the start of an item takes it up a level and then makes it text.
 - Pasted or dropped text is read as Markdown, and copied text keeps its Markdown.
-- **Ctrl+Z** undoes, and **Ctrl+Shift+Z** (or **Ctrl+Y**) redoes.
 - **Edit the Markdown** shows the text as it is saved, to change it as such, and **How to write it** sums up this table.
-- **Ctrl+Enter** posts a comment or saves the description.
 
 ```text
 Steps to reproduce
@@ -128,35 +123,30 @@ Expected:
 
 ## All Tickets
 
-The **All Tickets** tab shows the table of every ticket, the latest activity first: its number, type, title, module, reporter, date and version, priority, status (with the version that fixed it), who attends it, its last update and how many comments and attachments (screenshots and files) it has. Click a row to open its page.
+The **All Tickets** tab shows the table of every ticket, the latest activity first: number, type, title, module, reporter, date and version, priority, status (with the version that fixed it), who attends it, its last update and how many comments and attachments it has. Click a row to open its page.
 
-Below the search, the chips filter the list by **Type**, **Status**, **Priority**, **Module** and **Assignee** (**Unassigned** or a super-admin); press several chips of a group to list any of them, and none to list every value of it: **All**, the first chip of each group, is pressed then, and a click on it unpresses the others. The list starts with the open statuses (New, In Progress and Waiting for Info); **All** of Status lists every ticket. Search by title, reporter or number (`#12`), choose a reporter (by name, the default users first) or **Only mine**, the days the tickets were **Created** and last **Updated** (several days at once, the newest first, after **Last Day**: the newest day of creation or of update of the tickets, whatever day it is; while it is chosen, the days are unticked and disabled), and order by latest activity, priority, newest or oldest.
-
-Every column of the table also filters the tickets as in Excel: the **▾** of its header lists its values (the title of **Ticket**, the priority, the status with the version that fixed it, the comments and attachments of **Activity**…) with a search, **Select all** and **Clear**, and **Apply** shows only the tickets with a value checked (while searching, only the values found); **Updated** lists its days by year and month. Filtered columns are highlighted, and every filter adds up with the others. **Reset filters** lists the open tickets again, clearing every other filter and the column filters. Each browser remembers the filters and the order.
+- **Chips** below the search filter by **Type**, **Status**, **Priority**, **Module** and **Assignee** (**Unassigned** or a super-admin): press several chips of a group to list any of them, none for every value. **All**, the first chip of each group, is pressed then, and a click on it unpresses the others. The list starts with the open statuses; **All** of Status lists every ticket.
+- **Search** by title, reporter or number (`#12`); choose a reporter (by name, the default users first) or **Only mine**; the days the tickets were **Created** and last **Updated** (several days at once, the newest first, after **Last Day**: the newest day of creation or update, whatever day it is; while it is chosen the days are unticked and disabled); and order by latest activity, priority, newest or oldest.
+- **Column filters:** every column filters as in Excel: its **▾** lists its values (the title of **Ticket**, the priority, the status with the version that fixed it, the comments and attachments of **Activity**…; **Updated** its days by year and month) with a search, **Select all** and **Clear**, and **Apply** shows only the tickets with a value checked (while searching, only the values found). Filtered columns are highlighted, and every filter adds up with the others.
+- **Reset filters** lists the open tickets again, clearing every other filter and the column filters. Each browser remembers the filters and the order.
 
 ## The page of a ticket
 
 The page shows the title with its type, status, priority and module, who opened it, when and with which version, and the version that fixed it; **Back to Tickets**, above it, returns to the list.
 
-The buttons at the end of that row open the **First**, **Previous**, **Next** and **Last** ticket, around the position of the ticket (*3 of 12*). They follow the Tickets list as the browser showed it last, with its filters and its order (*Tickets list*); a ticket that is not in that list, for example one opened from a link or left out by the filters, goes through every ticket by number (*By number*), and so do the tickets it leads to. Where the ticket cannot move (before the first one, after the last one) the buttons are disabled, and pointing at a button shows the number and title of the ticket it opens.
+The buttons at the end of that row open the **First**, **Previous**, **Next** and **Last** ticket, around its position (*3 of 12*). They follow the Tickets list as the browser showed it last, with its filters and order (*Tickets list*); a ticket not in that list (opened from a link, or left out by the filters) goes through every ticket by number (*By number*), and so do the tickets it leads to. Where it cannot move the buttons are disabled, and pointing at one shows the number and title of the ticket it opens.
 
-- **Description** shows the text and the attachments of the ticket: its screenshots, which open full size when clicked (**Open original** opens the image itself), and below them its files, with their type, name and size, which download when clicked (they never open in the page). The reporter and the super-admins add more screenshots and files below it.
-- **Timeline** lists, oldest first, the comments and every change: who changed the type, status, priority, module, assignment, fixed version, title or description, from what to what and when.
-- **Add a comment** writes a comment with optional screenshots and files, pasted, dropped or chosen as in the New Ticket form. The author of a comment edits it (it shows *edited*) and deletes it; super-admins delete any comment.
-- **Details** sums up the type, status, priority, module, reporter, who attends it, the versions it was opened and fixed with, and its dates.
-- **Edit** (reporter and super-admins) changes the title and the description (and the module, for the reporter), and the **Priority** of **Details** changes as soon as another one is chosen.
-- **Manage** (super-admins) changes the type, status, who attends the ticket, who reported it, its module, the version it was opened with and the version that fixed it, whoever opened it; **Save** records each change in the timeline.
-- **Opened on** and **Resolved on**, at the end of Manage, correct the dates the ticket was opened and resolved (also closed or rejected; Resolved on only for those), for example for a ticket recorded after the work it describes. Its timeline follows them: the change that set its current status and the comment just before it (its resolution) take the Resolved date, the entries before them that fall before the Opened date or after the Resolved date take the Opened date, and the others (those between both, and those written after the resolution) keep theirs, every entry in its order. **Updated** becomes the latest of those dates. The timeline does not record the change of dates; App Events does (`ticket_managed`).
+- **Description:** the text and attachments of the ticket: its screenshots, which open full size when clicked (**Open original** opens the image itself), and below them its files, with type, name and size, which download when clicked (never opening in the page). The reporter and super-admins add more below it.
+- **Timeline:** oldest first, the comments and every change: who changed the type, status, priority, module, assignment, fixed version, title or description, from what to what and when.
+- **Add a comment:** a comment with optional screenshots and files, added as in the New Ticket form. An edited comment shows *edited*.
+- **Details:** the type, status, priority, module, reporter, who attends it, the versions it was opened and fixed with, and its dates. Its **Priority** changes as soon as another one is chosen.
+- **Edit:** the title and description (and the module, for the reporter).
+- **Manage:** the type, status, who attends it, who reported it, its module, the version it was opened with and the version that fixed it; **Save** records each change in the timeline.
+- **Opened on** and **Resolved on**, at the end of Manage, correct the dates the ticket was opened and resolved (also closed or rejected; Resolved on only for those), for example for a ticket recorded after the work it describes. The change that set its current status and the comment just before it (its resolution) take the Resolved date; earlier entries that fall before the Opened date or after the Resolved date take the Opened date; the others (between both, and those written after the resolution) keep theirs, every entry in its order. **Updated** becomes the latest of those dates. The timeline does not record the change of dates; App Events does (`ticket_managed`).
 
 ## Types, priorities and statuses
 
-| Type | Meaning |
-| --- | --- |
-| **Bug** (red) | Something does not work as it should |
-| **Improvement** (teal) | Something that works could work better |
-| **New Feature** (magenta) | Something the tool cannot do yet |
-
-The tickets opened before the types existed are bugs.
+The three types are described in [New Ticket](#new-ticket).
 
 | Priority | Meaning |
 | --- | --- |
@@ -186,44 +176,43 @@ New, In Progress and Waiting for Info are the open statuses. The date a ticket i
 | Edit a ticket (title, module, description), change its priority and add screenshots and files to it | Its reporter and the super-admins |
 | Edit or delete a comment | Its author (super-admins also delete any comment) |
 | Delete an attachment | Who added it and the super-admins |
-| Manage a ticket: **Attend this ticket**, its type, its status, who attends it (a super-admin), who reported it, its module, the version it was opened with the version that fixes it and the dates it was opened and resolved, whoever opened it | Super-admins |
+| Manage a ticket: **Attend this ticket**, its type, its status, who attends it (a super-admin), who reported it, its module, the version it was opened with and the version that fixes it, and the dates it was opened and resolved, whoever opened it | Super-admins |
 | Delete a ticket with its timeline and attachments | Super-admins |
 | Clean up the large attachments of finished tickets | Super-admins |
 
 **Attend this ticket** sets a new ticket **In Progress** and assigns it to the super-admin who presses it. Moving a ticket to In Progress or Waiting for Info assigns it to that super-admin when nobody attends it, and resolving it without a fixed version records the version running then.
 
-After signing in, and as soon as they arrive while signed in, each super-admin is told of the tickets still **New** that other users opened and it has not opened, with their type, in the dialog that also lists the [access requests](super-admin.md#access-requests) waiting for activation; **Open Ticket Center** lists the New tickets. Each ticket is told once to each super-admin.
+Super-admins are told of the new tickets of other users in the notices dialog of [Access Requests](super-admin.md#access-requests), once each; **Open Ticket Center** lists the New tickets.
 
 Every action (opening, editing, comments, attachments added, deleted and cleaned up, attention, type changes and deletion) is recorded in the [App Events](app-logs.md#app-events), as *Ticket created*, *Ticket managed* and so on.
 
 ## Email updates
 
-When [Email Delivery](app-config.md#email-delivery) is set up with **Ticket Center** checked, the reporter of a ticket is told by email, at the address of its account (see [Users](super-admin.md#users); each user changes it with **Email address** in the menu of the user badge):
+When [Email Delivery](app-config.md#email-delivery) is set up with **Ticket Center** checked, emails go to the address of each account (see [Users](super-admin.md#users); each user changes it with **Email address** in the user badge menu):
 
-- when it opens the ticket, with its description: the confirmation that it was opened;
-- of every change made to it, also its own: a comment (with its text), an edited or deleted comment, attachments added or deleted, an edit of the title, module, description or priority, a change of its status, type, assignee or versions (each field before and after), and its deletion;
-- of the same changes in any other ticket that mentions its ticket as `#<number>` in the description or a comment, and of a new ticket that mentions it: the email says which of its tickets it mentions.
+- **The reporter** gets the confirmation that the ticket was opened, with its description; every change made to it, also its own: a comment (with its text), an edited or deleted comment, attachments added or deleted, an edit of the title, module, description or priority, a change of status, type, assignee or versions (each field before and after), and its deletion; and the same changes in any other ticket that mentions its ticket as `#<number>` in the description or a comment, and a new ticket that mentions it (the email says which of its tickets it mentions).
+- **Whoever commented** a ticket gets the emails of its changes from then on, as its reporter does.
+- **The users of Email Every Ticket To** get those of every ticket, new ones included.
+- **Everyone** also gets their own comments and changes, so the email tells what was done with its user even when someone else worked with it.
 
-Whoever commented a ticket gets the emails of its changes from then on, as its reporter does, and the users chosen in **Email Every Ticket To** get those of every ticket, new ones included.
+How they look:
 
-Each one also gets its own comments and changes, so the email tells what was done with its user even when someone else worked with it.
-
-- **One conversation:** every email of a ticket has the same subject, `DT Analyzer - Ticket #<number>: <title>`, and through an SMTP server they all go in one conversation of the mail clients (Outlook, Gmail and the others); through a Power Automate flow, Outlook shows each one as a conversation of its own.
-- **Grouped changes:** the changes of a ticket made one after another, less than a minute apart, reach each recipient in one email (sent at most 10 minutes after the first change), which shows each change in turn.
-- **Title of the email:** it says what happened, large and in its colour, before the number and title of the ticket: **New Ticket**, **New Comment**, **Ticket Updated**, **Comment Edited**, **Comment Deleted**, **New Attachments**, **Attachment Deleted**, the new status of a change of status (**In Progress**, **Waiting for Info**, **Resolved**, **Closed**, **Rejected**, **Back to New**, or **Reopened** when a done or rejected ticket opens again) or **Ticket Deleted**.
-- **Contents:** each email names who made the change, the status, priority, type and reporter of the ticket, and links its page. The description and the comments read as on the page of the ticket, with their formats (headings, titles, bullets and numbers, tasks, quotes and cards, code, links), and their `#<number>` link to the tickets they mention.
-- **In the background:** the emails go in the background, so they never slow a page down, and App Events records each one sent or not sent (`email_sent`, `email_failed`).
+- **One conversation:** every email of a ticket has the same subject, `DT Analyzer - Ticket #<number>: <title>`; through an SMTP server they all go in one conversation of the mail clients (Outlook, Gmail and the others), through a Power Automate flow Outlook shows each as a conversation of its own.
+- **Grouped changes:** the changes of a ticket made less than a minute apart reach each recipient in one email (sent at most 10 minutes after the first change), showing each change in turn.
+- **Title:** what happened, large and in its colour, before the number and title of the ticket: **New Ticket**, **New Comment**, **Ticket Updated**, **Comment Edited**, **Comment Deleted**, **New Attachments**, **Attachment Deleted**, the new status (**In Progress**, **Waiting for Info**, **Resolved**, **Closed**, **Rejected**, **Back to New**, or **Reopened** when a done or rejected ticket opens again) or **Ticket Deleted**.
+- **Contents:** who made the change, the status, priority, type and reporter of the ticket, and a link to its page. The description and comments read as on the page of the ticket, with their formats (headings, titles, bullets and numbers, tasks, quotes and cards, code, links), and their `#<number>` link to the tickets they mention.
+- **In the background:** the emails never slow a page down; App Events records each one (see [Email Delivery](app-config.md#email-delivery)).
 
 ## Clean up attachments
 
 Screenshots and files take space in the application database and in every backup that carries it. Super-admins give it back with **Clean up attachments**, beside **New Ticket** in the header:
 
-- **Larger than** (10 MB by default) and **Of the tickets** (**Resolved** and **Closed** by default, and **Rejected**) choose the attachments: the list changes as soon as they change, and the browser remembers them.
-- The list shows the largest first: the ticket (its number opens it in another tab) with its status, the attachment (in the description or in a comment, and who added it), its size and the day it was added; above it, how many there are and how much they take, with every attachment of the tickets and the size of the application database.
+- **Larger than** (10 MB by default) and **Of the tickets** (**Resolved** and **Closed** by default, and **Rejected**) choose the attachments; the list follows as soon as they change, and the browser remembers them.
+- The list shows the largest first: the ticket (its number opens it in another tab) with its status, the attachment (in the description or a comment, and who added it), its size and the day it was added; above it, how many there are and how much they take, with every attachment of the tickets and the size of the application database.
 - Every attachment listed is checked: uncheck those to keep. **Delete** (with the number and size of those checked) asks for confirmation and deletes them; the tickets keep their description, timeline, dates and other attachments, and an attachment of a ticket opened again meanwhile stays.
 - The application database is then compacted to give their space back to the disk, and the message tells its size before and after (a database busy at that moment keeps its size, and new data reuses the space).
 
-App Events record each cleanup as *Ticket attachments cleaned up*, with the size and statuses chosen and every attachment deleted.
+App Events records each cleanup as *Ticket attachments cleaned up*, with the size and statuses chosen and every attachment deleted.
 
 ## Portability
 
