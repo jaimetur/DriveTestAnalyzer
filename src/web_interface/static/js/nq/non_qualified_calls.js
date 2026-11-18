@@ -2481,10 +2481,13 @@
         firstName: progress.first_status, assigned: summary.not_attended_assigned || 0,
         attended: summary.queued_attended ?? summary.attended, base: summary.queued, analysis: summary.in_analysis || 0,
         finished: summary.analysis_finished || 0, finishedName: progress.finished_status})
-        // Under Implementation after Analysis Finished, before Attended, as in Lifecycle & Phases.
+        // Under Implementation and Under Planning after Analysis Finished, before Attended, as in Lifecycle & Phases.
         .toSpliced(-1, 0, ...(progress.implementation_status ? [drillCard(kpiCard(progress.implementation_status, number(summary.under_implementation || 0),
           `${percent(summary.under_implementation || 0, summary.queued)} analysed, being evaluated or implemented`, 'team'),
-        {pairs: [['status', progress.implementation_status], ['state', 'in_queue']]})] : [])),
+        {pairs: [['status', progress.implementation_status], ['state', 'in_queue']]})] : []),
+        ...(progress.planning_status ? [drillCard(kpiCard(progress.planning_status, number(summary.under_planning || 0),
+          `${percent(summary.under_planning || 0, summary.queued)} analysed, the measure planned`, 'commented'),
+        {pairs: [['status', progress.planning_status], ['state', 'in_queue']]})] : [])),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
@@ -2897,6 +2900,7 @@
   // and the phase statuses), Assigned, Attended, then of the attended Under Analysis, Analysis Finished and Under
   // Implementation (the statuses that have them).
   const IMPLEMENTATION_STATUS = 'Under Implementation';
+  const PLANNING_STATUS = 'Under Planning';
   const lifecycleFollowUpCards = (life, queued) => {
     const cards = followUpCards({inQueues: life.in_queues_now || 0, first: life.not_attended?.count || 0, firstName: life.not_attended?.status,
       assigned: (life.waiting_now || 0) - (life.not_attended?.count || 0), attended: queued - (life.waiting_now || 0),
@@ -2906,12 +2910,16 @@
     const attended = cards.at(-1);
     const finished = life.finished_status ? cards.at(-2) : null;
     const implementation = life.pipeline.find((item) => item.status === IMPLEMENTATION_STATUS);
+    const planning = life.pipeline.find((item) => item.status === PLANNING_STATUS);
     const open = drillCard(kpiCard('Open', number(life.open), `${percent(life.open, queued)} assigned or attended, not closed${trackedNote(life.open_tracked)}`, 'open'),
       {pairs: [['state', 'open']]});
     return [inQueues, notAttended, open, assigned, attended, analysis, ...(finished ? [finished] : []),
       ...(implementation ? [drillCard(kpiCard(IMPLEMENTATION_STATUS, number(implementation.count),
         `${percent(implementation.count, queued)} analysed, being evaluated or implemented${trackedNote(implementation.tracked)}`, 'team'),
-      {pairs: [['status', IMPLEMENTATION_STATUS], ['state', 'in_queue']]})] : [])];
+      {pairs: [['status', IMPLEMENTATION_STATUS], ['state', 'in_queue']]})] : []),
+      ...(planning ? [drillCard(kpiCard(PLANNING_STATUS, number(planning.count),
+        `${percent(planning.count, queued)} analysed, the measure planned${trackedNote(planning.tracked)}`, 'commented'),
+      {pairs: [['status', PLANNING_STATUS], ['state', 'in_queue']]})] : [])];
   };
   const renderLifecycle = (life) => {
     state.life = life;

@@ -261,7 +261,7 @@ def progress_title(granularity_label: str, subtitle: str) -> SlideTitle:
 
 def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int, attended: int, analysis: int,
                      base: int, finished: int = 0, finished_name: str = '',
-                     implementation: tuple[str, int] = ('', 0)) -> list[tuple[str, str, str, str]]:
+                     implementation: tuple[str, int] = ('', 0), planning: tuple[str, int] = ('', 0)) -> list[tuple[str, str, str, str]]:
     """In Queues (the first status, Assigned and Under Analysis), the first status, Assigned and Attended, as Lifecycle & Phases, Progress
     View and the In Queues badge of the page name and count them."""
     return [('In Queues', _number(in_queues),
@@ -274,6 +274,8 @@ def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int,
               if finished_name else []),
             *([(implementation[0], _number(implementation[1]), f'{_share(implementation[1], base)} analysed, being evaluated or implemented', 'team')]
               if implementation[0] else []),
+            *([(planning[0], _number(planning[1]), f'{_share(planning[1], base)} analysed, the measure planned', 'commented')]
+              if planning[0] else []),
             ('Attended', _number(attended), f'{_share(attended, base)} followed up, in any later status', 'open')]
 
 
@@ -289,7 +291,8 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
                           str(progress.get('first_status') or ''), int(summary.get('not_attended_assigned') or 0),
                           int(summary.get('queued_attended', summary.get('attended')) or 0), int(summary.get('in_analysis') or 0),
                           int(summary.get('queued') or 0), int(summary.get('analysis_finished') or 0), str(progress.get('finished_status') or ''),
-                          implementation=(str(progress.get('implementation_status') or ''), int(summary.get('under_implementation') or 0))),
+                          implementation=(str(progress.get('implementation_status') or ''), int(summary.get('under_implementation') or 0)),
+                          planning=(str(progress.get('planning_status') or ''), int(summary.get('under_planning') or 0))),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),
         ('Time to Close', _days(summary.get('avg_days_to_close')), 'Average from the call', 'commented'),
         ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
@@ -998,18 +1001,22 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
         ('Status by Hand', _number(modes.get('manual', 0)), f"{_share(modes.get('manual', 0), total)} chosen by an analyst", 'commented'),
         # In the order a call goes through: In Queues, Not Attended, Open, Assigned, Attended, Under Analysis, Analysis
         # Finished and Under Implementation (the statuses that have them), as the page.
-        *(lambda cards, implementation: [
+        *(lambda cards, implementation, planning: [
             *cards[:2], ('Open', _number(open_total), f'{_share(open_total, queued)} assigned or attended, not closed{_tracked(open_tracked)}', 'open'),
             cards[2], cards[-1], *cards[3:-1],
             *([('Under Implementation', _number(implementation['count']),
                 f"{_share(int(implementation['count'] or 0), queued)} analysed, being evaluated or implemented{_tracked(implementation.get('tracked'))}",
-                'team')] if implementation else [])])(
+                'team')] if implementation else []),
+            *([('Under Planning', _number(planning['count']),
+                f"{_share(int(planning['count'] or 0), queued)} analysed, the measure planned{_tracked(planning.get('tracked'))}",
+                'commented')] if planning else [])])(
             _follow_up_cards(int(lifecycle.get('in_queues_now') or 0), int((waiting or {}).get('count') or 0), str((waiting or {}).get('status') or ''),
                              int(lifecycle.get('waiting_now') or 0) - int((waiting or {}).get('count') or 0),
                              queued - int(lifecycle.get('waiting_now') or 0), int(lifecycle.get('analysis_now') or 0), queued,
                              next((int(item.get('count') or 0) for item in pipeline if item.get('status') == lifecycle.get('finished_status')), 0),
                              str(lifecycle.get('finished_status') or '')),
-            next((item for item in pipeline if item.get('status') == 'Under Implementation'), None)),
+            next((item for item in pipeline if item.get('status') == 'Under Implementation'), None),
+            next((item for item in pipeline if item.get('status') == 'Under Planning'), None)),
         ('Stalled', _number(lifecycle.get('stalled_total', 0)), f"Open, no change for {lifecycle.get('stalled_days', 14)}+ days", 'attended'),
         ('Closed', _number(closed), f'{_share(closed, queued)} closed{_tracked(closed_tracked)}', 'closed'),
     ], 0, 0.95, compact=True)

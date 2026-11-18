@@ -4043,6 +4043,7 @@ def queue_statuses(options: dict[str, list[dict[str, Any]]], rules: list[dict[st
 # The status of the calls whose analysis is finished and whose implementation is not decided yet (tickets #172, #173).
 ANALYSIS_FINISHED = 'Analysis Finished'
 UNDER_IMPLEMENTATION = 'Under Implementation'
+UNDER_PLANNING = 'Under Planning'
 
 
 def finished_status(options: dict[str, list[dict[str, Any]]]) -> str:
@@ -6931,6 +6932,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         'finished_status': finished_status(options),
         'implementation_status': next((item['name'] for item in options['statuses']
                                        if item['name'].casefold() == UNDER_IMPLEMENTATION.casefold()), ''),
+        'planning_status': next((item['name'] for item in options['statuses'] if item['name'].casefold() == UNDER_PLANNING.casefold()), ''),
         'teams': queued['teams'],
         'analysts': queued['analysts'],
         'activity': queued['activity'],
@@ -7074,7 +7076,8 @@ def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], opti
             # The calls whose analysis is finished, its implementation not decided yet (the card after Under Analysis).
             'analysis_finished': sum(1 for row in calls if str(row['status'] or '').casefold() == ANALYSIS_FINISHED.casefold()),
             # Those analysed whose measure is being evaluated or implemented (the card after Analysis Finished).
-            'under_implementation': sum(1 for row in calls if str(row['status'] or '').casefold() == UNDER_IMPLEMENTATION.casefold()), 'open': len(open_calls), 'closed': closed_total,
+            'under_implementation': sum(1 for row in calls if str(row['status'] or '').casefold() == UNDER_IMPLEMENTATION.casefold()),
+            'under_planning': sum(1 for row in calls if str(row['status'] or '').casefold() == UNDER_PLANNING.casefold()), 'open': len(open_calls), 'closed': closed_total,
             'closure_rate': round(closed_total * 100 / total, 1) if total else 0.0,
             'comments': sum(1 for row in comments if not row['deleted_at']),
             'changes': len(history), 'contributors': len(activity),

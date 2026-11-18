@@ -127,6 +127,7 @@ def progress_summary_table(summary: dict[str, Any]) -> tuple[list[str], list[lis
         ['Under Analysis (attended, still in their queue)', f"{summary.get('in_analysis', 0):,}"],
         ['Analysis Finished (implementation not decided yet)', f"{summary.get('analysis_finished', 0):,}"],
         ['Under Implementation (being evaluated or implemented)', f"{summary.get('under_implementation', 0):,}"],
+        ['Under Planning (the measure planned)', f"{summary.get('under_planning', 0):,}"],
         ['Attended (followed up, in any later status)', f"{summary['attended']:,}"],
         ['Open', f"{summary['open']:,}"],
         ['Closed', f"{summary['closed']:,}"],

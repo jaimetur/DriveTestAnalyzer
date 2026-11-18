@@ -1749,6 +1749,7 @@ def test_the_nq_call_status_keeps_a_call_in_its_queue_while_it_is_under_analysis
     assert change(key, {'fields': {'implementation_status': 'Under evaluation'}})['status'] == 'Under Implementation'
     progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}}).json()
     assert progress['implementation_status'] == 'Under Implementation' and progress['summary']['under_implementation'] >= 1
+    assert progress['planning_status'] == 'Under Planning' and progress['summary']['under_planning'] >= 0
     assert change(key, {'fields': {'implementation_status': ''}})['status'] == 'Analysis Finished'
     # The workload of the analysts and teams and the activity of the users tell the calls analysed, and the long texts of
     # the tabs count as comments of their author.
