@@ -55,7 +55,7 @@
     not_in_final: 'Only in Weekly or Daily CDRs, while a Final CDR covers its campaign',
     qualified: 'Completed in a more recent CDR',
   };
-  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', in_queues: 'In Queues', queued_assigned: 'Assigned, not attended yet', queued_analysis: 'Under analysis in a queue', queued_now: 'In Queues (waiting or under analysis)', tracked: 'Tracked (in no queue)', with_team: 'With team',
+  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not Started', in_queues: 'In Queues', queued_assigned: 'Assigned, not attended yet', queued_analysis: 'Under analysis in a queue', queued_now: 'In Queues', queued_attended: 'Attended', tracked: 'Tracked (in no queue)', with_team: 'With team',
     assigned: 'Assigned', commented: 'Commented', labelled: 'With a root cause', suggested: 'Suggested root cause',
     identified: 'RCA identified', not_identified: 'RCA not identified', open: 'Open', stalled: 'Stalled'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
@@ -70,7 +70,7 @@
   // The map of the open call paints the group that filters the list (set once the map is mounted).
   let refreshCallMap = () => {};
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
-  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'in_queues', 'queued_assigned', 'queued_analysis', 'queued_now', 'in_queue', 'tracked', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
+  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'in_queues', 'queued_assigned', 'queued_analysis', 'queued_now', 'queued_attended', 'queued_not_attended', 'in_queue', 'tracked', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
     analyst: 'Analyst', reviewer: 'Reviewer', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause',
@@ -2477,20 +2477,17 @@
     const summary = progress.summary;
     $('nq-progress-kpis').replaceChildren(
       // The rates count only the prioritized calls: the tracked calls (in no queue) are shown apart.
-      // The prioritized calls by their NQ Call Status (tickets #172, #173), as Lifecycle & Phases counts them: those nobody has
-      // (the first status) and those Assigned, waiting in their queue, then those Attended and, of them, those still in
-      // their queue (Under Analysis). Waiting and Under Analysis add up to the In Queues badge of the panel.
-      drillCard(kpiCard(progress.first_status || 'Not Attended', number(summary.in_queues ?? summary.not_attended), `${percent(summary.in_queues ?? summary.not_attended, summary.queued)} of the prioritized calls, nobody has them yet`, 'total'), {pairs: [['state', 'in_queues']]}),
-      drillCard(kpiCard('Assigned', number(summary.not_attended_assigned || 0), `${percent(summary.not_attended_assigned || 0, summary.queued)} given a team or an analyst, not attended yet`, 'team'), {pairs: [['state', 'queued_assigned']]}),
-      drillCard(kpiCard('Attended', number(summary.attended), `${percent(summary.queued_attended, summary.queued)} of the prioritized calls`, 'open'), {pairs: [['state', 'attended']]}),
-      drillCard(kpiCard('Under Analysis', number(summary.in_analysis || 0), `${percent(summary.in_analysis || 0, summary.queued)} attended, still in their queue`, 'attended'), {pairs: [['state', 'queued_analysis']]}),
-      drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
+      ...followUpCards({inQueues: (summary.not_attended || 0) + (summary.in_analysis || 0), waiting: summary.not_attended || 0,
+        attended: summary.queued_attended ?? summary.attended, base: summary.queued,
+        waitingNote: `${progress.first_status || 'Not Attended'} ${number(summary.in_queues ?? 0)} · Assigned ${number(summary.not_attended_assigned || 0)}`,
+        analysis: summary.in_analysis || 0}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
+      drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Activity', number(summary.comments + summary.changes), `${number(summary.comments)} comments · ${number(summary.changes)} changes · ${number(summary.contributors)} users`), {pairs: [['state', 'attended']]}),
       // The tracked calls (in no queue), left out of every other statistic of the panel.
       ...(progress.tracked ? [drillCard(kpiCard('Tracked', number(progress.tracked.total),
-        `Left out: ${number(progress.tracked.not_attended)} not attended · ${number(progress.tracked.closed)} closed`, 'commented'),
+        `Left out: ${number(progress.tracked.not_attended)} not started · ${number(progress.tracked.closed)} closed`, 'commented'),
       {pairs: [['state', 'tracked']]})] : []),
     );
     $('nq-pies').replaceChildren(...progress.distributions.map((distribution) => donut(distribution)));
@@ -2869,14 +2866,18 @@
   const WIDE_PHASE_VALUES = 12;
   // The tracked calls (in no queue) of a count, shown apart from it.
   const trackedNote = (tracked) => (tracked ? ` · +${number(tracked)} tracked` : '');
-  // The first status (Not Attended): the prioritized calls nobody has yet, in the colour of that status: a click shows only
-  // them. In Queues is the badge of the panel: every call the queues list (tickets #172, #173).
-  const notAttendedCard = (waiting, base) => {
-    const card = kpiCard(waiting.status, number(waiting.count),
-      `${percent(waiting.count, base)} waiting, not assigned yet${trackedNote(waiting.tracked)}`);
-    if (waiting.color) card.style.borderTopColor = waiting.color;
-    return drillCard(card, {pairs: [['status', waiting.status], ['state', 'in_queue']]});
-  };
+  // The follow-up of the prioritized calls, with the same names and numbers in Lifecycle & Phases, Progress View and the
+  // In Queues badge of the panels (tickets #172, #173), in the order a call goes through: Not Started, those nobody attended
+  // yet (the first status and Assigned); In Queues, the calls the queues list (Not Started + Under Analysis); Attended, the
+  // others, in any later status.
+  const followUpCards = ({inQueues, waiting, attended, analysis, base, waitingNote}) => [
+    drillCard(kpiCard('Not Started', number(waiting), `${percent(waiting, base)} nobody attended yet${waitingNote ? `: ${waitingNote}` : ''}`, 'team'),
+      {pairs: [['state', 'queued_not_attended']]}),
+    drillCard(kpiCard('In Queues', number(inQueues), `${percent(inQueues, base)} · Not Started ${number(waiting)} + Under Analysis ${number(analysis)}`, 'total'),
+      {pairs: [['state', 'queued_now']]}),
+    drillCard(kpiCard('Attended', number(attended), `${percent(attended, base)} followed up, in any later status`, 'open'),
+      {pairs: [['state', 'queued_attended']]}),
+  ];
   const renderLifecycle = (life) => {
     state.life = life;
     const total = life.total;
@@ -2890,15 +2891,15 @@
         {pairs: [['status_mode', 'auto']]}),
       drillCard(kpiCard('Status by Hand', number(life.modes.manual), `${percent(life.modes.manual, total)} chosen by an analyst`, 'commented'),
         {pairs: [['status_mode', 'manual']]}),
-      // In Queues: the calls the queues list (the statuses marked In Queue), as the In Queues badge of the panel.
-      drillCard(kpiCard('In Queues', number(life.in_queues_now || 0), `${percent(life.in_queues_now || 0, queued)} waiting or under analysis: ${life.pipeline.filter((item) => item.in_queue).map((item) => item.status).join(' + ')}`, 'total'),
-        {pairs: [['state', 'queued_now']]}),
-      ...(life.not_attended ? [notAttendedCard(life.not_attended, queued)] : []),
-      drillCard(kpiCard('Open', number(life.open), `${percent(life.open, queued)} attended and not closed${trackedNote(life.open_tracked)}`, 'open'),
+      ...followUpCards({inQueues: life.in_queues_now || 0, waiting: life.waiting_now || 0, attended: queued - (life.waiting_now || 0),
+        base: queued, analysis: life.analysis_now || 0,
+        waitingNote: life.pipeline.filter((item) => (life.waiting_statuses || []).includes(item.status))
+          .map((item) => `${item.status} ${number(item.count)}`).join(' · ')}),
+      drillCard(kpiCard('Open', number(life.open), `${percent(life.open, queued)} assigned or attended, not closed${trackedNote(life.open_tracked)}`, 'open'),
         {pairs: [['state', 'open']]}),
-      drillCard(kpiCard('Closed', number(closed), `${percent(closed, queued)} closed${trackedNote(closedTracked)}`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Stalled', number(life.stalled_total), `Open, no change for ${life.stalled_days}+ days`, 'attended'),
         {pairs: [['state', 'stalled']]}),
+      drillCard(kpiCard('Closed', number(closed), `${percent(closed, queued)} closed${trackedNote(closedTracked)}`, 'closed'), {pairs: [['state', 'closed']]}),
     );
     // The pipeline: the calls not attended, Open (the phase statuses an attended call goes through, its total being
     // theirs), then the closed statuses.
@@ -3931,7 +3932,7 @@
       table.classList.add('nq-priority-steps-summary');
       table.querySelector('th:nth-child(9)').title = 'The calls of the step: waiting (open and not attended yet), in progress (attended, still open) and closed, over the calls of the step; the number tells those waiting';
       const legend = node('p', undefined, 'nq-step-legend');
-      legend.append(...[['waiting', 'Waiting'], ['progress', 'In progress'], ['closed', 'Closed']].map(([kind, text]) => {
+      legend.append(...[['waiting', 'Not Started'], ['progress', 'In progress'], ['closed', 'Closed']].map(([kind, text]) => {
         const item = node('span', undefined, 'nq-step-legend-item');
         item.append(node('i', '', `is-${kind}`), text);
         return item;
@@ -3952,7 +3953,7 @@
     }));
     if (tabs.length) showTab(stepsTab);
     section('steps', `Strategy: ${data.strategy.label}`,
-      'The filtered calls each step took, a tab per list, with their follow-up (Waiting: not attended yet by their NQ Call Status) and the points they lose. Hover a step for what it takes; click it for its calls.',
+      'The filtered calls each step took, a tab per list, with their follow-up (Not Started: not attended yet by their NQ Call Status) and the points they lose. Hover a step for what it takes; click it for its calls.',
       ...notes.map((text) => node('p', text, 'nq-hint nq-priority-note')), tabBar, tabPanel);
     const grid = node('div', undefined, 'nq-failure-grid');
     const levelsCard = node('div', undefined, 'nq-failure-card');
@@ -4311,7 +4312,7 @@
     const queues = node('div', undefined, 'nq-priority-queues');
     queues.append(...(data.queues || []).map((item) => {
       if (!item.by_hotspots) {
-        return queueSubpanel(item.name, item.team, [`${number(item.total - (item.in_analysis || 0))} waiting`,
+        return queueSubpanel(item.name, item.team, [`${number(item.total - (item.in_analysis || 0))} not started`,
           ...(item.in_analysis ? [`${number(item.in_analysis)} under analysis`] : [])],
           item.rows.length ? queueTable(item.rows) : emptyLabel(`No call is waiting in the ${item.name} queue.`));
       }

@@ -468,6 +468,8 @@ STATUS_STATE_SQL = {
     'queued_analysis': "(queue <> '' AND status IN ({in_queue}) AND status NOT IN ({waiting}))",
     # In Queues: the calls the queues list, waiting or under analysis (the In Queues badge of the panels).
     'queued_now': "(queue <> '' AND status IN ({in_queue}))",
+    # Attended in a queue: the prioritized calls somebody attended, in any status after the waiting ones.
+    'queued_attended': "(queue <> '' AND status NOT IN ({waiting}))",
 }
 STATE_SQL = {
     'in_queue': "queue <> ''",
@@ -9629,6 +9631,7 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     keys = [str(row['call_key']) for row in rows]
     # The first status is that of the calls not attended; the open calls are those between it and the closed ones.
     first = statuses[0]['name'] if statuses else ''
+    waiting_names = {name.casefold() for name in queue_statuses(options, status_rules(task_repository))['waiting']}
     for row in rows:
         status = str(row['status'] or '')
         counts[status] += 1
@@ -9699,8 +9702,12 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     waiting = next((item for item in pipeline if item['status'] == first and not item['closed']), None)
     return {
         'total': len(rows), 'queued': sum(queued.values()), 'pipeline': pipeline,
-        # The calls of the queues in a status of the queues: those the queues list (waiting or under analysis).
-        'in_queues_now': sum(item['count'] for item in pipeline if item['in_queue']), 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
+        # The calls of the queues in a status of the queues: those the queues list (waiting or under analysis), and of the
+        # prioritized calls those nobody attended yet (Waiting) and the others (Attended), as Progress View counts them.
+        'in_queues_now': sum(item['count'] for item in pipeline if item['in_queue']),
+        'waiting_now': sum(item['count'] for item in pipeline if item['status'].casefold() in waiting_names),
+        'waiting_statuses': [item['status'] for item in pipeline if item['status'].casefold() in waiting_names and item['count']],
+        'analysis_now': sum(item['count'] for item in pipeline if item['in_queue'] and item['status'].casefold() not in waiting_names), 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
         'open': sum(item['count'] for item in pipeline if item['status'] in open_statuses), 'open_statuses': open_statuses,
         'open_tracked': sum(item['tracked'] for item in pipeline if item['status'] in open_statuses),
         # In Queues: the calls in a queue in the first status, waiting for somebody (nobody has them yet).

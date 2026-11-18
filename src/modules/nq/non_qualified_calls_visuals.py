@@ -259,6 +259,14 @@ def progress_title(granularity_label: str, subtitle: str) -> SlideTitle:
     return SlideTitle('Progress View', period, subtitle)
 
 
+def _follow_up_cards(in_queues: int, waiting: int, attended: int, analysis: int, base: int) -> list[tuple[str, str, str, str]]:
+    """In Queues (Not Started + Under Analysis), Not Started and Attended, as Lifecycle & Phases, Progress View and the In Queues
+    badge of the page name and count them."""
+    return [('Not Started', _number(waiting), f'{_share(waiting, base)} nobody attended yet', 'team'),
+            ('In Queues', _number(in_queues), f'{_share(in_queues, base)} · Not Started {_number(waiting)} + Under Analysis {_number(analysis)}', 'total'),
+            ('Attended', _number(attended), f'{_share(attended, base)} followed up, in any later status', 'open')]
+
+
 def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], granularity_label: str) -> list[tuple[SlideTitle, BytesIO]]:
     """The Progress View: indicator cards and donuts, the timeline, then age and workload."""
     summary = progress.get('summary') or {}
@@ -266,26 +274,18 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
     colours = _option_colours(options)
     cards = [
         # Every statistic counts the calls in a queue: the tracked calls (in no queue) are shown apart, in the last card.
-        # The prioritized calls by their NQ Call Status, as Lifecycle & Phases counts them (tickets #172, #173): the first
-        # status and Assigned, waiting, then the attended and, of them, those still in their queue (Under Analysis).
-        (str(progress.get('first_status') or 'Not Attended'), _number(summary.get('in_queues', summary.get('not_attended'))),
-         f"{_share(summary.get('in_queues', summary.get('not_attended')) or 0, int(summary.get('queued') or 0))} of the prioritized calls, nobody has them yet",
-         'total'),
-        ('Assigned', _number(summary.get('not_attended_assigned')),
-         f"{_share(summary.get('not_attended_assigned') or 0, int(summary.get('queued') or 0))} given a team or an analyst, not attended yet",
-         'team'),
-        ('Attended', _number(summary.get('attended')),
-         f"{_share(summary.get('queued_attended') or 0, int(summary.get('queued') or 0))} of the prioritized calls", 'open'),
-        ('Under Analysis', _number(summary.get('in_analysis')),
-         f"{_share(summary.get('in_analysis') or 0, int(summary.get('queued') or 0))} attended, still in their queue", 'attended'),
-        ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
-         f"{_number(summary.get('queued_closed'))} of {_number(summary.get('queued'))} in a queue closed", 'closed'),
+        # The follow-up of the prioritized calls with the names and numbers of the page (tickets #172, #173).
+        *_follow_up_cards(int(summary.get('not_attended') or 0) + int(summary.get('in_analysis') or 0), int(summary.get('not_attended') or 0),
+                          int(summary.get('queued_attended', summary.get('attended')) or 0), int(summary.get('in_analysis') or 0),
+                          int(summary.get('queued') or 0)),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),
         ('Time to Close', _days(summary.get('avg_days_to_close')), 'Average from the call', 'commented'),
+        ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
+         f"{_number(summary.get('queued_closed'))} of {_number(summary.get('queued'))} in a queue closed", 'closed'),
         ('Activity', _number((summary.get('comments') or 0) + (summary.get('changes') or 0)),
          f"{_number(summary.get('comments'))} comments · {_number(summary.get('changes'))} changes", ''),
         *([('Tracked', _number(tracked.get('total')),
-            f"Left out: {_number(tracked.get('not_attended'))} not attended · {_number(tracked.get('closed'))} closed", 'commented')]
+            f"Left out: {_number(tracked.get('not_attended'))} not started · {_number(tracked.get('closed'))} closed", 'commented')]
           if (tracked := progress.get('tracked')) else []),
     ]
     panels = []
@@ -984,15 +984,11 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
         ('Calls', _number(total), f'{_number(queued)} in a queue · {_number(total - queued)} tracked', 'total'),
         ('Automatic Status', _number(modes.get('auto', 0)), f"{_share(modes.get('auto', 0), total)} follow the Status Rules", 'team'),
         ('Status by Hand', _number(modes.get('manual', 0)), f"{_share(modes.get('manual', 0), total)} chosen by an analyst", 'commented'),
-        # In Queues: the calls the queues list (the statuses marked In Queue), then the first status.
-        ('In Queues', _number(lifecycle.get('in_queues_now', 0)),
-         f"{_share(lifecycle.get('in_queues_now', 0), queued)} waiting or under analysis", 'total'),
-        *([(str(waiting['status']), _number(waiting['count']),
-            f"{_share(waiting['count'], queued)} waiting, not assigned yet{_tracked(waiting.get('tracked'))}",
-            waiting.get('color') or '#9aa5ad')] if waiting else []),
-        ('Open', _number(open_total), f'{_share(open_total, queued)} attended and not closed{_tracked(open_tracked)}', 'open'),
-        ('Closed', _number(closed), f'{_share(closed, queued)} closed{_tracked(closed_tracked)}', 'closed'),
+        *_follow_up_cards(int(lifecycle.get('in_queues_now') or 0), int(lifecycle.get('waiting_now') or 0),
+                          queued - int(lifecycle.get('waiting_now') or 0), int(lifecycle.get('analysis_now') or 0), queued),
+        ('Open', _number(open_total), f'{_share(open_total, queued)} assigned or attended, not closed{_tracked(open_tracked)}', 'open'),
         ('Stalled', _number(lifecycle.get('stalled_total', 0)), f"Open, no change for {lifecycle.get('stalled_days', 14)}+ days", 'attended'),
+        ('Closed', _number(closed), f'{_share(closed, queued)} closed{_tracked(closed_tracked)}', 'closed'),
     ], 0, 0.95, compact=True)
     steps = [*(item for item in pipeline if not item.get('closed')), *(item for item in pipeline if item.get('closed'))]
     # The bar with the share of each status.

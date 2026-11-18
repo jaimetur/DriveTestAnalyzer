@@ -1744,3 +1744,25 @@ def test_the_nq_call_status_keeps_a_call_in_its_queue_while_it_is_under_analysis
     assert change(key, {'status': 'Not Attended'})['status'] == 'Not Attended'
     data = panel()
     assert key in listed(data) and not listed(data)[key]['in_analysis']
+
+
+def test_the_in_queues_badge_lifecycle_and_progress_count_the_same_follow_up(prioritized):
+    """In Queues, Waiting and Attended have the same numbers in the badge, Lifecycle & Phases and Progress View."""
+    client = prioritized['client']
+    calls = client.post('/api/non-qualified-calls/calls', json={'filters': {}, 'page_size': 10, 'breakdowns': False}).json()
+    key = calls['calls'][0]['call_key']
+    version = client.get(f'/api/non-qualified-calls/calls/{key}').json()['call']['version']
+    assert client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'fields': {'analysis_status': 'Ongoing'}},
+                                                                         'version': version}).status_code == 200
+    calls = client.post('/api/non-qualified-calls/calls', json={'filters': {}, 'page_size': 10, 'breakdowns': False}).json()
+    life = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
+    summary = client.post('/api/non-qualified-calls/progress', json={'filters': {}}).json()['summary']
+    assert calls['in_queue'] == life['in_queues_now'] == summary['not_attended'] + summary['in_analysis']
+    assert life['waiting_now'] == summary['not_attended'] and life['queued'] - life['waiting_now'] == summary['queued_attended']
+    assert summary['in_analysis'] >= 1
+    # Each card shows its own calls.
+    for state_name, expected in (('queued_now', life['in_queues_now']), ('queued_not_attended', life['waiting_now']),
+                                 ('queued_attended', summary['queued_attended'])):
+        found = client.post('/api/non-qualified-calls/calls', json={'filters': {'state': [state_name]}, 'page_size': 10,
+                                                                      'breakdowns': False}).json()['total']
+        assert found == expected, state_name
