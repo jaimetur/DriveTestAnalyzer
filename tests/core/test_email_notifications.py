@@ -362,6 +362,52 @@ def test_the_users_chosen_in_email_delivery_are_also_told_of_their_own_ticket_ch
     assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == []
 
 
+def test_whoever_commented_a_ticket_and_the_users_told_of_every_ticket_get_its_emails(client, flow):
+    use_flow(notify_tickets=True)
+    profile = next(item['id'] for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
+    for username in ('EREPORT', 'EWATCH', 'ECOMMENT', 'EOTHER'):
+        user_id = core.repository.create_user(username, 'secret123', 'user-editor', first_name=username.title(), last_name='User',
+                                              email=f'{username.lower()}@example.com')
+        core.repository.set_users_modules_profile([user_id], profile)
+    core.invalidate_module_access_cache()
+    assert core.email_delivery_settings(core.repository)['every_ticket_users'] == []
+    login(client)
+    form = {'transport': 'webhook', 'webhook_url': '', 'port': '587', 'from_address': 'admin@example.com', 'max_attachments_mb': '20',
+            'link_days': '7', 'notify_tickets': 'true'}
+    saved = client.post('/application-config/email-delivery', data={**form, 'every_ticket_users': ['EWATCH']}, follow_redirects=False)
+    assert saved.status_code == 303 and 'error' not in saved.headers['location']
+    assert core.email_delivery_settings(core.repository)['every_ticket_users'] == ['EWATCH']
+    assert logged('save_email_delivery')[-1]['changes']['every_ticket_users'] == [[], ['EWATCH']]
+    page = client.get('/application-config').text
+    assert 'Users Told Of Every Ticket' in page and 'name="every_ticket_users"' in page
+
+    def told(action):
+        count = len(flow)
+        action()
+        notifications.flush_ticket_emails()
+        return sorted(item['to'] for item in flow[count:])
+
+    # A new ticket: its reporter gets the confirmation and the users told of every ticket get it too.
+    login(client, 'EREPORT', 'secret123')
+    ticket = {}
+    assert told(lambda: ticket.update(client.post('/api/tickets', data={
+        'title': 'It fails', 'description': 'It fails.', 'priority': 'P3', 'ticket_type': 'bug'}).json())) == [
+        'ereport@example.com', 'ewatch@example.com']
+    number = ticket['id']
+    # A comment: the reporter and the users told of every ticket, never who wrote it.
+    login(client, 'ECOMMENT', 'secret123')
+    assert told(lambda: client.post(f'/api/tickets/{number}/comments', data={'body': 'Same here.'})) == [
+        'ereport@example.com', 'ewatch@example.com']
+    # Whoever commented the ticket gets the later changes of the others.
+    login(client, 'EREPORT', 'secret123')
+    assert told(lambda: client.post(f'/api/tickets/{number}/comments', data={'body': 'More details.'})) == [
+        'ecomment@example.com', 'ewatch@example.com']
+    # A form that chooses nobody takes it back.
+    login(client)
+    client.post('/application-config/email-delivery', data=form)
+    assert core.email_delivery_settings(core.repository)['every_ticket_users'] == []
+
+
 def test_reporting_emails_give_links_to_view_online_or_download_the_files_kept_on_the_server_after_signing_in(client, flow):
     from tests.reporting.test_reporting_jobs import RECIPIENTS, start_run, wait_for_run
     from src.modules.reporting.report_tasks import register_report_artifact_provider, save_task

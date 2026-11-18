@@ -14,7 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Iterable
 
-from src.modules.core.email_delivery import OWN_TICKET_CHANGES_KEY, email_delivery_settings, send_email, subject_line
+from src.modules.core.email_delivery import EVERY_TICKET_KEY, OWN_TICKET_CHANGES_KEY, email_delivery_settings, send_email, subject_line
 from src.modules.core.email_markdown import markdown_html
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix='email-notifications')
@@ -174,14 +174,21 @@ def _quoted(text: object) -> str:
     return text if len(text) <= QUOTED_CHARACTERS else text[:QUOTED_CHARACTERS].rstrip() + ' …'
 
 
-def ticket_recipients(repository: Any, ticket: dict[str, Any], actor: str, *, include_actor: bool = False) -> dict[str, int]:
-    """Who an update of ``ticket`` is told to, by username in lower case: its reporter, and the reporters of the tickets
-    its description and comments mention; each with the ticket of theirs it is about. Who made the update is left out,
-    unless ``include_actor`` (the reporter of a new ticket gets its confirmation)."""
+def ticket_recipients(repository: Any, ticket: dict[str, Any], actor: str, *, include_actor: bool = False,
+                      every_ticket: Iterable[str] = ()) -> dict[str, int]:
+    """Who an update of ``ticket`` is told to, by username in lower case: its reporter, whoever commented it, the users
+    ``every_ticket`` names, and the reporters of the tickets its description and comments mention; each with the ticket
+    of theirs it is about. Who made the update is left out, unless ``include_actor`` (the reporter of a new ticket gets
+    its confirmation)."""
     from src.modules.ticket_center.ticket_center import get_ticket
 
-    owners: dict[str, int] = {str(ticket['created_by']).casefold(): int(ticket['id'])}
-    texts = [ticket.get('description'), *(comment.get('body') for comment in ticket.get('comments') or [] if comment.get('kind') == 'comment')]
+    number = int(ticket['id'])
+    comments = [comment for comment in ticket.get('comments') or [] if comment.get('kind') == 'comment']
+    owners: dict[str, int] = {str(ticket['created_by']).casefold(): number}
+    for username in (*(comment.get('username') for comment in comments), *every_ticket):
+        if str(username or '').strip():
+            owners.setdefault(str(username).casefold(), number)
+    texts = [ticket.get('description'), *(comment.get('body') for comment in comments)]
     for number in mentioned_tickets(texts):
         if number == int(ticket['id']):
             continue
@@ -315,8 +322,8 @@ def ticket_action(event: str, changes: dict[str, Any] | None = None) -> str:
 def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, event: str, base_url: str, *,
                   ticket: dict[str, Any] | None = None, changes: dict[str, Any] | None = None, comment: str = '',
                   files: Iterable[str] = ()) -> None:
-    """Tell the reporter of a ticket, and the reporters of the tickets it mentions, of a change made by someone else (the
-    reporter of a new ticket also gets its confirmation). ``base_url`` is the address of the tool for its link; ``ticket`` is
+    """Tell the reporter of a ticket, whoever commented it, the users told of every ticket and the reporters of the tickets
+    it mentions of a change made by someone else (the reporter of a new ticket also gets its confirmation). ``base_url`` is the address of the tool for its link; ``ticket`` is
     the one deleted, when it no longer exists."""
     from src.modules.ticket_center.ticket_center import get_ticket
 
@@ -331,7 +338,8 @@ def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, ev
         # gets its confirmation).
         told_of_own = {str(name).casefold() for name in settings.get(OWN_TICKET_CHANGES_KEY) or []}
         owners = ticket_recipients(repository, ticket, actor,
-                                   include_actor=event == 'created' or str(actor).casefold() in told_of_own)
+                                   include_actor=event == 'created' or str(actor).casefold() in told_of_own,
+                                   every_ticket=settings.get(EVERY_TICKET_KEY) or [])
         emails = repository.user_emails(owners)
         if not emails:
             return

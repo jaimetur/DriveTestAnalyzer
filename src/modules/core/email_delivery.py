@@ -53,6 +53,8 @@ EMAIL_ENVIRONMENT_DEFAULTS = {
 EMAIL_SWITCHES = {'notify_access_requests': True, 'notify_tickets': True}
 # The users (by username) whose own changes to their tickets are also emailed to them; nobody's by default.
 OWN_TICKET_CHANGES_KEY = 'own_ticket_changes_users'
+# The users (by username) emailed every ticket, new ones included, as its reporter is; nobody's by default.
+EVERY_TICKET_KEY = 'every_ticket_users'
 # The values that are secrets: never shown, kept when the form leaves them empty.
 EMAIL_SECRETS = ('password', 'webhook_url')
 
@@ -121,6 +123,7 @@ def email_delivery_settings(repository: Any, *, include_password: bool = False) 
         'link_days': min(MAX_LINK_DAYS, max(1, _int(values.get('link_days'), DEFAULT_LINK_DAYS))),
         **{key: _switch(stored.get(key), default) for key, default in EMAIL_SWITCHES.items()},
         OWN_TICKET_CHANGES_KEY: _usernames(stored.get(OWN_TICKET_CHANGES_KEY)),
+        EVERY_TICKET_KEY: _usernames(stored.get(EVERY_TICKET_KEY)),
     }
     settings['configured'] = (settings['webhook_configured'] if settings['transport'] == 'webhook'
                               else bool(settings['host'] and settings['from_address']))
@@ -170,6 +173,7 @@ def save_email_delivery_settings(repository: Any, values: dict[str, Any], *, kee
            for key, default in EMAIL_SWITCHES.items()},
         OWN_TICKET_CHANGES_KEY: _usernames(values[OWN_TICKET_CHANGES_KEY] if OWN_TICKET_CHANGES_KEY in values
                                            else previous.get(OWN_TICKET_CHANGES_KEY)),
+        EVERY_TICKET_KEY: _usernames(values[EVERY_TICKET_KEY] if EVERY_TICKET_KEY in values else previous.get(EVERY_TICKET_KEY)),
     }
     repository.set_application_state(EMAIL_DELIVERY_STATE_KEY, json.dumps(stored, sort_keys=True))
     return email_delivery_settings(repository)
