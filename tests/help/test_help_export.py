@@ -1,4 +1,5 @@
 import json
+import re
 from io import BytesIO
 
 from docx import Document
@@ -30,7 +31,10 @@ def test_a_guide_exports_to_word_with_numbered_headings_a_contents_and_tables(cl
     assert not any('in this guide' in heading.lower() for heading in headings)
     # Each entry of the contents ends with its page (a PAGEREF field after a right tab), the contents end with a page break,
     # every main section after the first starts on a new page, and the footer numbers the pages.
-    assert paragraphs[1] == 'Contents' and '1  Reports\t' in paragraphs[2:6]
+    # A cover first (the chapter in its title), then the contents.
+    assert 'DriveTest Analyzer — Help\nReporting' in paragraphs
+    contents = paragraphs.index('Contents')
+    assert 'Reporting\t' in paragraphs[contents + 1:contents + 3] and '1  Reports\t' in paragraphs[contents + 1:contents + 6]
     document = Document(BytesIO(response.content))
     xml = document.element.xml
     assert 'PAGEREF' in xml and 'w:updateFields' in document.settings.element.xml
@@ -38,6 +42,8 @@ def test_a_guide_exports_to_word_with_numbered_headings_a_contents_and_tables(cl
     assert second.paragraph_format.page_break_before
     footer = document.sections[0].footer._element.xml
     assert ' PAGE ' in footer and ' NUMPAGES ' in footer
+    assert 'Help · Reporting' in document.sections[0].header.paragraphs[0].text
+    assert 'Reporting' not in document.sections[0].footer.paragraphs[0].text
     assert tables >= 1
     event = export_events()[0]
     details = json.loads(event['details'])
@@ -61,9 +67,12 @@ def test_the_whole_documentation_has_every_chapter_in_navigation_order_and_is_ca
     assert response.status_code == 200
     assert 'DriveTest%20Analyzer%20-%20Documentation.docx' in response.headers['content-disposition']
     headings, _, _ = document_text(response.content)
-    titles = [heading for heading in headings if heading in {'Product Overview', 'Workspace Management', 'Reporting', 'Super Admin'}]
+    # The chapters are numbered in Roman numerals, their sections as in the Help.
+    chapters = [heading.split('  ', 1) for heading in headings if re.match(r'[IVXLC]+  ', heading)]
+    assert [number for number, _ in chapters[:4]] == ['I', 'II', 'III', 'IV']
+    titles = [title for _, title in chapters if title in {'Product Overview', 'Workspace Management', 'Reporting', 'Super Admin'}]
     assert titles == ['Product Overview', 'Workspace Management', 'Reporting', 'Super Admin']
-    assert 'Help Home' not in headings
+    assert not any(heading.endswith('Help Home') for heading in headings)
 
     again = client.get('/api/help/export', params={'scope': 'all', 'format': 'docx'})
     assert again.status_code == 200 and again.content == response.content

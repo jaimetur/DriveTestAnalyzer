@@ -525,17 +525,22 @@ def _new_document(title: str) -> Any:
     return document
 
 
-def _footer(document: Any, text: str) -> None:
-    paragraph = document.sections[0].footer.paragraphs[0]
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    # Its text and the number of the page: "... · Page 3 of 40".
-    for part in (f'{text} · Page ', 'PAGE', ' of ', 'NUMPAGES'):
+def _header_and_footer(document: Any, title: str) -> None:
+    """The title of the document at the top of every page and only its number at the bottom ("Page 3 of 40")."""
+    grey = RGBColor(0x77, 0x77, 0x77)
+    section = document.sections[0]
+    header = section.header.paragraphs[0]
+    header.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = header.add_run(title)
+    run.font.size, run.font.color.rgb = Pt(8), grey
+    footer = section.footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for part in ('Page ', 'PAGE', ' of ', 'NUMPAGES'):
         if part in {'PAGE', 'NUMPAGES'}:
-            _field(paragraph, part, '1', size=8, color=RGBColor(0x77, 0x77, 0x77))
+            _field(footer, part, '1', size=8, color=grey)
             continue
-        run = paragraph.add_run(part)
-        run.font.size = Pt(8)
-        run.font.color.rgb = RGBColor(0x77, 0x77, 0x77)
+        run = footer.add_run(part)
+        run.font.size, run.font.color.rgb = Pt(8), grey
 
 
 def _next_anchor(text: str, seen: dict[str, int]) -> str:
@@ -572,12 +577,27 @@ def _chapter_lines(chapter: Chapter) -> list[str]:
     return lines[first + 1:] if title_line and len(title_line.group(1)) == 1 else lines
 
 
-def chapter_headings(chapter: Chapter, position: int = 1) -> list[tuple[int, str, str]]:
+def roman(number: int) -> str:
+    """A chapter number in Roman numerals (the whole documentation numbers its chapters I, II, III...)."""
+    text = ''
+    for value, letters in ((1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'), (100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'),
+                           (10, 'X'), (9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I')):
+        count, number = divmod(number, value)
+        text += letters * count
+    return text
+
+
+def chapter_label(chapter: Chapter, position: int | None = None) -> str:
+    """The title of a chapter, after its Roman numeral when it is one of the whole documentation."""
+    return f'{roman(position)}  {chapter.title}' if position else chapter.title
+
+
+def chapter_headings(chapter: Chapter, position: int = 1, numbered_chapter: bool = False) -> list[tuple[int, str, str]]:
     """The table of contents of a chapter: level, numbered title and bookmark of its title and of every heading, without
     its index and its presentations."""
     numbered = chapter.file != HELP_HOME_DOCUMENT
     numbers = section_numbers(chapter.content, numbered)
-    entries = [(1, chapter.title, _bookmark_name(position, ''))]
+    entries = [(1, chapter_label(chapter, position if numbered_chapter else None), _bookmark_name(position, ''))]
     seen: dict[str, int] = {}
     lines = _chapter_lines(chapter)
     in_code = skipping = False
@@ -602,24 +622,28 @@ def chapter_headings(chapter: Chapter, position: int = 1) -> list[tuple[int, str
 
 def _field(paragraph: Any, instruction: str, shown: str = '', size: float | None = None, color: Any = None) -> None:
     """A Word field (PAGE, NUMPAGES, PAGEREF...) in a paragraph, with the text it shows until it is updated."""
+    def styled(run: Any) -> Any:
+        # Every run of the field has the size and colour, so the number Word or LibreOffice writes keeps them.
+        if size:
+            run.font.size = Pt(size)
+        if color is not None:
+            run.font.color.rgb = color
+        return run
+
     def char(kind: str) -> None:
         element = OxmlElement('w:fldChar')
         element.set(qn('w:fldCharType'), kind)
         if kind == 'begin':
             element.set(qn('w:dirty'), 'true')
-        paragraph.add_run()._r.append(element)
+        styled(paragraph.add_run())._r.append(element)
 
     char('begin')
     text = OxmlElement('w:instrText')
     text.set(qn('xml:space'), 'preserve')
     text.text = f' {instruction} '
-    paragraph.add_run()._r.append(text)
+    styled(paragraph.add_run())._r.append(text)
     char('separate')
-    run = paragraph.add_run(shown)
-    if size:
-        run.font.size = Pt(size)
-    if color is not None:
-        run.font.color.rgb = color
+    styled(paragraph.add_run(shown))
     char('end')
 
 
@@ -663,8 +687,8 @@ def _table_of_contents(document: Any, entries: list[tuple[int, str, str]]) -> No
     document.add_page_break()
 
 
-def _write_title(document: Any, chapter: Chapter, position: int, bookmarks: list[int]) -> None:
-    heading = document.add_heading(chapter.title, level=1)
+def _write_title(document: Any, chapter: Chapter, position: int, bookmarks: list[int], numbered: bool = False) -> None:
+    heading = document.add_heading(chapter_label(chapter, position if numbered else None), level=1)
     bookmarks[0] += 1
     _bookmark(heading, _bookmark_name(position, ''), bookmarks[0])
 
@@ -676,24 +700,8 @@ def _write_body(document: Any, chapter: Chapter, position: int, bookmarks: list[
     _Writer(document).blocks(document, _chapter_lines(chapter), context)
 
 
-def chapter_docx(chapter: Chapter, version: str) -> bytes:
-    """One Help chapter as a Word document: its title, its table of contents and its sections."""
-    document = _new_document(f'{APP_TITLE} - Help - {chapter.title}')
-    _footer(document, f'{APP_TITLE} {version} · Help · {chapter.title}')
-    bookmarks = [0]
-    _write_title(document, chapter, 1, bookmarks)
-    _table_of_contents(document, chapter_headings(chapter)[1:])
-    _write_body(document, chapter, 1, bookmarks)
-    output = BytesIO()
-    document.save(output)
-    return output.getvalue()
-
-
-def documentation_docx(chapters: list[Chapter], version: str, today: date | None = None) -> bytes:
-    """Every Help chapter as one Word document: a cover, the contents and each chapter on a page of its own."""
-    today = today or date.today()
-    document = _new_document(f'{APP_TITLE} - Documentation')
-    _footer(document, f'{APP_TITLE} {version} · Documentation')
+def _cover(document: Any, title: str, version: str, today: date) -> None:
+    """The first page: the logo, the title, the version and the date, alone on its page."""
     logo = STATIC_ROOT / 'img' / 'brand-mark.png'
     for _ in range(6):
         document.add_paragraph()
@@ -704,21 +712,42 @@ def documentation_docx(chapters: list[Chapter], version: str, today: date | None
             paragraph.add_run().add_picture(str(logo), width=Cm(7))
         except Exception:  # noqa: BLE001 - the cover keeps its text without the logo
             pass
-    for text, size, bold in ((f'{APP_TITLE} — Documentation', 26, True), (f'Version {version}', 14, False),
-                             (today.isoformat(), 12, False)):
+    for text, size, bold in ((title, 26, True), (f'Version {version}', 14, False), (today.isoformat(), 12, False)):
         paragraph = document.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = paragraph.add_run(text)
         run.bold = bold or None
         run.font.size = Pt(size)
     document.add_page_break()
+
+
+def chapter_docx(chapter: Chapter, version: str, today: date | None = None) -> bytes:
+    """One Help chapter as a Word document: a cover, its table of contents and its sections, numbered as in the Help."""
+    document = _new_document(f'{APP_TITLE} - Help - {chapter.title}')
+    _header_and_footer(document, f'{APP_TITLE} {version} · Help · {chapter.title}')
+    _cover(document, f'{APP_TITLE} — Help\n{chapter.title}', version, today or date.today())
+    _table_of_contents(document, chapter_headings(chapter))
+    bookmarks = [0]
+    _write_title(document, chapter, 1, bookmarks)
+    _write_body(document, chapter, 1, bookmarks)
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
+def documentation_docx(chapters: list[Chapter], version: str, today: date | None = None) -> bytes:
+    """Every Help chapter as one Word document: a cover, the contents and each chapter on a page of its own, the
+    chapters numbered in Roman numerals (I, II...) and their sections as in the Help (1, 1.1...)."""
+    document = _new_document(f'{APP_TITLE} - Documentation')
+    _header_and_footer(document, f'{APP_TITLE} {version} · Documentation')
+    _cover(document, f'{APP_TITLE} — Documentation', version, today or date.today())
     _table_of_contents(document, [entry for index, chapter in enumerate(chapters, start=1)
-                                  for entry in chapter_headings(chapter, index)])
+                                  for entry in chapter_headings(chapter, index, numbered_chapter=True)])
     bookmarks = [0]
     for index, chapter in enumerate(chapters, start=1):
         if index > 1:
             document.add_page_break()
-        _write_title(document, chapter, index, bookmarks)
+        _write_title(document, chapter, index, bookmarks, numbered=True)
         _write_body(document, chapter, index, bookmarks)
     output = BytesIO()
     document.save(output)
