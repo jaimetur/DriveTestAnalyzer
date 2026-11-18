@@ -9480,6 +9480,21 @@ def test_small_screens_have_a_menu_bar_instead_of_the_tab_rows(client) -> None:
     assert "menu.querySelectorAll('a[href], [data-about-open]').forEach((item) => item.addEventListener('click', () => setOpen(false)));" in app_script
 
 
+def test_the_version_badge_opens_about_and_the_logo_takes_the_page_to_its_top(client) -> None:
+    root = Path(__file__).parents[2]
+    app_script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
+    login(client)
+    page = client.get('/scoring').text
+    # The version badge of the header opens About (its link to the Changelog is kept for the pages without it).
+    assert 'class="title-badge" href="/documents/view/changelog" title="About ' in page and '" data-about-open>v' in page
+    about = app_script[app_script.index("document.querySelectorAll('[data-about-open]')"):]
+    assert about.index('event.preventDefault();') < about.index('overlay.hidden = false;')
+    # The logo is a button back to the top of the page, as the button that appears once the page is scrolled.
+    assert 'class="brand-mark-button" data-scroll-top title="Back to the top of the page"' in page
+    assert "document.querySelectorAll('[data-scroll-top]').forEach((logo) => logo.addEventListener('click', backToTopOfPage));" in app_script
+    assert "button.addEventListener('click', backToTopOfPage);" in app_script
+
+
 def test_the_red_card_stands_at_the_left_above_the_task_cards_and_below_the_open_drawer() -> None:
     root = Path(__file__).parents[2]
     app_styles = (root / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')

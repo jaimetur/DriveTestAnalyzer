@@ -11112,7 +11112,9 @@ document.addEventListener('click', (event) => {
   const overlay = document.querySelector('[data-about-overlay]');
   if (!overlay) return;
   const close = () => { overlay.hidden = true; };
-  document.querySelectorAll('[data-about-open]').forEach((button) => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-about-open]').forEach((button) => button.addEventListener('click', (event) => {
+    // (The version badge of the header is a link to the Changelog where there is no About.)
+    event.preventDefault();
     overlay.hidden = false;
     overlay.querySelector('[data-about-close]')?.focus();
   }));
@@ -11120,6 +11122,13 @@ document.addEventListener('click', (event) => {
   overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !overlay.hidden) close(); });
 })();
+
+// Back to the top of the page (the button below and the logo of the header), without the section in the address.
+function backToTopOfPage() {
+  if (window.location.hash) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+document.querySelectorAll('[data-scroll-top]').forEach((logo) => logo.addEventListener('click', backToTopOfPage));
 
 // Back to the top of the page: shown once a page that scrolls is scrolled down, in the colour of its module
 // (the selected tab, or the theme of the page sections navigator in the other pages).
@@ -11137,10 +11146,7 @@ document.addEventListener('click', (event) => {
     button.tabIndex = button.classList.contains('is-visible') ? 0 : -1;
     button.setAttribute('aria-hidden', String(!button.classList.contains('is-visible')));
   };
-  button.addEventListener('click', () => {
-    if (window.location.hash) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-    window.scrollTo({top: 0, behavior: 'smooth'});
-  });
+  button.addEventListener('click', backToTopOfPage);
   window.addEventListener('scroll', sync, {passive: true});
   window.addEventListener('resize', sync);
   sync();
