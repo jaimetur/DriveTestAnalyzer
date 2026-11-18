@@ -160,13 +160,7 @@
         </label>
         <label class="configuration-toggle">
           <input type="checkbox" name="notify_tickets" value="true" {% if email_delivery.notify_tickets %}checked{% endif %}>
-          <span><strong>Ticket Center</strong><small>The reporter of a ticket gets its confirmation and every change others make to it, or to a ticket that mentions it as #&lt;number&gt;; whoever commented a ticket and the users of Email Every Ticket To get them too.</small></span>
-        </label>
-        <label>Also Email Their Own Changes To
-          <select name="own_ticket_changes_users" multiple size="1" data-multiselect-empty-label="Nobody" aria-label="Also email their own changes to">
-            {% for person in email_users %}<option value="{{ person.username }}" {% if person.selected %}selected{% endif %}>{{ person.label }}</option>{% endfor %}
-          </select>
-          <span class="table-help">Nobody gets an email of the changes they make themselves, except these users (for example, when someone else works with their user).</span>
+          <span><strong>Ticket Center</strong><small>The reporter of a ticket gets its confirmation and every change made to it, or to a ticket that mentions it as #&lt;number&gt;; whoever commented a ticket and the users of Email Every Ticket To get them too, also their own changes.</small></span>
         </label>
         <label>Email Every Ticket To
           <select name="every_ticket_users" multiple size="1" data-multiselect-empty-label="Nobody" aria-label="Email every ticket to">

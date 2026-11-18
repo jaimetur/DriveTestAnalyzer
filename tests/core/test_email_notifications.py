@@ -277,7 +277,7 @@ def test_the_changes_of_a_ticket_made_one_after_another_reach_each_recipient_in_
     assert ['One more.' in item['html'] for item in flow[1:]] == [True, False] and 'And another.' in flow[-1]['html']
 
 
-def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_tickets_that_mention_it(client, flow):
+def test_the_reporter_of_a_ticket_is_told_of_its_changes_also_in_the_tickets_that_mention_it(client, flow):
     use_flow(notify_tickets=True)
     for username, email in (('EREPORT', 'reporter@example.com'), ('EOTHERS', 'others@example.com')):
         user_id = core.repository.create_user(username, 'secret123', 'user-editor', first_name=username.title(), last_name='User',
@@ -293,14 +293,18 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     assert [(item['to'], item['subject']) for item in flow] == [('reporter@example.com', f'DT Analyzer - Ticket #{first}: Export fails')]
     assert f'<span style="color:#1E61A3">New Ticket</span><span style="color:#9ca3af"> · </span>Ticket #{first}: Export fails</p>' in flow[-1]['html']
     assert f'https://tool.example:8443/tickets/{first}' in flow[-1]['html'] and 'It fails.' in flow[-1]['html']
-    # Its own comments are not told to it.
+    # Its own comments are told to it too.
     client.post(f'/api/tickets/{first}/comments', data={'body': 'More details.'})
-    assert len(flow) == 1
+    assert [item['to'] for item in flow] == ['reporter@example.com', 'reporter@example.com'] and 'More details.' in flow[-1]['html']
     login(client, 'EOTHERS', 'secret123')
     client.post(f'/api/tickets/{first}/comments', data={'body': 'I see it too.'})
-    assert (flow[-1]['to'], flow[-1]['subject']) == ('reporter@example.com', f'DT Analyzer - Ticket #{first}: Export fails')
-    assert '<span style="color:#0F766E">New Comment</span>' in flow[-1]['html']
-    assert 'Eothers User</strong> added a comment' in flow[-1]['html'] and 'I see it too.' in flow[-1]['html']
+    # Whoever comments it is emailed its comment as well.
+    commented = {item['to']: item for item in flow[-2:]}
+    assert set(commented) == {'reporter@example.com', 'others@example.com'}
+    reported = commented['reporter@example.com']
+    assert reported['subject'] == f'DT Analyzer - Ticket #{first}: Export fails'
+    assert '<span style="color:#0F766E">New Comment</span>' in reported['html']
+    assert 'Eothers User</strong> added a comment' in reported['html'] and 'I see it too.' in reported['html']
     # A ticket of another reporter that mentions it: its reporter is told of the new ticket and of its changes.
     second = client.post('/api/tickets', data={'title': 'Same as before', 'description': f'Like #{first}.', 'priority': 'P3',
                                                'ticket_type': 'bug'}).json()['id']
@@ -326,43 +330,14 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     assert len(flow) == count
 
 
-def test_the_users_chosen_in_email_delivery_are_also_told_of_their_own_ticket_changes(client, flow):
-    use_flow(notify_tickets=True)
-    profile = next(item['id'] for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
-    for username, email in (('EOWNER', 'owner@example.com'), ('EREPORT', 'reporter@example.com')):
-        user_id = core.repository.create_user(username, 'secret123', 'user-editor', first_name=username.title(), last_name='User',
-                                              email=email)
-        core.repository.set_users_modules_profile([user_id], profile)
-    core.invalidate_module_access_cache()
-    # Nobody is chosen by default.
-    assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == []
+def test_email_delivery_has_no_list_of_users_told_of_their_own_changes_since_everybody_is(client):
     login(client)
-    form = {'transport': 'webhook', 'webhook_url': '', 'port': '587', 'from_address': 'admin@example.com', 'max_attachments_mb': '20',
-            'link_days': '7', 'notify_tickets': 'true'}
-    saved = client.post('/application-config/email-delivery', data={**form, 'own_ticket_changes_users': ['EOWNER']}, follow_redirects=False)
-    assert saved.status_code == 303 and 'error' not in saved.headers['location']
-    assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == ['EOWNER']
-    assert logged('save_email_delivery')[-1]['changes']['own_ticket_changes_users'] == [[], ['EOWNER']]
     page = client.get('/application-config').text
-    assert 'Also Email Their Own Changes To' in page
-    assert '<option value="EOWNER" selected>Eowner User (EOWNER)</option>' in page and '<option value="EREPORT" >' in page
-    # The chosen user gets the emails of the changes it makes to its own tickets; the others still do not.
-    told = {}
-    for username in ('EOWNER', 'EREPORT'):
-        login(client, username, 'secret123')
-        ticket = client.post('/api/tickets', data={'title': f'Ticket of {username}', 'description': 'It fails.', 'priority': 'P3',
-                                                   'ticket_type': 'bug'}).json()['id']
-        count = len(flow)
-        client.post(f'/api/tickets/{ticket}/comments', data={'body': 'More details.'})
-        told[username] = [(item['to'], item['subject']) for item in flow[count:]]
-    assert told == {'EOWNER': [('owner@example.com', f'DT Analyzer - Ticket #{ticket - 1}: Ticket of EOWNER')], 'EREPORT': []}
-    # A form that chooses nobody takes it back.
-    login(client)
-    client.post('/application-config/email-delivery', data=form)
-    assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == []
+    assert 'own_ticket_changes_users' not in page and 'Their Own Changes' not in page
+    assert 'own_ticket_changes_users' not in core.email_delivery_settings(core.repository)
 
 
-def test_whoever_commented_a_ticket_and_the_users_told_of_every_ticket_get_its_emails(client, flow):
+def test_whoever_commented_a_ticket_and_the_users_of_email_every_ticket_to_get_its_emails(client, flow):
     use_flow(notify_tickets=True)
     profile = next(item['id'] for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
     for username in ('EREPORT', 'EWATCH', 'ECOMMENT', 'EOTHER'):
@@ -387,21 +362,21 @@ def test_whoever_commented_a_ticket_and_the_users_told_of_every_ticket_get_its_e
         notifications.flush_ticket_emails()
         return sorted(item['to'] for item in flow[count:])
 
-    # A new ticket: its reporter gets the confirmation and the users told of every ticket get it too.
+    # A new ticket: its reporter gets the confirmation and the users of Email Every Ticket To get it too.
     login(client, 'EREPORT', 'secret123')
     ticket = {}
     assert told(lambda: ticket.update(client.post('/api/tickets', data={
         'title': 'It fails', 'description': 'It fails.', 'priority': 'P3', 'ticket_type': 'bug'}).json())) == [
         'ereport@example.com', 'ewatch@example.com']
     number = ticket['id']
-    # A comment: the reporter and the users told of every ticket, never who wrote it.
+    # A comment: the reporter, the users of Email Every Ticket To and who wrote it.
     login(client, 'ECOMMENT', 'secret123')
     assert told(lambda: client.post(f'/api/tickets/{number}/comments', data={'body': 'Same here.'})) == [
-        'ereport@example.com', 'ewatch@example.com']
-    # Whoever commented the ticket gets the later changes of the others.
+        'ecomment@example.com', 'ereport@example.com', 'ewatch@example.com']
+    # Whoever commented the ticket gets its later changes; a user who never commented it, does not.
     login(client, 'EREPORT', 'secret123')
     assert told(lambda: client.post(f'/api/tickets/{number}/comments', data={'body': 'More details.'})) == [
-        'ecomment@example.com', 'ewatch@example.com']
+        'ecomment@example.com', 'ereport@example.com', 'ewatch@example.com']
     # A form that chooses nobody takes it back.
     login(client)
     client.post('/application-config/email-delivery', data=form)

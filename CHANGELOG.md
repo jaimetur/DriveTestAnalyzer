@@ -12,7 +12,7 @@
 
 #### 🚀 Enhancements:
 - **Web Interface:** the name of the application in the header opens **About**, its logo takes the page back to its top and the version badge opens the Changelog ([ticket #169](https://108.132.147.165:8443/tickets/169)).
-- **Ticket Center — Who gets the emails of a ticket:** besides its reporter, whoever commented a ticket gets the emails of the changes the others make to it, and the users chosen in **Email Every Ticket To** of Email Delivery get every new ticket and every change to any ticket; **Users Told Of Their Own Changes** is named **Also Email Their Own Changes To** ([ticket #174](https://108.132.147.165:8443/tickets/174)).
+- **Ticket Center — Who gets the emails of a ticket:** besides its reporter, whoever commented a ticket gets the emails of its later changes, the users chosen in **Email Every Ticket To** of Email Delivery get every new ticket and every change to any ticket, and everybody also gets their own changes and comments, so the **Users Told Of Their Own Changes** list of Email Delivery is gone ([ticket #174](https://108.132.147.165:8443/tickets/174)).
 
 #### 🐛 Bug fixes:
 - **Non-Qualified Calls:** a Non-Qualified Calls indexing no longer runs for hours, holding up every other write of the workspace (a Scoring calculation among them), after a Reindex that a restart stopped while it replaced the population of the calls: the indexes of the population missing and the tables a Reindex left are put right once the application starts and as each indexing starts (App Event `nq_population_indexes_restored`), and a Reindex builds the indexes of the population of the tool's schema ([ticket #167](https://108.132.147.165:8443/tickets/167)).
