@@ -8227,6 +8227,29 @@ def recommendation_for(call: dict[str, Any], taxonomy: dict[str, Any], comments:
                             comments, learned, dta_of(call))
 
 
+# The kinds of group of a call as the App Events name them.
+GROUP_EVENT_LABELS = {'hotspot': 'Hotspot', 'cluster': 'Cluster', 'run': 'Time window'}
+
+
+def group_members(task_repository: Any, call_key: str, kind: str) -> tuple[dict[str, Any], list[str]]:
+    """The group of a call of one kind (``hotspot``, ``cluster`` or ``run``, the time window), as ``call_groups`` gives it,
+    and the calls in it, the call itself included. A call outside a group of that kind (of 2 calls or more) has none."""
+    found = next((item for item in nq_prioritization.CALL_GROUPS if item[0] == kind), None)
+    if found is None:
+        raise ValueError('Choose a hotspot, a cluster or a time window.')
+    _, letter, column, size, _ = found
+    with task_repository.connection() as connection:
+        row = connection.execute(
+            f'SELECT {column} AS group_key, {size} AS group_size FROM {nq_prioritization.PRIORITY_TABLE} WHERE call_key = ?',
+            (call_key,)).fetchone()
+        key = str(row['group_key'] or '') if row is not None else ''
+        if not key or int(row['group_size'] or 0) < 2:
+            raise ValueError('The call is not in a group of that kind.')
+        keys = [str(item[0]) for item in connection.execute(
+            f'SELECT call_key FROM {nq_prioritization.PRIORITY_TABLE} WHERE {column} = ? ORDER BY call_key', (key,)).fetchall()]
+    return {'kind': kind, 'id': nq_prioritization.group_id(letter, key), 'key': key, 'calls': len(keys)}, keys
+
+
 def update_tracking(
     task_repository: Any, call_keys: list[str], changes: dict[str, Any], username: str, users: set[str],
     expected_version: int | None = None, report: dict[str, dict[str, list[str]]] | None = None,
@@ -11219,6 +11242,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         call_keys: list[str] = Field(default_factory=list)
         changes: dict[str, Any] = Field(default_factory=dict)
 
+    class GroupCopyPayload(BaseModel):
+        group: str = ''
+        field: str = ''
+        value: str = ''
+
     class CommentPayload(BaseModel):
         body: str = ''
 
@@ -12327,6 +12355,23 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                             for label, counts in moves.items()},
                 'join_ids': nq_app_events.join_ids(repository, changed)})
         return JSONResponse({'changed': len(changed)})
+
+    @core.app.post('/api/non-qualified-calls/calls/{call_key}/copy-to-group')
+    def nq_copy_field_to_group(call_key: str, payload: GroupCopyPayload, user=Depends(editor_user)) -> JSONResponse:
+        """The value of a field of the analysts copied to every call of the hotspot, cluster or time window of the call."""
+        repository = workspace_repository(user)
+        definition = next((field for field in list_fields(repository) if field['key'] == payload.field), None)
+        if definition is None or definition['source'] != 'user':
+            raise HTTPException(400, 'Choose a field the analysts fill.')
+        group, keys = translate(lambda: group_members(repository, call_key, payload.group))
+        report: dict[str, dict[str, list[str]]] = {}
+        changed = translate(lambda: update_tracking(repository, keys, {'fields': {payload.field: payload.value}}, user.username,
+                                                    set(workspace_users()), report=report))
+        log_action(repository, user, 'nq_field_copied_to_group', {
+            **nq_app_events.call_identity(repository, call_key), 'group': f"{GROUP_EVENT_LABELS.get(group['kind'], group['kind'])} {group['id']}",
+            'group_calls': group['calls'], 'field': definition['label'], 'value': nq_app_events.short_text(payload.value),
+            'changed': len(changed), 'join_ids': nq_app_events.join_ids(repository, changed)})
+        return JSONResponse({'changed': len(changed), 'group': group, 'call': call_detail(repository, call_key)})
 
     @core.app.post('/api/non-qualified-calls/calls/{call_key}/comments')
     def nq_add_comment(call_key: str, payload: CommentPayload, user=Depends(editor_user)) -> JSONResponse:

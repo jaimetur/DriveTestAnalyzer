@@ -1807,3 +1807,33 @@ def test_a_call_under_analysis_without_an_analysis_status_counts_as_ongoing_in_i
     assert call['status'] == 'Under Analysis' and not (call.get('values') or {}).get('analysis_status')
     assert ongoing() == before + 2
 
+
+
+def test_a_field_of_the_analysts_is_copied_to_every_call_of_a_group_of_the_call(prioritized):
+    client = prioritized['client']
+    rows = priority_rows()
+    key, row = next((key, row) for key, row in rows.items() if (row['cluster_size'] or 0) >= 2)
+    members = sorted(other_key for other_key, other in rows.items() if other['cluster_key'] == row['cluster_key'])
+    response = client.post(f'/api/non-qualified-calls/calls/{key}/copy-to-group',
+                           json={'group': 'hotspot', 'field': 'description', 'value': 'Overshooting neighbour'})
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload['changed'] == len(members) and payload['group']['calls'] == len(members)
+    assert payload['group']['id'] == nq_prioritization.group_id('H', row['cluster_key'])
+    assert payload['call']['call']['fields']['description'] == 'Overshooting neighbour'
+    for member in members:
+        assert client.get(f'/api/non-qualified-calls/calls/{member}').json()['call']['fields']['description'] == 'Overshooting neighbour'
+    others = [other_key for other_key, other in rows.items() if other['cluster_key'] != row['cluster_key']]
+    assert not client.get(f'/api/non-qualified-calls/calls/{others[0]}').json()['call']['fields'].get('description')
+    event = next(item for item in core.repository.list_logs() if item['action'] == 'nq_field_copied_to_group')
+    details = json.loads(event['details'])
+    assert details['field'] == 'Description' and details['group_calls'] == len(members) and details['changed'] == len(members)
+    # Only a field of the analysts, and only a group the call is in.
+    assert client.post(f'/api/non-qualified-calls/calls/{key}/copy-to-group',
+                       json={'group': 'hotspot', 'field': 'status', 'value': 'x'}).status_code == 400
+    lonely = next((other_key for other_key, other in rows.items() if (other['cluster_size'] or 0) < 2), None)
+    if lonely:
+        assert client.post(f'/api/non-qualified-calls/calls/{lonely}/copy-to-group',
+                           json={'group': 'hotspot', 'field': 'description', 'value': 'x'}).status_code == 400
+    assert client.post(f'/api/non-qualified-calls/calls/{key}/copy-to-group',
+                       json={'group': 'nowhere', 'field': 'description', 'value': 'x'}).status_code == 400

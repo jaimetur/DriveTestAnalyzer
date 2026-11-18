@@ -5440,7 +5440,74 @@
       });
       wrapper.append(use);
     }
+    wrapper.fieldControl = control;
+    // A call of a hotspot, cluster or time window copies the value of the field to every call of one of its groups,
+    // with a pill inside the field (the field and the pill share a frame of their own).
+    if (state.user.can_edit && (call.groups || []).length) {
+      const frame = node('div', undefined, 'nq-group-copy-frame');
+      control.replaceWith(frame);
+      frame.append(control, groupCopyPill(field, call, control));
+    }
     return wrapper;
+  };
+  // The current value of a field control of the call panel (a list keeps it in its hidden input).
+  const controlValue = (control) => String(control.value ?? control.querySelector?.('[data-field-key]')?.value ?? '');
+  const GROUP_TITLES = {hotspot: 'Hotspot', cluster: 'Cluster', run: 'Time window'};
+  const groupCopyLabel = (group) => `${GROUP_TITLES[group.kind] || group.kind} ${group.id} (${number(group.calls)} calls)`;
+  // The pill inside a field of the analysts: one group is copied to after a confirmation; with several, the same
+  // confirmation offers one button per group.
+  const groupCopyPill = (field, call, control) => {
+    const groups = call.groups || [];
+    const pill = node('button', groups.length > 1 ? 'Copy to group…' : `Copy to ${GROUP_LABELS[groups[0].kind]}`, 'nq-group-copy');
+    pill.type = 'button';
+    pill.title = `Copy this value of ${field.label} to every call of ${groups.length > 1 ? 'a group of the call: '
+      : 'the group of the call: '}${groups.map(groupCopyLabel).join(', ')}`;
+    pill.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const value = controlValue(control);
+      const shown = value ? `“${value.length > 120 ? `${value.slice(0, 117)}…` : value}”` : 'empty';
+      let group = groups[0];
+      if (groups.length === 1) {
+        const message = `Set ${field.label} to ${shown} in the ${number(group.calls)} calls of ${GROUP_LABELS[group.kind]} ${group.id}? `
+          + 'Their current values are replaced.';
+        if (!await window.showConfirmDialog(message, {title: 'Copy to the group', confirmLabel: 'Copy'})) return;
+      } else {
+        // The groups of the call to choose from (the first one chosen), in the confirmation itself.
+        const choices = groups.map((item, index) => `<label class="nq-group-copy-choice"><input type="radio" name="nq-group-copy" value="${index}"${
+          index ? '' : ' checked'}> ${escapeHtml(groupCopyLabel(item))}</label>`).join('');
+        const copyHtml = `<p>Set <strong>${escapeHtml(field.label)}</strong> to <strong>${escapeHtml(shown)}</strong> in every call of:</p>`
+          + `<div class="nq-group-copy-choices">${choices}</div><p>Their current values are replaced.</p>`;
+        if (!await window.showConfirmDialog('', {title: 'Copy to a group', copyHtml, confirmLabel: 'Copy'})) return;
+        const chosen = document.querySelector('input[name="nq-group-copy"]:checked');
+        group = groups[Number(chosen?.value || 0)] || groups[0];
+      }
+      pill.disabled = true;
+      try {
+        // The other edits of the call not saved yet stay in the panel.
+        const pending = changedFields();
+        delete pending[field.key];
+        const result = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(call.call_key)}/copy-to-group`, {
+          method: 'POST', body: JSON.stringify({group: group.kind, field: field.key, value}),
+        });
+        renderDetail(result.call);
+        Object.entries(pending).forEach(([key, pendingValue]) => {
+          const target = drawer.querySelector(`[data-field-block="${CSS.escape(key)}"]`)?.fieldControl;
+          if (!target) return;
+          if (target.setValue) target.setValue(pendingValue);
+          else {
+            target.value = pendingValue;
+            target.dispatchEvent(new Event('change', {bubbles: true}));
+          }
+        });
+        toast(`${field.label} copied to ${GROUP_LABELS[group.kind]} ${group.id}: ${number(result.changed)} calls updated.`);
+        loadCalls({quiet: true});
+      } catch (error) {
+        toast(error.message, 'error');
+        pill.disabled = false;
+      }
+    });
+    return pill;
   };
   // True once the fields are saved.
   const saveFields = async (call, button) => {
