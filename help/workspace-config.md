@@ -285,7 +285,7 @@ For global runtime settings, see [Application Config](app-config.md). Super Admi
 
 ## Scoring & GAP Analysis Setup
 
-A methodology defines the complete scoring setup: its title, environments, KPI definitions and weights and KPI priorities. Select or create a methodology before editing it. The aggregation hierarchy is an application setting ordered from **Split by** of [Scoring & GAP Analysis](scoring-gap-analysis.md#3-set-filters-break-down-by-and-reference), not part of a methodology.
+A methodology defines the complete scoring setup: its title, environments, KPI definitions and weights and KPI priorities. Select or create a methodology before editing it. The aggregation hierarchy is an application setting ordered from **Split by** of [Scoring & GAP Analysis](scoring-gap-analysis.md#set-filters-break-down-by-and-reference), not part of a methodology.
 
 ### Methodology controls
 

@@ -18,9 +18,9 @@ scoring-gap-analysis
 | Task or topic | Go to |
 | --- | --- |
 | Calculate the scoring of a campaign | [Calculate and review](#calculate-and-review) |
-| <span class="guide-sub">↳ Choose the NR Mode and the campaign</span> | <span class="guide-sub">↳ [2. Choose the NR Mode and Campaign](#2-choose-the-nr-mode-and-campaign)</span> |
-| <span class="guide-sub">↳ Set the filters, Break down by and reference</span> | <span class="guide-sub">↳ [3. Set filters, Break down by and reference](#3-set-filters-break-down-by-and-reference)</span> |
-| <span class="guide-sub">↳ Reuse a saved or favourite scoring</span> | <span class="guide-sub">↳ [5. Reuse Saved Scorings](#5-reuse-saved-scorings)</span> |
+| <span class="guide-sub">↳ Choose the NR Mode and the campaign</span> | <span class="guide-sub">↳ [Choose the NR Mode and Campaign](#choose-the-nr-mode-and-campaign)</span> |
+| <span class="guide-sub">↳ Set the filters, Break down by and reference</span> | <span class="guide-sub">↳ [Set filters, Break down by and reference](#set-filters-break-down-by-and-reference)</span> |
+| <span class="guide-sub">↳ Reuse a saved or favourite scoring</span> | <span class="guide-sub">↳ [Reuse Saved Scorings](#reuse-saved-scorings)</span> |
 | Understand filters, Break down by and the GAP reference | [Filters and Break down by](#filters-and-break-down-by) |
 | <span class="guide-sub">↳ Filter by vendor</span> | <span class="guide-sub">↳ [Vendor filtering](#vendor-filtering)</span> |
 | Read the results and choose the scoring settings | [Results and workspace settings](#results-and-workspace-settings) |
@@ -94,7 +94,7 @@ Everything happens in the **Scoring & GAP Analysis** panel, with the results bel
 
 **A Favourite Scoring is never changed by a calculation.** The scoring calculated, without a star, reads *from ★ <the Favourite Scoring>* beside its name until **Update Favourite** or **Save as new Favourite**.
 
-### 1. Prepare the inputs
+### Prepare the inputs
 
 1. Open the correct workspace and finish processing the required CDRs.
 2. If no methodology is configured, import one under **Workspace Config → Scoring & GAP Analysis Setup**.
@@ -104,7 +104,7 @@ Everything happens in the **Scoring & GAP Analysis** panel, with the results bel
 > [!IMPORTANT]
 > Every campaign of the calculation needs at least one ready **Data**, **Voice** and **Speech** CDR. Complete CDRs do not guarantee complete KPI measurements: inspect Calculation notes after processing.
 
-### 2. Choose the NR Mode and Campaign
+### Choose the NR Mode and Campaign
 
 There is no CDR selector: the **NR Mode** and the **Campaign** filter choose the CDRs of the calculation, those of that NR Mode in the combined CDR tables for the chosen campaigns:
 
@@ -148,7 +148,7 @@ When the workspace has NSA and SA CDRs, **NR Mode** also offers **NSA vs SA**: t
 - **Campaign Map:** it must tell NSA and SA campaigns apart; when its label leaves SA out, NSA vs SA asks to show it.
 - **Where it is kept:** Saved Scorings with their exports, transfers and backups, and the Scoring section of [Reporting](reporting.md#the-report-editor) reports (**Compare NSA vs SA**, whatever the report's NR Mode, with its own **NSA vs SA** and **NSA & SA charts**). Documents and file names read **NSA vs SA** (`NSA-vs-SA`).
 
-### 3. Set filters, Break down by and reference
+### Set filters, Break down by and reference
 
 1. **Filters:** restrict **Operators**, **Vendors**, **Regions**, **Clusters** or **Cities** if needed (see [Filters and Break down by](#filters-and-break-down-by)).
 2. **Break down by:** choose the levels Operator, Vendor, Region, **Cluster**, City and Campaign, in the order of the [aggregation hierarchy](#aggregation-hierarchy). **Operator** is always included and **Campaign** is checked initially; Cluster needs CDRs with a `Cluster` column, from the source CDR or a Cluster mapping.
@@ -197,7 +197,7 @@ It sets the order of the filter controls and of the Break down by levels and hea
 - **Initial order:** **Operator → Vendor → Region → Cluster → City → Campaign**. Saved results keep their order until calculated again.
 - **Operator is always a level,** since each operator is scored, compared and coloured on its own. It need not be first: with **City** above Operator, the tables and charts group every operator and campaign of each city.
 
-### 4. Calculate or recalculate
+### Calculate or recalculate
 
 Every selection you calculate becomes a **Saved Scoring**: its CDRs, NR Mode, filters, Break down by levels, GAP reference, methodology and Scoring Trends.
 
@@ -211,7 +211,7 @@ Every selection you calculate becomes a **Saved Scoring**: its CDRs, NR Mode, fi
 > [!TIP]
 > Read the **yellow message at the foot of the strip** when an action is unavailable. It tells whether the selection was used before and explains incomplete selections and other calculation conditions.
 
-### 5. Reuse Saved Scorings
+### Reuse Saved Scorings
 
 **Open a Favourite Scoring** from the [Filter Navigator](#filter-navigator), with **Use Filter** on its card in **Manage Favourite Scorings** (the page then goes to its results; recorded in App Events), or by setting a selection in the blocks that is a Saved Scoring with its result up to date.
 

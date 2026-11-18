@@ -113,6 +113,46 @@
     return isImage ? raw : raw;
   }
 
+  // The sections (1, 2…) and subsections (1.1, 1.2…) of a Help chapter are numbered as it is shown, and its In this guide
+  // index gives each link the number of its section, so that the readers find their way (the headings keep their ids).
+  const UNNUMBERED_SECTIONS = new Set(['in this guide', 'presentation', 'presentations']);
+  function numberHelpSections(root, path) {
+    // (The path of a chapter as the server gives it, such as /app/help/scoring-gap-analysis.md; Help Home is not numbered.)
+    if (!/(^|\/)help\/[^/]+\.md$/.test(path || '') || /(^|\/)help\/help\.md$/.test(path || '')) return;
+    const numbers = new Map();
+    let section = 0;
+    let subsection = 0;
+    let numbering = false;
+    root.querySelectorAll('h2, h3').forEach((heading) => {
+      if (heading.tagName === 'H2') {
+        numbering = !UNNUMBERED_SECTIONS.has(heading.textContent.trim().toLowerCase());
+        if (!numbering) return;
+        section += 1;
+        subsection = 0;
+        numbers.set(heading.id, `${section}`);
+      } else {
+        if (!numbering || !section) return;
+        subsection += 1;
+        numbers.set(heading.id, `${section}.${subsection}`);
+      }
+      const label = document.createElement('span');
+      label.className = 'doc-section-number';
+      label.textContent = numbers.get(heading.id);
+      heading.prepend(label);
+    });
+    const guide = root.querySelector('#in-this-guide');
+    let table = guide?.nextElementSibling;
+    while (table && table.tagName !== 'TABLE' && !/^H[1-3]$/.test(table.tagName)) table = table.nextElementSibling;
+    if (table?.tagName !== 'TABLE') return;
+    table.querySelectorAll('a[href^="#"]').forEach((link) => {
+      const number = numbers.get(decodeURIComponent(link.getAttribute('href').slice(1)));
+      if (!number) return;
+      const label = document.createElement('span');
+      label.className = 'doc-section-number';
+      label.textContent = number;
+      link.prepend(label);
+    });
+  }
   const markdownRenderer = window.MarkdownRenderer.create({
     resolveUrl: resolveDocUrl,
     includeHeadingIds: true,
@@ -205,6 +245,7 @@
       currentDocumentPath = data.path || '';
       pathEl.textContent = currentDocumentPath;
       contentEl.innerHTML = markdownRenderer.render(data.content || '');
+      numberHelpSections(contentEl, currentDocumentPath);
       // The presentations listed in a chapter open in the slide viewer.
       void window.PresentationViewer?.enhance(contentEl);
       if (changelogNavEl) {
