@@ -1795,3 +1795,51 @@ def test_a_reindex_stopped_while_it_replaces_the_population_leaves_nothing_apart
     # The indexes of the population are built again (the key of a table made from a query aside).
     assert {name for name in index_names if not name.startswith('sqlite_autoindex')} <= rebuilt
     assert indexed_tables()[nq.NQ_CALLS_TABLE] == indexed[nq.NQ_CALLS_TABLE]
+
+
+def population_indexes() -> set[str]:
+    with core.repository.connection() as connection:
+        return {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+            (nq.NQ_CALL_POPULATION_TABLE,))}
+
+
+def test_an_indexing_puts_back_the_indexes_a_reindex_left_out(client, tmp_path):
+    """Ticket #167: a restart while a Reindex replaced the population left it without indexes and the table replaced in
+    place, with the schema of the version ready: the next indexing builds them before reading anything."""
+    add_cdr(tmp_path, 'voice.csv', 'voice', voice_rows())
+    index_cdrs()
+    expected = {name for name, _sql in nq._population_indexes()}
+    assert expected and expected <= population_indexes()
+    with core.repository.connection() as connection:
+        for name in expected:
+            connection.execute(f'DROP INDEX {name}')
+        connection.execute(f'CREATE TABLE {nq._POPULATION_OLD} AS SELECT * FROM {nq.NQ_CALL_POPULATION_TABLE}')
+    assert not population_indexes()
+    add_cdr(tmp_path, 'voice-2.csv', 'voice', voice_rows().assign(Session_ID_A=[2001, 2002, 2003]))
+    index_cdrs()
+    assert expected <= population_indexes()
+    with core.repository.connection() as connection:
+        assert not connection.execute("SELECT 1 FROM sqlite_master WHERE name = ?", (nq._POPULATION_OLD,)).fetchone()
+        logged = connection.execute("SELECT details FROM audit_logs WHERE action = 'nq_population_indexes_restored'").fetchall()
+    assert len(logged) == 1 and sorted(json.loads(logged[0][0])['built_indexes']) == sorted(expected)
+    # Nothing left to put right: the next check only reads.
+    assert nq.restore_population_indexes(core.repository) == []
+
+
+def test_a_reindex_builds_the_indexes_of_the_schema_on_its_population(client, tmp_path):
+    """A Reindex replacing a population that had lost its indexes builds those of the schema, not only those it had."""
+    add_cdr(tmp_path, 'voice.csv', 'voice', voice_rows())
+    index_cdrs()
+    expected = {name for name, _sql in nq._population_indexes()}
+    with core.repository.connection() as connection:
+        for name in expected:
+            connection.execute(f'DROP INDEX {name}')
+    # (As the population of an older process, out of the repair at the start of the indexing.)
+    original = nq.restore_population_indexes
+    nq.restore_population_indexes = lambda task_repository: []
+    try:
+        nq.sync_nq_calls(core.repository, force=True)
+    finally:
+        nq.restore_population_indexes = original
+    assert expected <= population_indexes()

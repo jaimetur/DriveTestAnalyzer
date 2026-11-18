@@ -769,6 +769,30 @@ def _schema_ready(task_repository: Any) -> bool:
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
 
 
+# The workspaces whose population was checked by this process (see _restore_population_once).
+_population_checked: set[str] = set()
+
+
+def _restore_population_once(task_repository: Any) -> None:
+    """restore_population_indexes once per workspace after the application starts (a restart while a Reindex replaced
+    the population leaves it without indexes), never while an indexing of the workspace runs."""
+    key = str(task_repository.db_path)
+    if key in _population_checked:
+        return
+    lock = _sync_lock(task_repository)
+    if not lock.acquire(blocking=False):
+        return  # (The indexing checks it as it starts.)
+    try:
+        if key not in _population_checked:
+            restore_population_indexes(task_repository)
+            _population_checked.add(key)
+    except Exception:  # noqa: BLE001 - the next indexing tries again.
+        logger.warning('The indexes of the Non-Qualified Calls population could not be checked.', exc_info=True)
+        _population_checked.add(key)
+    finally:
+        lock.release()
+
+
 def ensure_nq_tables(task_repository: Any) -> None:
     """Create the module tables, add the columns of later versions and seed the defaults once.
 
@@ -776,6 +800,7 @@ def ensure_nq_tables(task_repository: Any) -> None:
     for the workspace writer (the indexing or a CDR being processed).
     """
     if _schema_ready(task_repository):
+        _restore_population_once(task_repository)
         return
     with task_repository.connection() as connection:
         existed = connection.execute(
@@ -3005,18 +3030,61 @@ _POPULATION_OLD = f'{NQ_CALL_POPULATION_TABLE}_old'
 _POPULATION_CHUNK_ROWS = 200_000
 
 
-def _drop_reindex_leftovers(connection: Any) -> None:
-    """The population filled apart by a Reindex that stopped or failed, or the one it replaced, dropped; the indexes of the
-    population built again where they are missing."""
+def _population_indexes() -> list[tuple[str, str]]:
+    """The indexes of the population in the schema of the tool: (name, CREATE INDEX statement)."""
+    indexes = []
+    for statement in SCHEMA.split(';'):
+        sql = '\n'.join(line for line in statement.splitlines() if not line.strip().startswith('--')).strip()
+        if sql.startswith('CREATE INDEX') and f'ON {NQ_CALL_POPULATION_TABLE}(' in ' '.join(sql.split()):
+            indexes.append((sql.split()[5] if sql.split()[2:5] == ['IF', 'NOT', 'EXISTS'] else sql.split()[2], sql))
+    return indexes
+
+
+def _population_repairs(connection: Any) -> tuple[set[str], list[str]]:
+    """What a Reindex that did not finish left behind (read only): its tables, and the indexes of the population missing."""
     tables = {str(row[0]) for row in connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)", (_POPULATION_NEXT, _POPULATION_OLD))}
+    present = {str(row[0]) for row in connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?", (NQ_CALL_POPULATION_TABLE,))}
+    population = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                                    (NQ_CALL_POPULATION_TABLE,)).fetchone()
+    missing = [name for name, _sql in _population_indexes() if name not in present] if population else []
+    return tables, missing
+
+
+def _drop_reindex_leftovers(connection: Any) -> list[str]:
+    """The population filled apart by a Reindex that stopped or failed, or the one it replaced, dropped; the indexes of the
+    population built again where they are missing (their names)."""
+    tables, missing = _population_repairs(connection)
     for table in tables:
+        # (Dropping the table replaced drops the indexes it took with it, whose names the population needs.)
         connection.execute(f'DROP TABLE IF EXISTS {table}')
-    if _POPULATION_OLD in tables:
-        for statement in SCHEMA.split(';'):
-            sql = '\n'.join(line for line in statement.splitlines() if not line.strip().startswith('--')).strip()
-            if sql.startswith('CREATE INDEX') and f'ON {NQ_CALL_POPULATION_TABLE}(' in ' '.join(sql.split()):
-                connection.execute(sql)
+    for name, sql in _population_indexes():
+        if name in missing:
+            connection.execute(sql)
+    return missing
+
+
+def restore_population_indexes(task_repository: Any) -> list[str]:
+    """The tables a Reindex left and the missing indexes of the population put right (ticket #167): without the index of
+    its call keys, the versions of the calls of each indexing read the whole population for every call, for hours, while
+    every other write of the workspace waits. Checked without the write lock; the indexes built, by name."""
+    with task_repository.connection() as connection:
+        tables, missing = _population_repairs(connection)
+    if not tables and not missing:
+        return []
+    started = time.time()
+    with task_repository.connection() as connection:
+        built = _drop_reindex_leftovers(connection)
+    if built:
+        with task_repository.connection() as connection:
+            # (Indexes built again have no statistics: the queries of the pages need them.)
+            connection.execute(f'ANALYZE {NQ_CALL_POPULATION_TABLE}')
+    logger.warning('Non-Qualified Calls population repaired: tables %s dropped, indexes %s built.', sorted(tables), built)
+    if hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log('system', 'nq_population_indexes_restored', json.dumps(
+            {'dropped_tables': sorted(tables), 'built_indexes': built, 'seconds': round(time.time() - started, 1)}))
+    return built
 
 
 def _fill_next_population(connection: Any, task_repository: Any, population_columns: str) -> None:
@@ -3063,7 +3131,10 @@ def _finish_population_swap(task_repository: Any, indexes: list[tuple[str, str]]
             connection.execute(f'DROP INDEX IF EXISTS {_quote(name)}')
     with task_repository.connection() as connection:
         connection.execute(f'DROP TABLE IF EXISTS {_POPULATION_OLD}')
-    for _name, index_sql in indexes:
+    # Those of the schema of the tool, and any other the replaced population had (not only those it had, ticket #167).
+    schema_indexes = _population_indexes()
+    known = {name for name, _sql in schema_indexes}
+    for _name, index_sql in [*schema_indexes, *((name, sql) for name, sql in indexes if name not in known)]:
         with task_repository.connection() as connection:
             connection.execute(index_sql)
     with task_repository.connection() as connection:
@@ -3485,6 +3556,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
     every CDR again (Reindex)."""
     ensure_nq_tables(task_repository)
     with _sync_lock(task_repository):
+        # A Reindex that did not finish (a restart while it replaced the population) leaves no population without indexes.
+        restore_population_indexes(task_repository)
         # A change of CDR columns only adds or removes them in the calls of the CDRs that did not change otherwise.
         if not force:
             _patch_indexed_columns(task_repository)
@@ -3640,7 +3713,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 # Nothing is stopped once the indexed calls are written.
                 _raise_if_stopped(task_repository)
                 connection.set_progress_handler(None, 0)
-            if swapped_indexes:
+            if everything and not population_kept:
+                # (Even when the replaced population had no indexes left, ticket #167.)
                 _finish_population_swap(task_repository, swapped_indexes)
         # A CDR that the combined tables include or leave out now changes the version of its calls, without reading it.
         reranked = _rank_changes(task_repository, ranks)

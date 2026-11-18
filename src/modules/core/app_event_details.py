@@ -442,6 +442,10 @@ _NQ_DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'nq_calls_index_stopped': lambda details: (
         f"Non-Qualified Calls indexing stopped after {details.get('seconds')} s, the indexed calls kept as they were"
         + ('; the Reindex is done at night once the server is idle' if details.get('reindex') else '') + '.'),
+    'nq_population_indexes_restored': lambda details: (
+        f"Non-Qualified Calls population put right after an unfinished Reindex: indexes "
+        f"{', '.join(details.get('built_indexes') or []) or 'none'} built, tables "
+        f"{', '.join(details.get('dropped_tables') or []) or 'none'} dropped, in {details.get('seconds')} s."),
     'nq_catalog_export': lambda details: f"NQ Analysis Center catalog exported to {details.get('file')}.",
     'nq_catalog_import': lambda details: f"NQ Analysis Center catalog imported from {details.get('file')}.",
     'nq_catalog_import_preview': lambda details: f"NQ Analysis Center catalog file {details.get('file')} previewed before importing it.",
@@ -659,7 +663,7 @@ _SERVER_ACTIONS = {
                 'assign_unknown_creators', 'assign_unknown_creators_failed', 'resume_reporting_job_run',
                 'stop_interrupted_reporting_job_run', 'fail_interrupted_reporting_job_run', 'workspace_cache_folders_moved',
                 'retired_report_jobs_dropped', 'reporting_jobs_became_report_schedules'},
-    'background': {'nq_calls_index_stopped', 'nq_calls_index_failed', 'process_dataset', 'process_dataset_failed', 'l3_dt_logs_processed', 'ca_appendix_processed', 'analyze_dataset_failed', 'analyze_dataset_warning',
+    'background': {'nq_calls_index_stopped', 'nq_calls_index_failed', 'nq_population_indexes_restored', 'process_dataset', 'process_dataset_failed', 'l3_dt_logs_processed', 'ca_appendix_processed', 'analyze_dataset_failed', 'analyze_dataset_warning',
                    'map_dataset_vendors', 'map_dataset_vendors_failed', 'map_dataset_regions', 'map_dataset_regions_failed',
                    'vendor_mapping_skipped', 'clear_dataset_vendors', 'clear_dataset_vendors_failed', 'chart_set_rendering_completed',
                    'chart_set_rendering_warning', 'chart_set_published', 'chart_set_generation_failed', 'export_design_ppt_failed',
