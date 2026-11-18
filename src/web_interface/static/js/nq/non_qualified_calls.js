@@ -2877,6 +2877,9 @@
       {pairs: [['state', 'in_queues']]}),
     drillCard(kpiCard('Assigned', number(assigned), `${percent(assigned, base)} given a team or an analyst, not attended yet`, 'team'),
       {pairs: [['state', 'queued_assigned']]}),
+    // Under Analysis: attended and still in their queue; with the two before, they add up to In Queues.
+    drillCard(kpiCard('Under Analysis', number(analysis), `${percent(analysis, base)} attended, still in their queue`, 'attended'),
+      {pairs: [['state', 'queued_analysis']]}),
     drillCard(kpiCard('Attended', number(attended), `${percent(attended, base)} followed up, in any later status`, 'open'),
       {pairs: [['state', 'queued_attended']]}),
   ];

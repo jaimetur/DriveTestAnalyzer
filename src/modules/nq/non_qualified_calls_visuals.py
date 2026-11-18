@@ -268,6 +268,7 @@ def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int,
              'total'),
             (first_name or 'Not Attended', _number(first), f'{_share(first, base)} nobody has them yet', 'commented'),
             ('Assigned', _number(assigned), f'{_share(assigned, base)} given a team or an analyst, not attended yet', 'team'),
+            ('Under Analysis', _number(analysis), f'{_share(analysis, base)} attended, still in their queue', 'attended'),
             ('Attended', _number(attended), f'{_share(attended, base)} followed up, in any later status', 'open')]
 
 

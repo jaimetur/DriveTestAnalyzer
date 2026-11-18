@@ -124,6 +124,7 @@ def progress_summary_table(summary: dict[str, Any]) -> tuple[list[str], list[lis
         ['In Queues (first status + Assigned + Under Analysis)', f"{summary['not_attended'] + summary.get('in_analysis', 0):,}"],
         ['Not attended, nobody has them yet (first status)', f"{summary.get('in_queues', 0):,}"],
         ['Assigned, not attended yet (in a queue)', f"{summary.get('not_attended_assigned', 0):,}"],
+        ['Under Analysis (attended, still in their queue)', f"{summary.get('in_analysis', 0):,}"],
         ['Attended (followed up, in any later status)', f"{summary['attended']:,}"],
         ['Open', f"{summary['open']:,}"],
         ['Closed', f"{summary['closed']:,}"],
