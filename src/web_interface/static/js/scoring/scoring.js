@@ -174,8 +174,6 @@
       if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
       return {
         savedFilterId: typeof stored.saved_filter_id === 'string' && stored.saved_filter_id ? stored.saved_filter_id : null,
-        // Close Scoring left no scoring open.
-        closed: stored.closed === true,
         // (Tabs saved by earlier versions: Best Network is Scoring Charts, Locations is Geographical Areas.)
         resultTab: stored.result_tab === 'best-network' ? 'charts' : stored.result_tab === 'locations' ? 'geographical-areas'
           : resultTabNames.has(stored.result_tab) ? stored.result_tab : null,
@@ -219,7 +217,6 @@
     try {
       window.sessionStorage.setItem(scoringViewStorageKey, JSON.stringify({
         saved_filter_id: selectedSavedFilterId,
-        closed: typeof scoringClosed !== 'undefined' && scoringClosed,
         result_tab: activeResultTab,
         // While the saved position is restored, the page is still growing: keep the saved one.
         scroll_y: typeof scoringViewScrollRestoring !== 'undefined' && (scoringViewScrollRestorePending || scoringViewScrollRestoring)
@@ -399,7 +396,6 @@
   const editSaveButton = root.querySelector('[data-saved-filter-edit-save]');
   const editSaveLabel = editSaveButton?.querySelector('span') || null;
   const editCancelButton = root.querySelector('[data-saved-filter-edit-cancel]');
-  const closeScoringButton = root.querySelector('[data-close-scoring]');
   let editingSavedFilter = null;
   // The selection of the panel before the editing (given back when it is cancelled) and the place of the panel.
   let selectionBeforeEdit = null;
@@ -522,8 +518,6 @@
   let selectionUnmatched = false;
   // The name of the copy while a Saved Filter is duplicated (null while it is edited, or neither).
   let duplicateName = null;
-  // Close Scoring: no Saved Filter is open (none opens on its own) until one is opened or calculated.
-  let scoringClosed = Boolean(restoredScoringViewState.closed) && !requestedSavedFilterId;
   // The status of the selected CDRs and filters (calculating, recalculating, already calculated or ready) stays
   // while the Saved Filter list refreshes every few seconds; Saved Filters submitted with Recalculate say so.
   let selectionStatus = {key: '', text: '', kind: ''};
@@ -1780,7 +1774,7 @@
         showCalculateAction(Boolean(existing?.up_to_date) && !isActive(existing) && !editingSavedFilter);
         // A new selection that is a Saved Filter with its result up to date (a Favourite Scoring chosen in the blocks)
         // opens at once, without Open Scoring; not while the scoring is closed, nor the one already open or opening.
-        const openNow = !refresh && existing?.up_to_date && !isActive(existing) && !editingSavedFilter && !scoringClosed
+        const openNow = !refresh && existing?.up_to_date && !isActive(existing) && !editingSavedFilter
           && String(savedFilterIdOf(existing)) !== String(selectedSavedFilterId || '');
         showUnmatchedSelection(!existing && !editingSavedFilter);
         if (!editingSavedFilter && typeof shownSavedFilterId === 'function') {
@@ -1823,7 +1817,7 @@
 
   // The results and the selected card show while a scoring is open whose selection is that of the Calculation panel.
   function syncResultsShown() {
-    const hidden = scoringClosed || (selectionUnmatched && !currentResultsSavedFilterId);
+    const hidden = selectionUnmatched && !currentResultsSavedFilterId;
     if (resultsTabbed) resultsTabbed.hidden = hidden;
     if (resultNotesStack) resultNotesStack.hidden = hidden;
     for (const selector of savedFilterSelectors) selector.classList.toggle('is-unmatched', hidden);
@@ -1832,39 +1826,13 @@
     if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
   }
 
-  // Close Scoring: the Saved Filter shown is closed (it stays saved) and the card asks to open or calculate one.
-  function closeScoring() {
-    if (!selectedSavedFilterId || editingSavedFilter) return;
-    // Recorded in App Events, as opening one from its card.
-    requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/close`, {method: 'POST'})
-      .catch(() => { /* Closing does not depend on it. */ });
-    scoringClosed = true;
-    selectedSavedFilterId = null;
-    selectedSavedFilter = null;
-    userSelectedSavedFilter = false;
-    currentResults = null;
-    currentResultsSavedFilterId = null;
-    renderNoResult('No scoring is open.');
-    syncResultsShown();
-    persistScoringViewState();
-  }
-
-  // Opening or calculating a Saved Filter opens the scoring again.
-  function reopenScoring() {
-    if (!scoringClosed) return;
-    scoringClosed = false;
-    syncResultsShown();
-  }
-
   function unmatchedSelectionNotice() {
     const notice = document.createElement('span');
     notice.className = 'saved-filter-unmatched';
     const title = document.createElement('strong');
-    title.textContent = scoringClosed ? 'No scoring is open' : 'No Saved Filter matches the configuration';
+    title.textContent = 'No Saved Filter matches the configuration';
     const text = document.createElement('span');
-    text.textContent = scoringClosed
-      ? 'Choose a Favourite Scoring in the Filter Navigator, or set the Context Filters and Calculate Scoring.'
-      : 'Choose a Favourite Scoring in the Filter Navigator, or calculate a new scoring with this configuration (Calculate Scoring).';
+    text.textContent = 'Choose a Favourite Scoring in the Filter Navigator, or calculate a new scoring with this configuration (Calculate Scoring).';
     notice.append(title, text);
     return notice;
   }
@@ -2822,7 +2790,7 @@
       actions.append(cdrButton, idBadge, rename, duplicate, pin, remove);
       // Use Filter makes it the Saved Filter of the module and opens its Scoring; the one in use (selected at the top of
       // the module, with its results shown) has the In Use label instead.
-      const inUse = id === selectedSavedFilterId && !selectionUnmatched && !scoringClosed;
+      const inUse = id === selectedSavedFilterId && !selectionUnmatched;
       const use = document.createElement(inUse ? 'span' : 'button');
       if (inUse) {
         use.className = 'saved-filter-use saved-filter-in-use';
@@ -2892,7 +2860,7 @@
         selectedCardShown = true;
       }
     }
-    if (scoringClosed || (selectionUnmatched && !(typeof currentResultsSavedFilterId !== 'undefined' && currentResultsSavedFilterId))) {
+    if (selectionUnmatched && !(typeof currentResultsSavedFilterId !== 'undefined' && currentResultsSavedFilterId)) {
       selectedSavedFilterCard.replaceChildren(unmatchedSelectionNotice());
       selectedCardShown = false;
     }
@@ -2902,8 +2870,6 @@
       card.replaceChildren(...Array.from(selectedSavedFilterCard.childNodes, node => node.cloneNode(true)));
       card.classList.toggle('is-folded', selectedCardShown && !selectedSavedFilterUnfolded);
     }
-    // Close Scoring closes the Saved Filter shown, when there is one.
-    if (closeScoringButton) closeScoringButton.disabled = scoringClosed || !selectedSavedFilterId;
     syncSavedFilterLists();
     // An open Filter Navigator follows the Favourite Scorings (their status, a new one, one deleted).
     if (navigatorDialog?.open) renderSavedFilterNavigator();
@@ -3022,7 +2988,6 @@
   function setExportLinks(savedFilterId, enabled) {
     // The scoring shown is exported by its Saved Filter, also with changes not calculated yet (its results stay in
     // sight); not once it is closed.
-    enabled = enabled && !(typeof scoringClosed !== 'undefined' && scoringClosed);
     for (const [kind, link] of Object.entries(exportLinks).flatMap(([name, links]) => [links].flat().map(item => [name, item]))) {
       if (!link) continue;
       link.hidden = false;
@@ -11399,9 +11364,8 @@
       requestedSavedFilterIdPending.value = null;
       const retained = !requested && userSelectedSavedFilter && selectedSavedFilterId
         ? ordered.find(savedFilter => savedFilterIdOf(savedFilter) === selectedSavedFilterId) : null;
-      if (requested) reopenScoring();
-      // After Close Scoring, none opens on its own.
-      selectedSavedFilter = requested || retained || (scoringClosed ? null : ordered.find(isComplete) || ordered[0]) || null;
+      // A scoring is always open: the one asked for, the one in use, else the first one calculated.
+      selectedSavedFilter = requested || retained || ordered.find(isComplete) || ordered[0] || null;
       selectedSavedFilterId = selectedSavedFilter ? savedFilterIdOf(selectedSavedFilter) : null;
       userSelectedSavedFilter = Boolean(requested || retained);
       renderSavedFilters();
@@ -11530,7 +11494,6 @@
       selectedSavedFilter = savedFilter;
       userSelectedSavedFilter = true;
       showUnmatchedSelection(false);
-      reopenScoring();
       if (force) resultCache.delete(id);
       const cached = Boolean(body.cached);
       if (cached && (body.scoring || body.gap)) {
@@ -11742,7 +11705,6 @@
   baselineInput.addEventListener('input', updateSelection);
   calculateButton.addEventListener('click', () => createSavedFilter(false));
   recalculateButton.addEventListener('click', () => createSavedFilter(true));
-  closeScoringButton?.addEventListener('click', closeScoring);
   document.addEventListener('click', event => {
     for (const selector of savedFilterSelectors) if (!selector.contains(event.target)) selector.open = false;
   });
@@ -11775,7 +11737,6 @@
     calculationPanel?.classList.toggle('is-editing-saved-filter', editing);
     calculateButton.hidden = editing;
     recalculateButton.hidden = editing;
-    if (closeScoringButton) closeScoringButton.hidden = editing;
     if (editSaveButton) editSaveButton.hidden = !editing;
     if (editCancelButton) editCancelButton.hidden = !editing;
   }
@@ -11987,7 +11948,6 @@
     }
     restoreCalculationSelectionFromSavedFilter(savedFilter);
     showUnmatchedSelection(false);
-    reopenScoring();
     // Opening it with Use Filter counts as a use.
     requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/use${source ? `?source=${encodeURIComponent(source)}` : ''}`,
       {method: 'POST'})
@@ -12240,7 +12200,7 @@
     // What tells two Favourite Scorings apart is found among all of them, so it does not change while searching.
     const tree = savedFilterNavigatorTree(entries);
     const found = new Set(savedFilterNavigatorFound(entries, query).map(entry => entry.id));
-    const inUseId = selectedSavedFilterId && !selectionUnmatched && !scoringClosed ? selectedSavedFilterId : '';
+    const inUseId = selectedSavedFilterId && !selectionUnmatched ? selectedSavedFilterId : '';
     const focusedKey = navigatorTree.contains(document.activeElement) ? document.activeElement.dataset?.navigatorKey : '';
     const isOpen = key => (searching ? !navigatorSearchCollapsed.has(key) : navigatorExpanded.has(key));
     const items = [];
@@ -12354,7 +12314,7 @@
     if (!savedFilter) return;
     const origin = navigatorOrigin;
     navigatorDialog.close();
-    if (String(id) === selectedSavedFilterId && !selectionUnmatched && (typeof selectionMatchesShown === 'undefined' || selectionMatchesShown) && !scoringClosed) return;
+    if (String(id) === selectedSavedFilterId && !selectionUnmatched && (typeof selectionMatchesShown === 'undefined' || selectionMatchesShown)) return;
     useSavedFilter(savedFilter, {fromDropdown: origin, source: 'navigator'});
   }
 
@@ -12712,7 +12672,6 @@
 
   // The Saved Filter whose results are shown, or calculated to be shown (none while the scoring is closed).
   function shownSavedFilterId() {
-    if (scoringClosed) return '';
     if (currentResultsSavedFilterId) return String(currentResultsSavedFilterId);
     return selectedSavedFilter && isActive(selectedSavedFilter) ? String(selectedSavedFilterId || '') : '';
   }
@@ -12863,7 +12822,7 @@
     const starred = savedFilters.filter(savedFilter => savedFilter.pinned).length;
     if (favouritesCount) favouritesCount.textContent = String(starred);
     // Nothing is shown: no scoring open, or a selection that is no Saved Filter without results to show.
-    const nothingShown = scoringClosed || (!shownSavedFilterId() && (selectionUnmatched || !selectedSavedFilterId));
+    const nothingShown = !shownSavedFilterId() && (selectionUnmatched || !selectedSavedFilterId);
     if (configStartGuide) {
       configStartGuide.hidden = !nothingShown;
       if (configStartGuideFavourites) configStartGuideFavourites.hidden = !starred;
@@ -13305,7 +13264,6 @@
   syncResultTableControls();
   applyNrFilter(false);
   // Closed before the page was reloaded: it stays closed.
-  if (scoringClosed) syncResultsShown();
   // The maps of the Postal Codes: a Saved Filter can only choose an Own file the workspace has.
   async function loadPostalMaps() {
     if (!areaSummaryPostalMap) return;

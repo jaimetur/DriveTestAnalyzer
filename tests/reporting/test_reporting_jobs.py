@@ -1177,3 +1177,10 @@ def test_renaming_a_report_renames_its_schedule(client):
     assert client.put(url, json={'name': 'Weekly v3', 'definition': weekly['definition']}).status_code == 200
     assert report_tasks.report_task(core.repository, weekly['id'])['name'] == 'Weekly v3'
     assert client.post('/api/reporting/bundle-report-template/favourites/999999/rename', json={'name': 'Gone'}).status_code == 404
+
+
+def test_on_phones_the_report_editor_ends_above_the_bottom_bar():
+    """The bottom bar of the phones covered the Back, Close and Save buttons at the foot of the report editor."""
+    styles = (Path(__file__).parents[2] / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
+    phone = styles[styles.index('@media (max-width: 900px) {'):]
+    assert ':root.has-bottom-nav .rp-editor:not([hidden]) { bottom: var(--bottom-nav, 0px); padding-bottom: 0; }' in phone

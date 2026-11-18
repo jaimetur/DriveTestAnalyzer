@@ -394,6 +394,8 @@ button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: under
   .report-jobs.is-editing .rp-list { position: static; max-height: none; overflow: visible; }
   .rp-editor:not([hidden]) { position: fixed; inset: 0; z-index: 60; border: 0; border-radius: 0;
     padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  /* Above the bottom bar of the phones, which would cover its buttons (it keeps the safe area below). */
+  :root.has-bottom-nav .rp-editor:not([hidden]) { bottom: var(--bottom-nav, 0px); padding-bottom: 0; }
   html:has(.report-jobs.is-editing), html:has(.report-jobs.is-editing) body { overflow: hidden; }
   /* (A blurred panel would hold the editor inside it instead of over the page.) */
 .report-jobs.is-editing #rp-reports { backdrop-filter: none; -webkit-backdrop-filter: none; }

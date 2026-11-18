@@ -102,8 +102,7 @@ const isActive = savedFilter => savedFilter.status === 'processing';
 const progressValue = () => 40;
 const deletingSavedFilterIds = new Set();
 const syncSavedFiltersBulk = () => {};
-let selectionUnmatched = false, scoringClosed = false;
-const closeScoringButton = {disabled: true};
+let selectionUnmatched = false;
 // No Filter Navigator is open.
 const navigatorDialog = null;
 const unfoldedSavedFilters = new Map();
@@ -113,8 +112,6 @@ renderSavedFilters();
 const latest = selectedSavedFilterCard.textContent;
 const copied = [otherSelectedCard.textContent === latest, otherSelectedCard.classList.contains('is-folded'),
   otherSelectedCard.children[0] !== selectedSavedFilterCard.children[0]];
-// Close Scoring closes the Saved Filter shown.
-const closeEnabled = !closeScoringButton.disabled;
 const cardOf = row => row.children.find(child => child.dataset.savedFilterId);
 const useOf = row => row.children.find(child => child.className.split(' ').includes('saved-filter-use'));
 const deleteOf = row => row.children.find(child => child.className === 'saved-filter-actions').children.at(-1);
@@ -170,15 +167,10 @@ renderSavedFilters();
 const unmatchedCard = selectedSavedFilterCard.textContent;
 const unmatchedFolded = selectedSavedFilterCard.classList.contains('is-folded');
 selectionUnmatched = false;
-// Closed, no scoring is open: the card says so and Close Scoring is disabled.
-scoringClosed = true;
-renderSavedFilters();
-const closed = {card: selectedSavedFilterCard.textContent, closeDisabled: closeScoringButton.disabled};
-scoringClosed = false;
 savedFilters.length = 0;
 renderSavedFilters();
 process.stdout.write(JSON.stringify({latest, copied, earlier, earlierUse, cards, separateCopy, selectedHasHead, selectedScope, selectedFolded, historyMatches, unfolded, historyCounts,
-  unstarred, unmatchedCard, unmatchedFolded, closeEnabled, closed, emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
+  unstarred, unmatchedCard, unmatchedFolded, emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
 '''
     result = _run_node_json(program, {})
     assert 'Latest savedFilter' in result['latest'] and 'Profile A' in result['latest']
@@ -205,8 +197,6 @@ process.stdout.write(JSON.stringify({latest, copied, earlier, earlierUse, cards,
     assert result['unstarred']['counts'] == ['1 Favourite Scoring', '1 Favourite Scoring']
     assert 'No Saved Filter matches the configuration' in result['unmatchedCard']
     assert 'Calculate Scoring' in result['unmatchedCard'] and 'Earlier savedFilter' not in result['unmatchedCard']
-    assert result['closeEnabled'] is True
-    assert result['closed']['card'].startswith('No scoring is open') and result['closed']['closeDisabled'] is True
     assert 'No Favourite Scorings yet' in result['emptyHistory']
     assert result['empty'] == 'No Saved Filters yet'
 
@@ -277,9 +267,8 @@ const savedFilterSelector = {open: true, contains: () => LIST_INDEX === 0, query
 const savedFilterSelectors = [{open: true, contains: () => false}, savedFilterSelector];
 const persistScoringViewState = () => {persisted = true;};
 const restoreCalculationSelectionFromSavedFilter = savedFilter => {restored = savedFilter.id;};
-let unmatched = true, reopened = false;
+let unmatched = true;
 const showUnmatchedSelection = value => {unmatched = value;};
-const reopenScoring = () => {reopened = true;};
 let editingSavedFilter = null;
 const stopSavedFilterEdit = () => { editingSavedFilter = null; };
 const loadSavedFilter = async (savedFilter, force) => {loaded = {id: savedFilter.id, force};};
@@ -303,7 +292,7 @@ const unfoldedSavedFilters = new Map();
   // Use Filter opens it.
   await handler({target: {closest: selector => selector === '[data-saved-filter-use]' ? {dataset: {savedFilterUse: '15'}} : null}});
   const selection = {loaded, persisted, focused, open: savedFilterSelectors.some(selector => selector.open), selectedSavedFilterId, userSelectedSavedFilter, restored,
-    unmatched, reopened};
+    unmatched};
   loaded = null;
   await handler({target: {closest: selector => selector === '[data-delete-saved-filter-id]' ? {dataset: {deleteSavedFilterId: '20'}} : null}});
   await new Promise(resolve => setTimeout(resolve));
@@ -315,8 +304,8 @@ const unfoldedSavedFilters = new Map();
     assert result['selection'] == {
         'loaded': {'id': '15', 'force': True}, 'persisted': True, 'focused': True,
         'open': False, 'selectedSavedFilterId': '15', 'userSelectedSavedFilter': True, 'restored': '15',
-        # Opened, its selection is a Saved Filter again: its card and results show, also after Close Scoring.
-        'unmatched': False, 'reopened': True,
+        # Opened, its selection is a Saved Filter again: its card and results show.
+        'unmatched': False,
     }
     assert result['deleted'] == '20' and result['loaded'] is None
     # Opening it with Use Filter counts as a use.
@@ -348,14 +337,11 @@ setExportLinks('21', true);
 const available = links.map(link => ({hidden: link.hidden, disabled: link.attributes['aria-disabled'], tabIndex: link.tabIndex, href: link.href}));
 setExportLinks('', false);
 const reset = links.map(link => link.attributes['aria-disabled']);
-// The scoring shown stays exportable with changes not calculated yet (its results stay in sight); not once closed.
+// The scoring shown stays exportable with changes not calculated yet (its results stay in sight).
 selectionUnmatched = true;
 setExportLinks('21', true);
 const unmatched = links.map(link => link.attributes['aria-disabled']);
-var scoringClosed = true;
-setExportLinks('21', true);
-const closed = links.map(link => link.attributes['aria-disabled']);
-process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched, closed}));
+process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched}));
 '''
     result = _run_node_json(program, {})
     assert all(link == {'hidden': False, 'disabled': 'true', 'tabIndex': -1, 'href': '#'}
@@ -366,7 +352,6 @@ process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched, c
     assert ['gap_kpi_order=all' in link['href'] for link in result['available']] == [False, False, True]
     assert result['reset'] == ['true', 'true', 'true']
     assert result['unmatched'] == ['false', 'false', 'false']
-    assert result['closed'] == ['true', 'true', 'true']
 
 
 def test_reload_opens_scoring_dimmed_at_the_saved_position_until_it_is_drawn():

@@ -427,8 +427,9 @@ def test_a_saved_filter_opened_from_the_saved_filters_panel_shows_its_results():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     assert "const resultsPanel = root.querySelector('.scoring-results-panel');" in script
     assert "if (resultsPanel && typeof showSectionAtTop === 'function') showSectionAtTop(resultsPanel);" in script
-    assert '    else showResults();' in script
-    assert 'if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();' in script
+    # (Opened on its own from the blocks, quietly, the page stays where it is.)
+    assert '    else if (!quiet) showResults();' in script
+    assert 'if (!fromDropdown && !quiet && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();' in script
 
 
 def test_a_restored_selection_keeps_its_filters_until_the_lists_of_its_nr_mode_arrive():
