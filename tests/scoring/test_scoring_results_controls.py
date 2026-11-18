@@ -1697,6 +1697,8 @@ const context = {
   calculateButton: {disabled: false}, recalculateButton: {disabled: false},
   // The Saved Filter 8 is the one open: a selection that is another one up to date opens it on its own (ticket #168).
   loadingResults: new Set(), scoringClosed: false, selectedSavedFilterId: '8',
+  UP_TO_DATE_MESSAGE: 'This selection is a scoring already calculated and up to date: Open Scoring opens it.',
+  OPENING_MESSAGE: 'Opening this scoring…',
   useSavedFilter: (record, options) => opened.push([record.id, options.quiet, options.source]),
   selectedLevels: () => ['City'], selectedDatasetIds: () => [12, 14],
   scoringProfileSelect: {value: 'profile-a'}, nrFilter: {value: 'NSA'},
@@ -1799,7 +1801,7 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
     # Filters used before: Calculate opens them (calculated again when out of date), Recalculate calculates them again;
     # with their result up to date the button reads Open Scoring.
     assert result['completed'] == [False, False, True,
-                                   'This selection is a Saved Filter with its result up to date: Open Scoring opens it.']
+                                   'This selection is a scoring already calculated and up to date: Open Scoring opens it.']
     assert result['shown'][0] is False and True in result['shown']
     assert result['active'] == [True, True]
     assert result['refreshing'] == [False, True, 3] and result['refreshed'] == [True, True]

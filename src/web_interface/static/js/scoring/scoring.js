@@ -1699,6 +1699,9 @@
   const OPEN_ICON = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
     + 'stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 15.5v-10a1 1 0 0 1 1-1h4l1.8 1.8H15a1 1 0 0 1 1 1V8.5"/>'
     + '<path d="M2.5 15.5 4.8 9.2a1 1 0 0 1 .94-.7H17.6a.6.6 0 0 1 .57.8l-2 5.6a1 1 0 0 1-.94.6H2.5z"/></svg>';
+  // (Recalculate is offered for the scoring shown, which a selection with this message is not.)
+  const UP_TO_DATE_MESSAGE = 'This selection is a scoring already calculated and up to date: Open Scoring opens it.';
+  const OPENING_MESSAGE = 'Opening this scoring…';
   function showCalculateAction(open) {
     const action = open ? 'open' : 'calculate';
     if (!calculateButton || (calculateButton.dataset.action || 'calculate') === action) return;
@@ -1750,11 +1753,10 @@
           text = `${verb} the scoring of the selected CDRs and filters…`;
           kind = 'busy';
         } else if (existing?.up_to_date && loadingResults.has(String(savedFilterIdOf(existing)))) {
-          text = 'Opening this Saved Filter…';
+          text = OPENING_MESSAGE;
           kind = 'busy';
         } else if (existing?.up_to_date) {
-          // (Recalculate is offered for the scoring shown, which this selection is not.)
-          text = 'This selection is a Saved Filter with its result up to date: Open Scoring opens it.';
+          text = UP_TO_DATE_MESSAGE;
         } else if (existing) {
           text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs, methodology and Postal Codes map.';
         }
@@ -11300,6 +11302,11 @@
         payload = await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`);
       } finally {
         loadingResults.delete(id);
+        // Opened: the selection is that Saved Filter, up to date (the strip then says nothing new).
+        if (selectionStatus.text === OPENING_MESSAGE) {
+          selectionStatus = {...selectionStatus, text: UP_TO_DATE_MESSAGE, kind: ''};
+          setMessage(selectionStatus.text, selectionStatus.kind);
+        }
         if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
       }
       if (deletedSavedFilterIds.has(id) || selectedSavedFilterId !== id) return;
