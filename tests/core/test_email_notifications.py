@@ -344,7 +344,7 @@ def test_the_users_chosen_in_email_delivery_are_also_told_of_their_own_ticket_ch
     assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == ['EOWNER']
     assert logged('save_email_delivery')[-1]['changes']['own_ticket_changes_users'] == [[], ['EOWNER']]
     page = client.get('/application-config').text
-    assert 'Users Told Of Their Own Changes' in page
+    assert 'Also Email Their Own Changes To' in page
     assert '<option value="EOWNER" selected>Eowner User (EOWNER)</option>' in page and '<option value="EREPORT" >' in page
     # The chosen user gets the emails of the changes it makes to its own tickets; the others still do not.
     told = {}
@@ -379,7 +379,7 @@ def test_whoever_commented_a_ticket_and_the_users_told_of_every_ticket_get_its_e
     assert core.email_delivery_settings(core.repository)['every_ticket_users'] == ['EWATCH']
     assert logged('save_email_delivery')[-1]['changes']['every_ticket_users'] == [[], ['EWATCH']]
     page = client.get('/application-config').text
-    assert 'Users Told Of Every Ticket' in page and 'name="every_ticket_users"' in page
+    assert 'Email Every Ticket To' in page and 'name="every_ticket_users"' in page
 
     def told(action):
         count = len(flow)

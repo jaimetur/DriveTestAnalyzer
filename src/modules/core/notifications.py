@@ -322,7 +322,7 @@ def ticket_action(event: str, changes: dict[str, Any] | None = None) -> str:
 def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, event: str, base_url: str, *,
                   ticket: dict[str, Any] | None = None, changes: dict[str, Any] | None = None, comment: str = '',
                   files: Iterable[str] = ()) -> None:
-    """Tell the reporter of a ticket, whoever commented it, the users told of every ticket and the reporters of the tickets
+    """Tell the reporter of a ticket, whoever commented it, the users of Email Every Ticket To and the reporters of the tickets
     it mentions of a change made by someone else (the reporter of a new ticket also gets its confirmation). ``base_url`` is the address of the tool for its link; ``ticket`` is
     the one deleted, when it no longer exists."""
     from src.modules.ticket_center.ticket_center import get_ticket
