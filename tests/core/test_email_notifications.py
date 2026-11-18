@@ -523,3 +523,31 @@ def test_the_login_page_tells_to_look_in_the_junk_folder_only_for_a_sender_outsi
         assert 'data-junk-notice hidden>' not in client.get('/login').text
     use_flow(from_address='dt-analyzer@example.com')
     assert 'data-junk-notice hidden>' not in client.get('/login').text
+
+
+def test_every_email_of_a_ticket_goes_in_one_conversation_of_the_mail_clients(client, flow, monkeypatch):
+    """Through SMTP the emails of a ticket carry the same conversation headers (Outlook: Thread-Index and Thread-Topic;
+    Gmail and others: References), each with a Message-ID of its own; other tickets go in other conversations."""
+    settings = {'from_name': 'DriveTest Analyzer', 'from_address': 'dt-analyzer@example.com'}
+    first, second, other, plain = (
+        email_delivery.build_email(settings, ['user@example.com'], 'Ticket #168: Slow', 'Text', '<p>Text</p>', [], thread=thread)
+        for thread in ('ticket-168', 'ticket-168', 'ticket-169', ''))
+    for name in ('In-Reply-To', 'References', 'Thread-Index', 'Thread-Topic'):
+        assert first[name] and first[name] == second[name] and plain[name] is None
+    assert first['References'] == '<dt-analyzer-ticket-168@example.com>' and first['Thread-Topic'] == 'DT Analyzer - Ticket #168: Slow'
+    assert len(__import__('base64').b64decode(first['Thread-Index'])) == 22
+    assert first['Thread-Index'] != other['Thread-Index'] and first['Message-ID'] != second['Message-ID']
+    # The ticket emails are sent with the conversation of their ticket.
+    use_flow(notify_tickets=True)
+    sent = []
+    monkeypatch.setattr(notifications, 'send_email', lambda *args, **kwargs: sent.append(kwargs))
+    user_id = core.repository.create_user('ETHREAD', 'secret123', 'user-editor', first_name='Ethread', last_name='User',
+                                          email='thread@example.com')
+    profile = next(item['id'] for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
+    core.repository.set_users_modules_profile([user_id], profile)
+    core.invalidate_module_access_cache()
+    login(client, 'ETHREAD', 'secret123')
+    number = client.post('/api/tickets', data={'title': 'Export fails', 'description': 'It fails.', 'module': 'scoring',
+                                               'priority': 'P2', 'ticket_type': 'bug'}).json()['id']
+    notifications.flush_ticket_emails()
+    assert sent and all(item['thread'] == f'ticket-{number}' and item['kind'] == 'ticket' for item in sent)

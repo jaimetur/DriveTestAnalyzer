@@ -128,7 +128,7 @@ def text_block(text: str, *, base_url: str = '', tickets: dict[int, str] | None 
 
 def deliver(repository: Any, *, kind: str, recipients: list[str], subject: str, html_body: str, cc: Iterable[str] = (),
             reply_to: str = '', actor: str = '', details: dict[str, Any] | None = None, background: bool = True,
-            switch: str = '') -> bool:
+            switch: str = '', thread: str = '') -> bool:
     """Send one email when Email Delivery is configured (and its ``switch`` is on), recording it in App Events.
 
     In the background it returns whether it was queued; otherwise whether it was sent."""
@@ -141,7 +141,8 @@ def deliver(repository: Any, *, kind: str, recipients: list[str], subject: str, 
 
     def send() -> bool:
         try:
-            send_email(settings, recipients, subject, html_to_text(html_body), html_body, cc=copied, reply_to=reply_to, kind=kind)
+            send_email(settings, recipients, subject, html_to_text(html_body), html_body, cc=copied, reply_to=reply_to, kind=kind,
+                       thread=thread)
         except Exception as exc:  # The error is recorded as it is: the action that sent it already succeeded.
             repository.try_add_log(actor or 'system', 'email_failed', json.dumps({**logged, 'error': str(exc)}, ensure_ascii=False))
             return False
@@ -410,8 +411,10 @@ def _send_ticket_email(key: tuple[str, int], token: object | None) -> None:
             events = [change['event'] for change in group]
             details = {'ticket_id': int(ticket['id']), 'event': events[-1], 'user': str(pending['username']).upper(),
                        'about_ticket': pending['own_ticket'], **({'events': events} if len(events) > 1 else {})}
+            # Every email of a ticket in one conversation of the mail clients.
             deliver(repository, kind='ticket', recipients=[pending['address']], subject=subject, html_body=body,
-                    actor=str(group[-1].get('actor') or ''), details=details, switch='notify_tickets', background=False)
+                    actor=str(group[-1].get('actor') or ''), details=details, switch='notify_tickets', background=False,
+                    thread=f"ticket-{int(ticket['id'])}")
     except Exception as exc:  # Never let an email break the thread that sends it.
         repository.try_add_log(str(changes[-1].get('actor') or 'system'), 'email_failed', json.dumps({
             'kind': 'ticket', 'ticket_id': key[1], 'events': [change['event'] for change in changes], 'error': str(exc)},

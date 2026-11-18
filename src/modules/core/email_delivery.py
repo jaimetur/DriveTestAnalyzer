@@ -223,8 +223,19 @@ def subject_line(subject: str) -> str:
     return subject if subject.startswith(SUBJECT_PREFIX) else f'{SUBJECT_PREFIX}{subject}'
 
 
+def thread_headers(thread: str, domain: str, subject: str) -> dict[str, str]:
+    """The headers that put every email of one conversation (``thread``, such as ``ticket-168``) together, the same for
+    each of them: Outlook groups by Thread-Index and Thread-Topic, Gmail and the other mail clients by References."""
+    digest = hashlib.sha256(f'{domain}/{thread}'.encode('utf-8')).digest()
+    root = f'<dt-analyzer-{thread}@{domain}>'
+    # (Thread-Index: a reserved byte, the 5 bytes of the start time and the 16 bytes of the identity of the conversation.)
+    return {'In-Reply-To': root, 'References': root, 'Thread-Topic': subject,
+            'Thread-Index': base64.b64encode(b'\x01' + digest[:21]).decode('ascii')}
+
+
 def build_email(settings: dict[str, Any], recipients: list[str], subject: str, text: str, html: str,
-                attachments: list[tuple[str, Path]], *, cc: list[str] | None = None, reply_to: str = '') -> EmailMessage:
+                attachments: list[tuple[str, Path]], *, cc: list[str] | None = None, reply_to: str = '',
+                thread: str = '') -> EmailMessage:
     message = EmailMessage()
     message['Subject'] = subject_line(subject)
     message['From'] = formataddr((settings.get('from_name') or '', settings['from_address']))
@@ -236,6 +247,10 @@ def build_email(settings: dict[str, Any], recipients: list[str], subject: str, t
     message['Message-ID'] = make_msgid(domain=settings['from_address'].rsplit('@', 1)[-1])
     # (A message without its Date is scored as spam by the filters of the recipients, Microsoft 365 among them.)
     message['Date'] = formatdate(localtime=True)
+    if thread:
+        # The emails of one conversation (every email of a ticket) are grouped by the mail clients.
+        for name, value in thread_headers(thread, settings['from_address'].rsplit('@', 1)[-1], message['Subject']).items():
+            message[name] = value
     message.set_content(text)
     message.add_alternative(html, subtype='html')
     for file_name, path in attachments:
@@ -277,7 +292,7 @@ def post_webhook(url: str, payload: dict[str, Any]) -> None:
 
 def send_email(settings: dict[str, Any], recipients: list[str], subject: str, text: str, html: str,
                attachments: list[tuple[str, Path]] | None = None, *, cc: list[str] | None = None, reply_to: str = '',
-               kind: str = 'message') -> None:
+               kind: str = 'message', thread: str = '') -> None:
     """Send one message through the configured SMTP server or Power Automate flow; raises on failure."""
     if mirror_of():
         raise RuntimeError(f'This server is a mirror of {mirror_of()}: it sends no emails, the installation it is '
@@ -300,7 +315,7 @@ def send_email(settings: dict[str, Any], recipients: list[str], subject: str, te
             f'The attachments total {total_bytes / 1024 / 1024:.1f} MB, above the '
             f'{settings.get("max_attachments_mb")} MB limit set in Application Config.'
         )
-    message = build_email(settings, recipients, subject, text, html, attachments, cc=cc, reply_to=reply_to)
+    message = build_email(settings, recipients, subject, text, html, attachments, cc=cc, reply_to=reply_to, thread=thread)
     host, port, security = settings['host'], int(settings['port']), settings['security']
     context = ssl.create_default_context()
     if security == 'ssl':
