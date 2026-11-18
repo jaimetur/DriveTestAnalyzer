@@ -335,14 +335,14 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
     # The Scoring Trends take All available campaigns by default.
     assert core._scenario_area_summary(Repository(), scenario) == {'breakdown': 'Region', 'cities': ['London'],
                                                                    'time_split': 'Campaign', 'campaigns': ['@all-campaigns']}
-    # Main Cities stay as such in the Saved Filter of the scenario: the workspace's when it is calculated.
+    # Main Cities stay as such in the Saved Scoring of the scenario: the workspace's when it is calculated.
     scenario['area_summary'] = {'enabled': True, 'breakdown': 'None', 'cities': ['London'], 'main_cities': True}
     assert core._scenario_area_summary(Repository(), scenario) == {
         'breakdown': None, 'cities': ['London'], 'time_split': 'Campaign', 'main_cities': True}
     # The campaigns of the Scoring Trends join them; alone, they give the scoring trend of those campaigns.
     scenario['area_summary'] = {**scenario['area_summary'], 'campaigns': ['@latest-2-campaigns']}
     assert core._scenario_area_summary(Repository(), scenario)['campaigns'] == ['@latest-2-campaigns']
-    # Always included: one saved without areas takes them from the normalization of the Saved Filter (Region and London).
+    # Always included: one saved without areas takes them from the normalization of the Saved Scoring (Region and London).
     trends_only = {**scenario, 'area_summary': {'enabled': False, 'campaigns': ['2026-Q1', '2026-Q2']}}
     assert core._scenario_area_summary(Repository(), trends_only) == core._scenario_area_summary(
         Repository(), {**trends_only, 'context_filters': {'Region': ['Vendor A']}}) == {
@@ -368,10 +368,10 @@ def test_scenarios_of_the_whole_country_calculate_their_area_summary(monkeypatch
         return {'id': 1, 'status': 'completed', 'levels': list(levels)}, True
 
     monkeypatch.setattr(core, 'validate_complete_scoring_cdr_selection', lambda *_args, **_kwargs: [1])
-    monkeypatch.setattr(core, 'save_saved_filter', create)
-    monkeypatch.setattr(core, 'get_saved_filter', lambda _repository, job_id, include_result=False: {
+    monkeypatch.setattr(core, 'save_saved_scoring', create)
+    monkeypatch.setattr(core, 'get_saved_scoring', lambda _repository, job_id, include_result=False: {
         'id': job_id, 'status': 'completed', 'result': {}})
-    core._scenario_saved_filter(Repository(), {'dataset_ids': [1], 'nr_mode': 'NSA'},
+    core._scenario_saved_scoring(Repository(), {'dataset_ids': [1], 'nr_mode': 'NSA'},
                                normalize_report_configuration({'scenarios': [default_scenario()]})['scenarios'][0], 'super')
     # Also when the scenario is calculated again without a Campaign level of a single value.
     assert calculated and all(item == {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign',
@@ -450,7 +450,7 @@ def test_the_area_summary_has_its_own_time_split(monkeypatch):
 def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_api, monkeypatch):
     from types import ModuleType
 
-    from src.modules.scoring import saved_filters
+    from src.modules.scoring import saved_scorings
 
     client = scoring_api['client']
     repository = scoring_api['repository']
@@ -461,23 +461,23 @@ def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_ap
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None, **kwargs: (
         scoring_engine.calculate_scoring({'voice': pd.DataFrame(ROWS)}, levels, baseline_operator=baseline_operator,
                                          configuration=configuration, **kwargs))
-    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    monkeypatch.setattr(saved_scorings, '_scoring_engine', lambda: engine)
     request = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
                'baseline_operator': 'EE', 'area_summary': {'time_split': 'All', 'breakdown': 'Region', 'cities': []}}
     # Area filters are allowed: the summary is scored on the whole country.
-    filtered = client.post('/api/scoring/saved-filters', json={**request, 'context_filters': {'City': ['London']}})
+    filtered = client.post('/api/scoring/saved-scorings', json={**request, 'context_filters': {'City': ['London']}})
     assert filtered.status_code == 200, filtered.text
-    assert filtered.json()['saved_filter']['area_summary'] == {'breakdown': 'Region', 'cities': [], 'time_split': 'All'}
-    client.delete(f"/api/scoring/saved-filters/{filtered.json()['saved_filter']['id']}")
-    created = client.post('/api/scoring/saved-filters', json=request)
+    assert filtered.json()['saved_scoring']['area_summary'] == {'breakdown': 'Region', 'cities': [], 'time_split': 'All'}
+    client.delete(f"/api/scoring/saved-scorings/{filtered.json()['saved_scoring']['id']}")
+    created = client.post('/api/scoring/saved-scorings', json=request)
     assert created.status_code == 200, created.text
-    job_id = created.json()['saved_filter']['id']
-    assert created.json()['saved_filter']['area_summary'] == {'breakdown': 'Region', 'cities': [], 'time_split': 'All'}
-    saved_filters.calculate_saved_filter(repository, job_id)
-    assert client.post('/api/scoring/saved-filters/match', json=request).json()['saved_filter']['id'] == job_id
+    job_id = created.json()['saved_scoring']['id']
+    assert created.json()['saved_scoring']['area_summary'] == {'breakdown': 'Region', 'cities': [], 'time_split': 'All'}
+    saved_scorings.calculate_saved_scoring(repository, job_id)
+    assert client.post('/api/scoring/saved-scorings/match', json=request).json()['saved_scoring']['id'] == job_id
     # A calculation without the summary is another job.
-    assert client.post('/api/scoring/saved-filters/match', json={**request, 'area_summary': None}).json()['saved_filter'] is None
-    result = client.get(f'/api/scoring/saved-filters/{job_id}').json()
+    assert client.post('/api/scoring/saved-scorings/match', json={**request, 'area_summary': None}).json()['saved_scoring'] is None
+    result = client.get(f'/api/scoring/saved-scorings/{job_id}').json()
     assert 'area_summary' not in result
     summaries = result['views']['insights']['area_summaries']
     combined = next(item for item in summaries if item['environment'] == 'Combined')
@@ -514,7 +514,7 @@ def test_the_calculation_selection_keeps_the_national_and_area_summary(scoring_a
 def test_national_and_areas_trends_score_campaigns_of_their_own(scoring_api, monkeypatch):
     from types import ModuleType
 
-    from src.modules.scoring import saved_filters
+    from src.modules.scoring import saved_scorings
 
     client = scoring_api['client']
     repository = scoring_api['repository']
@@ -532,20 +532,20 @@ def test_national_and_areas_trends_score_campaigns_of_their_own(scoring_api, mon
         return scoring_engine.calculate_scoring({'voice': pd.DataFrame(rows)}, levels, baseline_operator=baseline_operator,
                                                 configuration=configuration, **kwargs)
     engine.calculate_scoring = calculate_scoring
-    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    monkeypatch.setattr(saved_scorings, '_scoring_engine', lambda: engine)
     request = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator', 'Campaign'],
                'nr_mode': 'NSA', 'baseline_operator': 'EE', 'context_filters': {'Campaign': ['2026-Q2']},
                'area_summary': {'time_split': 'Campaign', 'breakdown': 'Region', 'cities': [], 'campaigns': ['@all-campaigns']}}
-    created = client.post('/api/scoring/saved-filters', json=request)
+    created = client.post('/api/scoring/saved-scorings', json=request)
     assert created.status_code == 200, created.text
-    job_id = created.json()['saved_filter']['id']
-    assert created.json()['saved_filter']['area_summary']['campaigns'] == ['@all-campaigns']
-    assert sorted(created.json()['saved_filter']['trend_campaigns']) == ['2026-Q1', '2026-Q2']
-    saved_filters.calculate_saved_filter(repository, job_id)
-    stored = saved_filters.get_saved_filter(repository, job_id, include_internal_snapshot=True)
+    job_id = created.json()['saved_scoring']['id']
+    assert created.json()['saved_scoring']['area_summary']['campaigns'] == ['@all-campaigns']
+    assert sorted(created.json()['saved_scoring']['trend_campaigns']) == ['2026-Q1', '2026-Q2']
+    saved_scorings.calculate_saved_scoring(repository, job_id)
+    stored = saved_scorings.get_saved_scoring(repository, job_id, include_internal_snapshot=True)
     assert stored['status'] == 'completed', stored['error']
     assert sorted(stored['area_trends']['dataset_ids']) == sorted([*earlier, *scoring_api['complete_dataset_ids']])
-    result = client.get(f'/api/scoring/saved-filters/{job_id}').json()
+    result = client.get(f'/api/scoring/saved-scorings/{job_id}').json()
     # The job keeps its own campaign; the trends score every campaign.
     assert {row['campaign'] for row in result['scoring']} == {'2026-Q2'}
     insights = result['views']['insights']
@@ -557,7 +557,7 @@ def test_national_and_areas_trends_score_campaigns_of_their_own(scoring_api, mon
     assert len(trend['campaigns']) == 2 and len(trend['series']) == 2 and all(None not in series['points'] for series in trend['series'])
     reliable = result['scorings']['most_reliable']['views']['insights']
     assert reliable['campaign_trends'] and reliable['area_summaries'][0]['campaigns'] == ['2026-Q1', '2026-Q2']
-    # Without campaigns of its own a summary keeps the form (and the Saved Filter) of the summaries saved before.
+    # Without campaigns of its own a summary keeps the form (and the Saved Scoring) of the summaries saved before.
     assert normalize_area_summary_request({'breakdown': 'Region', 'campaigns': []}, {}) == {
         'breakdown': 'Region', 'cities': [], 'time_split': 'Campaign'}
     # Campaigns saved alone (when the areas could be left out) take each Region and London; an automatic choice stands alone.
@@ -602,7 +602,7 @@ def test_a_city_breakdown_with_a_city_filter_scores_those_cities_and_the_separat
     configuration = _reliable_configuration()
     kwargs = {'baseline_operator': 'EE', 'configuration': configuration}
     request = normalize_area_summary_request({'breakdown': 'City', 'cities': ['London']}, {'City': ['Cardiff']})
-    # The request keeps its form (the Saved Filters keep their identity); the calculation adds the cities of the filter.
+    # The request keeps its form (the Saved Scorings keep their identity); the calculation adds the cities of the filter.
     assert 'breakdown_cities' not in request
     areas = with_breakdown_cities(request, {'City': ['Cardiff', 'cardiff', '']})
     assert areas['breakdown_cities'] == ['Cardiff']
@@ -629,7 +629,7 @@ def test_country_areas_and_scoring_trends_can_be_switched_off():
     from src.modules.scoring.scoring_reports import _normalize_area_summary
 
     on = normalize_area_summary_request({'breakdown': 'Region', 'cities': ['London'], 'country_areas': True, 'trends': True})
-    # Switched on (the default) they are not said: Saved Filters of before keep their identity.
+    # Switched on (the default) they are not said: Saved Scorings of before keep their identity.
     assert 'country_areas' not in on and 'trends' not in on
     assert area_summary_part_enabled(on, 'country_areas') and area_summary_part_enabled(on, 'trends')
     off = normalize_area_summary_request({'breakdown': 'Region', 'cities': ['London'], 'country_areas': False, 'trends': False})
@@ -647,7 +647,7 @@ def test_the_scoring_trends_can_have_areas_of_their_own():
     )
     from src.modules.scoring.scoring_reports import _normalize_area_summary
 
-    # The same areas as Country Areas are not said: Saved Filters of before keep their identity.
+    # The same areas as Country Areas are not said: Saved Scorings of before keep their identity.
     same = normalize_area_summary_request({'breakdown': 'Region', 'cities': ['London'],
                                            'trend_breakdown': 'Region', 'trend_cities': ['London']})
     assert 'trend_cities' not in same and trend_area_summary(same) == country_area_summary(same)

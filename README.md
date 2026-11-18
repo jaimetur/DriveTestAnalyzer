@@ -405,7 +405,7 @@ DriveTestAnalyzer/
 ├── assets/scoring-report-configurations/     # Scoring report configurations added to every workspace
 ├── assets/query-builder-queries/             # Query Builder queries added to every workspace
 ├── assets/bundle-report-template-favourites/ # Reports of Reporting added to every workspace
-├── assets/scoring-favourites-filters/        # Scoring & GAP Favourite Scorings added to every workspace
+├── assets/scoring-favourite-scorings/        # Scoring & GAP Favourite Scorings added to every workspace
 ├── assets/labels-operators/                  # Operators of the 50 main countries for new workspaces
 ├── assets/labels-vendors/                    # Vendor Maps of a new workspace
 ├── assets/labels-campaigns/                  # Default Campaign Maps of every workspace

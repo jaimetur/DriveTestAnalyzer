@@ -23,7 +23,7 @@ _TEST_STORAGE = Path(tempfile.mkdtemp(prefix='drivetest-analyzer-tests-'))
 os.environ['APP_CONFIG_DIR'] = str(_TEST_STORAGE / 'config')
 os.environ['APP_DATA_DIR'] = str(_TEST_STORAGE / 'data')
 atexit.register(shutil.rmtree, _TEST_STORAGE, True)
-# The tests draw the Points Lost Map in their own process (tests/scoring/test_saved_filters.py draws one apart).
+# The tests draw the Points Lost Map in their own process (tests/scoring/test_saved_scorings.py draws one apart).
 os.environ['DTA_POINTS_LOSS_IN_PROCESS'] = '1'
 # The tests process their datasets in their own process too: a worker of its own takes most of a second to start for
 # each dataset (tests/core/test_app.py processes one in its worker, and stops one).
@@ -262,9 +262,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client_workspace_tem
 
 def remove_starter_favourites(repository) -> None:
     from src.modules.reporting import bundle_report_templates
-    from src.modules.scoring import saved_filters
+    from src.modules.scoring import saved_scorings
 
     for favourite in bundle_report_templates.list_favourites(repository):
         bundle_report_templates.delete_favourite(repository, favourite['id'])
-    for saved_filter in saved_filters.list_saved_filters(repository):
-        saved_filters.delete_saved_filter(repository, saved_filter['id'])
+    for saved_scoring in saved_scorings.list_saved_scorings(repository):
+        saved_scorings.delete_saved_scoring(repository, saved_scoring['id'])

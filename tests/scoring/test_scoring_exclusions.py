@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 from openpyxl import Workbook
 
-from src.modules.scoring import saved_filters, scoring, scoring_exclusions, scoring_history
+from src.modules.scoring import saved_scorings, scoring, scoring_exclusions, scoring_history
 from src.modules.core.repository import Repository, local_now_iso
 from tests.support.scoring_fixtures import load_initial_scoring_configuration
 
@@ -77,10 +77,10 @@ def _calls(*ids: str) -> list[dict[str, str]]:
 
 
 def _frames(repository: Repository, ids: list[int]) -> dict[str, pd.DataFrame]:
-    sources, _campaigns, _fingerprint = saved_filters._source_snapshot(repository, ids)
+    sources, _campaigns, _fingerprint = saved_scorings._source_snapshot(repository, ids)
     for source in sources:
         source['levels'] = ['Operator']
-    return saved_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns, {})
+    return saved_scorings._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns, {})
 
 
 def test_a_file_gives_each_join_id_once_with_its_reason():
@@ -138,17 +138,17 @@ def test_the_rows_of_the_excluded_calls_are_left_out_of_the_scoring(workspace):
 def test_the_calls_found_in_each_cdr_keep_the_scorings_of_the_cdrs_a_list_does_not_touch(workspace):
     repository, ids = workspace
     selected = [ids['voice'], ids['speech']]
-    _sources, _campaigns, fingerprint = saved_filters._source_snapshot(repository, selected)
-    _sources, _campaigns, q2_fingerprint = saved_filters._source_snapshot(repository, [ids['voice_q2']])
+    _sources, _campaigns, fingerprint = saved_scorings._source_snapshot(repository, selected)
+    _sources, _campaigns, q2_fingerprint = saved_scorings._source_snapshot(repository, [ids['voice_q2']])
     scoring_exclusions.create_list(repository, name='Drops', calls=_calls('0xAEE0000'), username='super')
     # While the calls are looked for, every CDR the list applies to may change.
-    assert saved_filters._source_snapshot(repository, selected)[2] != fingerprint
+    assert saved_scorings._source_snapshot(repository, selected)[2] != fingerprint
     assert scoring_exclusions.has_pending(repository)
     assert scoring_exclusions.match_pending(repository) == 5
     assert not scoring_exclusions.has_pending(repository)
     # Found in the Q3 Voice and Speech CDRs only: the Q2 CDR keeps its scorings.
-    assert saved_filters._source_snapshot(repository, [ids['voice_q2']])[2] == q2_fingerprint
-    assert saved_filters._source_snapshot(repository, selected)[2] != fingerprint
+    assert saved_scorings._source_snapshot(repository, [ids['voice_q2']])[2] == q2_fingerprint
+    assert saved_scorings._source_snapshot(repository, selected)[2] != fingerprint
     item = scoring_exclusions.list_lists(repository)[0]
     found = {entry['id']: (entry['calls'], entry['rows']) for entry in item['targets']}
     assert found[ids['voice']] == (1, 1) and found[ids['speech']] == (1, 4) and found[ids['voice_q2']] == (0, 0)
@@ -158,16 +158,16 @@ def test_the_calls_found_in_each_cdr_keep_the_scorings_of_the_cdrs_a_list_does_n
     assert scoring_exclusions.match_pending(repository) == 1
 
 
-def test_a_saved_filter_leaves_the_calls_out_and_says_so(workspace):
+def test_a_saved_scoring_leaves_the_calls_out_and_says_so(workspace):
     repository, ids = workspace
     selected = [ids['data'], ids['voice'], ids['speech']]
-    plain, _cached = saved_filters.save_saved_filter(repository, selected, ['Operator'], 'NSA')
-    plain = saved_filters.calculate_saved_filter(repository, plain['id'])
+    plain, _cached = saved_scorings.save_saved_scoring(repository, selected, ['Operator'], 'NSA')
+    plain = saved_scorings.calculate_saved_scoring(repository, plain['id'])
     scoring_exclusions.create_list(repository, name='Drops of EE', username='super',
                                    calls=_calls(*(f'0x{kind}EE{index:04d}' for kind in 'AD' for index in range(6))))
-    job, cached = saved_filters.save_saved_filter(repository, selected, ['Operator'], 'NSA')
+    job, cached = saved_scorings.save_saved_scoring(repository, selected, ['Operator'], 'NSA')
     assert not cached
-    finished = saved_filters.calculate_saved_filter(repository, job['id'])
+    finished = saved_scorings.calculate_saved_scoring(repository, job['id'])
     result = finished['result']
     # The calls are still being looked for in the CDRs: how many is not known yet, but their rows are left out.
     assert result['excluded_calls']['calls'] == 0 and result['excluded_calls']['pending_cdrs'] == 3
@@ -180,8 +180,8 @@ def test_a_saved_filter_leaves_the_calls_out_and_says_so(workspace):
     # Once the calls are found, the Scoring History indexes the CDRs without them and gives the same scores.
     scoring_history.sync_history(repository)
     assert not scoring_history.history_gap(repository, selected, ['Operator'], result['configuration'])
-    job, _cached = saved_filters.save_saved_filter(repository, selected, ['Operator'], 'NSA')
-    from_history = saved_filters.calculate_saved_filter(repository, job['id'])['result']
+    job, _cached = saved_scorings.save_saved_scoring(repository, selected, ['Operator'], 'NSA')
+    from_history = saved_scorings.calculate_saved_scoring(repository, job['id'])['result']
     assert from_history['source'] == 'history'
     assert success_ratio(from_history) == pytest.approx(success_ratio(result))
     assert any(warning.startswith('Excluded Calls: 12 calls (36 CDR rows)') for warning in from_history['warnings'])
@@ -247,7 +247,7 @@ def test_the_panel_imports_changes_and_deletes_lists_and_records_them_in_app_eve
     page = client.get('/scoring').text
     assert 'data-scoring-exclusions' in page and 'js/scoring/scoring_exclusions.js' in page and '<h2>Excluded Calls</h2>' in page
     # The panel sits below the Scoring & GAP Results and above the Favourite Scorings.
-    assert page.index('id="scoring-results-title"') < page.index('id="scoring-excluded-calls"') < page.index('class="panel collapsible-panel saved-filters-panel"')
+    assert page.index('id="scoring-results-title"') < page.index('id="scoring-excluded-calls"') < page.index('class="panel collapsible-panel saved-scorings-panel"')
     state = client.get('/api/scoring/excluded-calls').json()
     assert state['lists'] == [] and state['can_edit'] and {cdr['name'] for cdr in state['cdrs']} == {voice, speech}
     content = b'JOIN_ID;Reason\n0xAEE0000;Phone reset\n0xaee0000;\n0xAEE0001;\n'

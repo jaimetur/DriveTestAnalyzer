@@ -855,7 +855,7 @@ async function assistant(pres) {
     text(slide, label, { x: x + 0.5, y: 6.52, w: 2.4, h: 0.42, fontSize: 11, bold: true, valign: 'middle' });
   }
   slide.addNotes('The AI Assistant answers questions about the workspace asked in natural language, in any language, in a chat: '
-    + 'the scoring of the operators with any split and filter, calculated as a Saved Filter of the same selection, with a global '
+    + 'the scoring of the operators with any split and filter, calculated as a Saved Scoring of the same selection, with a global '
     + 'commentary from its Summary, the saved results, any list or statistic of the Non-Qualified Calls and the rows of the CDRs, '
     + 'the analyses of Network Insights, the charts of PPT Designer and how the tool works. Before anything reaches the AI engine '
     + '(Kiro CLI or Claude), every name of an operator, vendor, area, campaign, methodology or user is replaced by a code, and the '

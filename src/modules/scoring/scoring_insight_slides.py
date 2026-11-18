@@ -1381,7 +1381,7 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
     elsewhere) by the points of the city or Connecting Roads route that loses most among those
     measured in each one, as the web map does by default, and ranks the cities and routes; without
     map areas the cities are bubbles on the test locations. Clusters and Regions with polygons get
-    their own slide. ``postal_only``: the slides of the Postal Codes instead (of the Saved Filters that ask for them), with
+    their own slide. ``postal_only``: the slides of the Postal Codes instead (of the Saved Scorings that ask for them), with
     ``postal_note`` crediting their source.
     """
     boundaries = boundaries or (lambda _field: {})

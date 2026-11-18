@@ -34,7 +34,7 @@ def test_build_cdr_report_filename_sanitizes_and_limits_long_names():
     assert filename.endswith('.pptx')
 
 
-def test_build_scoring_report_filename_uses_saved_filter_dimensions_and_order():
+def test_build_scoring_report_filename_uses_saved_scoring_dimensions_and_order():
     filename = build_scoring_report_filename(
         datetime(2026, 9, 30, 12, 34, 56), 'NSA',
         {

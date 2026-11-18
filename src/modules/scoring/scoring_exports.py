@@ -2616,7 +2616,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
     # the workspace exports it (see scoring_export_panels).
     compared = focus
     panel_operators = views.get('_panel_operators') or _default_panel_operators(compared)
-    # The operators each section of the page has enabled (sent with the export of a Saved Filter); without them, the
+    # The operators each section of the page has enabled (sent with the export of a Saved Scoring); without them, the
     # Focus operators (every operator in the sections they do not choose), with the operators enabled or disabled in
     # any section of the page (_enabled and _disabled), as the page shows them.
     choices = views.get('_operator_choices') or {}
@@ -2967,7 +2967,7 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     if selected_environments is not None and not any(
             keep(str(matrix['context'].get('environment') or 'Unspecified'))
             for matrix in (hierarchy_matrices or matrices)):
-        raise ValueError('None of the selected environments is available for this Saved Filter.')
+        raise ValueError('None of the selected environments is available for this Saved Scoring.')
 
     areas_base = panel_operators('trends', 'areas')
     area_summaries = build_area_summary(
@@ -3488,7 +3488,7 @@ def _export_scoring_powerpoint(job: dict[str, Any], result: dict[str, Any], temp
                   (MOST_RELIABLE_SCORING, {**job, 'configuration': reliable['configuration']}, reliable)]
     if scorings:
         if reliable is None and MOST_RELIABLE_SCORING in scorings and BEST_NETWORK_SCORING not in scorings:
-            raise ValueError('This Saved Filter has no Most Reliable scoring.')
+            raise ValueError('This Saved Scoring has no Most Reliable scoring.')
         if reliable is not None:
             blocks = [block for block in blocks if block[0] in scorings]
     parts = nr_mode_parts(job, result) if nr_layout else []

@@ -42,12 +42,12 @@ def test_events_read_as_one_sentence_old_and_new() -> None:
     assert describe_app_event('login', {'success': False, 'result': 'failed', 'reason': 'invalid_credentials',
                                         'username': 'nobody'}) == 'Failed sign-in as nobody (invalid credentials).'
     # Any other action: its name and every recorded value; plain-text details are already a sentence.
-    assert describe_app_event('delete_saved_filter', {'filter_id': 9}) == 'Delete saved filter: filter ID 9.'
-    # Only the starred Saved Filters are kept: the others are named unsaved.
-    assert describe_app_event('scoring_calculation_requested', {'saved_filter_id': 57, 'starred': False, 'datasets': 18}) == (
-        'Scoring calculation requested: unsaved filter ID 57, datasets 18.')
-    assert describe_app_event('scoring_calculation_requested', {'saved_filter_id': 57, 'starred': True, 'name': 'UK'}) == (
-        'Scoring calculation requested: saved filter ID 57 (favourite), name UK.')
+    assert describe_app_event('delete_saved_scoring', {'filter_id': 9}) == 'Delete saved scoring: filter ID 9.'
+    # Only the starred Saved Scorings are kept: the others are named unsaved.
+    assert describe_app_event('scoring_calculation_requested', {'saved_scoring_id': 57, 'starred': False, 'datasets': 18}) == (
+        'Scoring calculation requested: unsaved scoring ID 57, datasets 18.')
+    assert describe_app_event('scoring_calculation_requested', {'saved_scoring_id': 57, 'starred': True, 'name': 'UK'}) == (
+        'Scoring calculation requested: saved scoring ID 57 (favourite), name UK.')
     assert describe_app_event('ticket_managed', {'ticket_id': 1, 'changes': {'status': ['new', 'resolved']}}) == (
         'Ticket managed: ticket ID 1, status new → resolved.')
     assert describe_app_event('nq_call_options', 'Non-Qualified Calls statuses and teams updated.') == (

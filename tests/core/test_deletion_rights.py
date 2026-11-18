@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from urllib.parse import quote
 
 import src.DriveTestAnalyzer as core
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from src.modules.core.deletion_rights import (
     PPT_DESIGNER, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, UNKNOWN_CREATOR_OWNER, assign_unknown_creators,
     can_change_owned, can_delete, creator_of, creators, record_creator,
@@ -29,17 +29,17 @@ def team():
     workspace_user('boss', 'admin')
 
 
-def add_saved_filter(repository, key, created_by):
+def add_saved_scoring(repository, key, created_by):
     with repository.connection() as connection:
         cursor = connection.execute(
-            f"INSERT INTO {saved_filters.SAVED_FILTERS_TABLE} (selection_key, name, nr_mode, created_by) VALUES (?, ?, 'NSA', ?)",
+            f"INSERT INTO {saved_scorings.SAVED_SCORINGS_TABLE} (selection_key, name, nr_mode, created_by) VALUES (?, ?, 'NSA', ?)",
             (key, key, created_by))
         return int(cursor.lastrowid)
 
 
-def saved_filter_ids(repository):
+def saved_scoring_ids(repository):
     with repository.connection() as connection:
-        return {int(row[0]) for row in connection.execute(f'SELECT id FROM {saved_filters.SAVED_FILTERS_TABLE}')}
+        return {int(row[0]) for row in connection.execute(f'SELECT id FROM {saved_scorings.SAVED_SCORINGS_TABLE}')}
 
 
 def test_admins_delete_everything_and_the_other_roles_what_they_created():
@@ -51,67 +51,67 @@ def test_admins_delete_everything_and_the_other_roles_what_they_created():
     assert can_delete(SimpleNamespace(role='super-admin', username='super'), '')
 
 
-def test_saved_filters_are_deleted_by_their_creator_or_an_admin(client):
+def test_saved_scorings_are_deleted_by_their_creator_or_an_admin(client):
     team()
     repository = workspace_repository()
-    mine = add_saved_filter(repository, 'alice-filter', 'alice')
-    theirs = add_saved_filter(repository, 'bob-filter', 'bob')
-    unknown = add_saved_filter(repository, 'system-filter', 'system')
+    mine = add_saved_scoring(repository, 'alice-filter', 'alice')
+    theirs = add_saved_scoring(repository, 'bob-filter', 'bob')
+    unknown = add_saved_scoring(repository, 'system-filter', 'system')
 
     login(client, 'bob', 'bob123')
-    refused = client.delete(f'/api/scoring/saved-filters/{mine}')
+    refused = client.delete(f'/api/scoring/saved-scorings/{mine}')
     assert refused.status_code == 403 and REFUSAL in refused.json()['detail']
     # A bulk delete with one of another user deletes none of them.
-    bulk = client.post('/api/scoring/saved-filters/delete', json={'ids': [theirs, mine]})
+    bulk = client.post('/api/scoring/saved-scorings/delete', json={'ids': [theirs, mine]})
     assert bulk.status_code == 403 and 'alice-filter' in bulk.json()['detail']
-    assert {mine, theirs, unknown} <= saved_filter_ids(repository)
-    assert client.delete(f'/api/scoring/saved-filters/{theirs}').status_code == 200
-    assert client.delete(f'/api/scoring/saved-filters/{unknown}').status_code == 403
+    assert {mine, theirs, unknown} <= saved_scoring_ids(repository)
+    assert client.delete(f'/api/scoring/saved-scorings/{theirs}').status_code == 200
+    assert client.delete(f'/api/scoring/saved-scorings/{unknown}').status_code == 403
 
     login(client, 'boss', 'boss123')
-    assert client.post('/api/scoring/saved-filters/delete', json={'ids': [mine, unknown]}).status_code == 200
-    assert not {mine, theirs, unknown} & saved_filter_ids(repository)
+    assert client.post('/api/scoring/saved-scorings/delete', json={'ids': [mine, unknown]}).status_code == 200
+    assert not {mine, theirs, unknown} & saved_scoring_ids(repository)
 
 
-def test_a_saved_filter_belongs_to_the_user_who_starred_it(client):
+def test_a_saved_scoring_belongs_to_the_user_who_starred_it(client):
     team()
     repository = workspace_repository()
-    starred = add_saved_filter(repository, 'starred', 'bob')
-    loose = add_saved_filter(repository, 'loose', 'bob')
+    starred = add_saved_scoring(repository, 'starred', 'bob')
+    loose = add_saved_scoring(repository, 'loose', 'bob')
     prepared = {'snapshot': {}, 'result_key': 'r', 'method_version': 'm', 'source_fingerprint': 'f', 'dataset_ids': [],
                 'levels': ['Operator'], 'nr_mode': 'NSA', 'baseline_operator': 'EE'}
 
     def owner(filter_id):
         with repository.connection() as connection:
             return connection.execute(
-                f'SELECT created_by FROM {saved_filters.SAVED_FILTERS_TABLE} WHERE id = ?', (filter_id,)).fetchone()[0]
+                f'SELECT created_by FROM {saved_scorings.SAVED_SCORINGS_TABLE} WHERE id = ?', (filter_id,)).fetchone()[0]
 
     # Calculated last by bob, starred by alice: it is hers.
     login(client, 'alice', 'alice123')
-    assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': True}).status_code == 200
+    assert client.patch(f'/api/scoring/saved-scorings/{starred}', json={'pinned': True}).status_code == 200
     assert owner(starred) == 'alice'
     # Recalculating a starred one keeps who starred it; one not starred belongs to whoever calculates it, but not to the
     # application.
     with repository.connection() as connection:
-        saved_filters._queue_calculation(connection, starred, prepared, 'bob', 'now')
-        saved_filters._queue_calculation(connection, loose, prepared, 'system', 'now')
+        saved_scorings._queue_calculation(connection, starred, prepared, 'bob', 'now')
+        saved_scorings._queue_calculation(connection, loose, prepared, 'system', 'now')
     assert owner(starred) == 'alice' and owner(loose) == 'bob'
     with repository.connection() as connection:
-        saved_filters._queue_calculation(connection, loose, prepared, 'boss', 'now')
+        saved_scorings._queue_calculation(connection, loose, prepared, 'boss', 'now')
     assert owner(loose) == 'boss'
     # Starring it again (once unstarred) gives it to who stars it; renaming does not.
     login(client, 'bob', 'bob123')
-    assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'name': 'Renamed'}).status_code == 200
-    assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': True}).status_code == 200
+    assert client.patch(f'/api/scoring/saved-scorings/{starred}', json={'name': 'Renamed'}).status_code == 200
+    assert client.patch(f'/api/scoring/saved-scorings/{starred}', json={'pinned': True}).status_code == 200
     assert owner(starred) == 'alice'
-    assert client.delete(f'/api/scoring/saved-filters/{starred}').status_code == 403
+    assert client.delete(f'/api/scoring/saved-scorings/{starred}').status_code == 403
     # Nor does bob unstar it (unstarred, it would go once another one is used); an admin does.
-    refused = client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': False})
+    refused = client.patch(f'/api/scoring/saved-scorings/{starred}', json={'pinned': False})
     assert refused.status_code == 403 and 'who starred it' in refused.json()['detail']
-    assert saved_filters.get_saved_filter(repository, starred)['pinned']
+    assert saved_scorings.get_saved_scoring(repository, starred)['pinned']
     login(client, 'boss', 'boss123')
-    assert client.patch(f'/api/scoring/saved-filters/{starred}', json={'pinned': False}).status_code == 200
-    assert not saved_filters.get_saved_filter(repository, starred)['pinned']
+    assert client.patch(f'/api/scoring/saved-scorings/{starred}', json={'pinned': False}).status_code == 200
+    assert not saved_scorings.get_saved_scoring(repository, starred)['pinned']
 
 
 def test_report_configurations_are_deleted_by_whoever_saved_or_imported_them(client):
@@ -292,16 +292,16 @@ def test_ppt_templates_follow_the_rights_of_ppt_designer(client):
 
 def test_items_without_a_known_creator_are_assigned_to_the_default_super_admin(client):
     repository = workspace_repository()
-    system_filter = add_saved_filter(repository, 'system-filter', 'system')
-    owned_filter = add_saved_filter(repository, 'owned-filter', 'alice')
+    system_filter = add_saved_scoring(repository, 'system-filter', 'system')
+    owned_filter = add_saved_scoring(repository, 'owned-filter', 'alice')
     repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps({'old-design': {'name': 'Old', 'template': 'T'}}))
     # They go to the super-admin every deployment starts with (whether or not the account still exists).
     assert UNKNOWN_CREATOR_OWNER == 'super'
     assigned = assign_unknown_creators(repository)
     owner = UNKNOWN_CREATOR_OWNER
-    assert assigned['saved_filters'] == 1 and assigned['ppt_designer'] == 1
+    assert assigned['saved_scorings'] == 1 and assigned['ppt_designer'] == 1
     with repository.connection() as connection:
-        owners = dict(connection.execute(f'SELECT id, created_by FROM {saved_filters.SAVED_FILTERS_TABLE}').fetchall())
+        owners = dict(connection.execute(f'SELECT id, created_by FROM {saved_scorings.SAVED_SCORINGS_TABLE}').fetchall())
         templates = {row[0] for row in connection.execute('SELECT created_by FROM report_templates')}
     assert owners[system_filter] == owner and owners[owned_filter] == 'alice'
     assert templates <= {owner}

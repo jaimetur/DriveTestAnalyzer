@@ -88,7 +88,7 @@
       remove.addEventListener('click', async () => {
         const title = `${POSTAL_MAPS[layer.map_key]} of ${layer.country_name}`;
         const consequence = layer.map_key === 'own'
-          ? 'The Saved Filters that use it take the full postcodes when they are calculated again.'
+          ? 'The Saved Scorings that use it take the full postcodes when they are calculated again.'
           : 'A calculation that uses it downloads it again.';
         const confirmed = typeof window.showConfirmDialog === 'function'
           ? await window.showConfirmDialog(`Delete the Postal Codes ${title}? ${consequence}`, {title: 'Delete Postal Codes?', confirmLabel: 'Delete'})
@@ -126,7 +126,7 @@
   }
 
   // The maps of the Postal Codes of a country: the select chooses which one to download or import and nothing else, since
-  // a workspace keeps them all and each Saved Filter chooses the one it uses in the calculation panel.
+  // a workspace keeps them all and each Saved Scoring chooses the one it uses in the calculation panel.
   function postalChooser(country) {
     const saved = Object.fromEntries((country.postal_layers || []).map((layer) => [layer.map_key, layer]));
     const keys = [...(country.postal_full ? ['full'] : []), 'place', 'own'];

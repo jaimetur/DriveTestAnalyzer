@@ -1,4 +1,4 @@
-"""Postal Codes of the Points Lost Map: their areas, worked out from postal code points, and the map of a Saved Filter."""
+"""Postal Codes of the Points Lost Map: their areas, worked out from postal code points, and the map of a Saved Scoring."""
 from __future__ import annotations
 
 import io
@@ -16,7 +16,7 @@ import pytest
 from pptx import Presentation
 
 from src.modules.network import map_areas, postal_areas
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from src.modules.scoring import scoring_points_loss as points_loss
 from src.modules.network.map_areas import AreaIndex
 from src.modules.core.repository import Repository
@@ -203,7 +203,7 @@ def test_the_full_postcodes_of_the_uk_are_saved_in_the_workspace(fake_repository
     index = postal_areas.postal_index(fake_repository)
     assert index.sources['GBR'][2] is False and index.attributions['GBR'] == layer['attribution']
     assert index.names_of(pd.Series([53.48]), pd.Series([-2.23])).tolist() == ['M1 · Manchester']
-    # One point per place is kept beside it: each Saved Filter chooses.
+    # One point per place is kept beside it: each Saved Scoring chooses.
     layer = postal_areas.download_postal_layer(fake_repository, 'GBR', 'super', full=False)
     assert requested[1:] == ['https://download.geonames.org/export/zip/GB.zip'] and layer['origin'] == 'GeoNames'
     assert [item['map_key'] for item in postal_areas.list_postal_layers(fake_repository)] == [postal_areas.FULL, postal_areas.PLACE]
@@ -333,7 +333,7 @@ def test_each_map_places_the_tests_and_another_stands_in_for_one_the_workspace_l
         postal_areas.save_postal_layer(fake_repository, country_code='GBR', map_key=key, level='Postal code', level_label='postal code',
                                        origin='test', source=f'{key}.geojson', license_text='Own', attribution=f'credit {key}',
                                        boundaries={name: LAND}, username='ana')
-    # Nothing saved: the copy included stands in for the full postcodes, and for whatever a Saved Filter chooses.
+    # Nothing saved: the copy included stands in for the full postcodes, and for whatever a Saved Scoring chooses.
     assert postal_areas.postal_index(fake_repository).sources['GBR'][2] is True
     index = postal_areas.postal_index(fake_repository, postal_areas.OWN)
     assert index.sources['GBR'][2] is True and index.maps['GBR'] == {'used': postal_areas.FULL, 'copy': True, 'chosen': postal_areas.OWN}
@@ -406,7 +406,7 @@ def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(
     assert [item['map_key'] for item in client.get('/api/workspace-config/map-areas/postal').json()['layers']] == [postal_areas.FULL, postal_areas.PLACE]
     [country] = client.get('/api/workspace-config/map-areas/countries').json()['countries']
     assert [item['map_key'] for item in country['postal_layers']] == [postal_areas.FULL, postal_areas.PLACE]
-    # What a Saved Filter can choose.
+    # What a Saved Scoring can choose.
     maps = {item['key']: item for item in client.get('/api/scoring/postal-maps').json()['maps']}
     assert maps[postal_areas.FULL]['countries'] == ['United Kingdom'] and maps[postal_areas.OWN]['countries'] == []
     # Deleted, the full postcodes stand in for it.
@@ -517,7 +517,7 @@ def _titles(content):
             if slide.shapes.title is not None]
 
 
-def test_the_powerpoint_has_the_postal_code_maps_only_when_the_saved_filter_has_them():
+def test_the_powerpoint_has_the_postal_code_maps_only_when_the_saved_scoring_has_them():
     job, result = _postal_result()
     content = export_scoring_powerpoint(job, result, TEMPLATE)
     assert 'Points Lost per Postal Code — Vodafone UK' in _titles(content)
@@ -545,7 +545,7 @@ def test_the_postal_code_map_is_a_scoring_export_panel():
 
 # -- transfers ------------------------------------------------------------------------------------
 def _transfer_workspaces(tmp_path):
-    from tests.scoring.test_saved_filters_reuse import _three_cdrs, _workspace
+    from tests.scoring.test_saved_scorings_reuse import _three_cdrs, _workspace
 
     source, target = _workspace(tmp_path, 'source'), _workspace(tmp_path, 'target')
     return source, _three_cdrs(source, tmp_path / 'source'), target, _three_cdrs(target, tmp_path / 'target')
@@ -553,70 +553,70 @@ def _transfer_workspaces(tmp_path):
 
 def test_a_transfer_gives_postal_codes_to_the_same_filter_instead_of_adding_another(tmp_path):
     source, source_ids, target, target_ids = _transfer_workspaces(tmp_path)
-    used, _ = saved_filters.save_saved_filter(source, source_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
-    saved_filters.update_saved_filter(source, used['id'], name='Quarter', pinned=True, username='ana')
-    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
-    assert document['saved_filters'][0]['area_summary']['postal_codes'] is True
+    used, _ = saved_scorings.save_saved_scoring(source, source_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
+    saved_scorings.update_saved_scoring(source, used['id'], name='Quarter', pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_scorings.saved_scorings_document(source, favourites_only=True)))
+    assert document['saved_scorings'][0]['area_summary']['postal_codes'] is True
 
-    local, _ = saved_filters.save_saved_filter(target, target_ids, ['Operator'], 'NSA', area_summary=SUMMARY)
-    saved_filters.update_saved_filter(target, local['id'], name='Quarter', pinned=True, username='ana')
+    local, _ = saved_scorings.save_saved_scoring(target, target_ids, ['Operator'], 'NSA', area_summary=SUMMARY)
+    saved_scorings.update_saved_scoring(target, local['id'], name='Quarter', pinned=True, username='ana')
     with target.connection() as connection:
-        connection.execute("UPDATE saved_filters SET status = 'completed', result_json = '{}' WHERE id = ?", (local['id'],))
-    saved_filters.import_saved_filters(target, document)
-    [joined] = saved_filters.list_saved_filters(target)
+        connection.execute("UPDATE saved_scorings SET status = 'completed', result_json = '{}' WHERE id = ?", (local['id'],))
+    saved_scorings.import_saved_scorings(target, document)
+    [joined] = saved_scorings.list_saved_scorings(target)
     assert joined['id'] == local['id'] and joined['name'] == 'Quarter' and joined['pinned']
     assert joined['area_summary']['postal_codes'] is True
     # Its result has no postal codes yet: it is calculated again, with its selection of today.
-    queued, _reason = saved_filters.refresh_saved_filter(target, local['id'])
-    assert queued and saved_filters.get_saved_filter(target, local['id'])['status'] == 'queued'
+    queued, _reason = saved_scorings.refresh_saved_scoring(target, local['id'])
+    assert queued and saved_scorings.get_saved_scoring(target, local['id'])['status'] == 'queued'
     # Importing it again finds it.
-    saved_filters.import_saved_filters(target, document)
-    assert [item['id'] for item in saved_filters.list_saved_filters(target)] == [local['id']]
+    saved_scorings.import_saved_scorings(target, document)
+    assert [item['id'] for item in saved_scorings.list_saved_scorings(target)] == [local['id']]
 
 
 def test_a_transfer_without_postal_codes_leaves_the_ones_of_the_destination(tmp_path):
     source, source_ids, target, target_ids = _transfer_workspaces(tmp_path)
-    used, _ = saved_filters.save_saved_filter(source, source_ids, ['Operator'], 'NSA', area_summary=SUMMARY)
-    saved_filters.update_saved_filter(source, used['id'], name='From there', pinned=True, username='ana')
-    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
-    local, _ = saved_filters.save_saved_filter(target, target_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
-    saved_filters.import_saved_filters(target, document)
-    [joined] = saved_filters.list_saved_filters(target)
+    used, _ = saved_scorings.save_saved_scoring(source, source_ids, ['Operator'], 'NSA', area_summary=SUMMARY)
+    saved_scorings.update_saved_scoring(source, used['id'], name='From there', pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_scorings.saved_scorings_document(source, favourites_only=True)))
+    local, _ = saved_scorings.save_saved_scoring(target, target_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
+    saved_scorings.import_saved_scorings(target, document)
+    [joined] = saved_scorings.list_saved_scorings(target)
     assert joined['id'] == local['id'] and joined['name'] == 'From there' and joined['area_summary']['postal_codes'] is True
 
 
 def test_a_transfer_brings_the_map_of_the_postal_codes_to_the_same_filter(tmp_path):
     source, source_ids, target, target_ids = _transfer_workspaces(tmp_path)
-    used, _ = saved_filters.save_saved_filter(source, source_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True, 'postal_map': 'own'})
-    saved_filters.update_saved_filter(source, used['id'], name='Quarter', pinned=True, username='ana')
-    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
-    assert document['saved_filters'][0]['area_summary']['postal_map'] == 'own'
-    local, _ = saved_filters.save_saved_filter(target, target_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
-    saved_filters.update_saved_filter(target, local['id'], name='Quarter', pinned=True, username='ana')
+    used, _ = saved_scorings.save_saved_scoring(source, source_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True, 'postal_map': 'own'})
+    saved_scorings.update_saved_scoring(source, used['id'], name='Quarter', pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_scorings.saved_scorings_document(source, favourites_only=True)))
+    assert document['saved_scorings'][0]['area_summary']['postal_map'] == 'own'
+    local, _ = saved_scorings.save_saved_scoring(target, target_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
+    saved_scorings.update_saved_scoring(target, local['id'], name='Quarter', pinned=True, username='ana')
     with target.connection() as connection:
-        connection.execute("UPDATE saved_filters SET status = 'completed', result_json = '{}' WHERE id = ?", (local['id'],))
-    saved_filters.import_saved_filters(target, document)
-    [joined] = saved_filters.list_saved_filters(target)
+        connection.execute("UPDATE saved_scorings SET status = 'completed', result_json = '{}' WHERE id = ?", (local['id'],))
+    saved_scorings.import_saved_scorings(target, document)
+    [joined] = saved_scorings.list_saved_scorings(target)
     assert joined['id'] == local['id'] and joined['area_summary']['postal_map'] == 'own'
     # Its result was drawn with another map: it is calculated again.
-    queued, _reason = saved_filters.refresh_saved_filter(target, local['id'])
-    assert queued and saved_filters.get_saved_filter(target, local['id'])['status'] == 'queued'
+    queued, _reason = saved_scorings.refresh_saved_scoring(target, local['id'])
+    assert queued and saved_scorings.get_saved_scoring(target, local['id'])['status'] == 'queued'
     # A package without Postal Codes leaves them, with their map.
     with target.connection() as connection:
-        connection.execute("UPDATE saved_filters SET status = 'completed' WHERE id = ?", (local['id'],))
-    plain = {**document, 'saved_filters': [{**document['saved_filters'][0], 'area_summary': SUMMARY}]}
-    saved_filters.import_saved_filters(target, plain)
-    [joined] = saved_filters.list_saved_filters(target)
+        connection.execute("UPDATE saved_scorings SET status = 'completed' WHERE id = ?", (local['id'],))
+    plain = {**document, 'saved_scorings': [{**document['saved_scorings'][0], 'area_summary': SUMMARY}]}
+    saved_scorings.import_saved_scorings(target, plain)
+    [joined] = saved_scorings.list_saved_scorings(target)
     assert joined['id'] == local['id'] and joined['area_summary']['postal_codes'] is True and joined['area_summary']['postal_map'] == 'own'
 
 
 def test_the_preview_of_a_transfer_tells_the_same_filter_with_its_postal_codes():
-    from src.modules.core.import_changes import favourites_filter_items, kept_postal_codes, predict
+    from src.modules.core.import_changes import favourite_scoring_items, kept_postal_codes, predict
 
     entry = {'name': 'Quarter', 'nr_mode': 'NSA', 'levels': ['Operator'], 'baseline_operator': 'EE', 'scoring_profile_id': '',
              'context_filters': {'Campaign': ['@latest-campaign']}, 'pinned': True, 'cdrs': [], 'area_summary': SUMMARY}
     with_codes = {**entry, 'area_summary': {**SUMMARY, 'postal_codes': True}}
-    items = lambda *entries: favourites_filter_items({'saved_filters': list(entries)})
+    items = lambda *entries: favourite_scoring_items({'saved_scorings': list(entries)})
     # It is found (not new) and told as updated.
     changes = predict(items(with_codes), items(entry), {'area_summary': 'Geographical Areas & Scoring Trends'}, kept_postal_codes)
     assert not changes.new and [name for name, _details in changes.updated] == ['Quarter']
@@ -625,7 +625,7 @@ def test_the_preview_of_a_transfer_tells_the_same_filter_with_its_postal_codes()
     assert not changes.new and not changes.updated and changes.unchanged == 1
 
 
-# -- the Saved Filter -----------------------------------------------------------------------------
+# -- the Saved Scoring -----------------------------------------------------------------------------
 @pytest.fixture()
 def repository(tmp_path: Path) -> Repository:
     repository = Repository(tmp_path / 'workspace.db')
@@ -649,11 +649,11 @@ SUMMARY = {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'
 
 
 def test_postal_codes_are_a_selection_of_their_own_and_every_other_keeps_its_identity():
-    plain = saved_filters.saved_filter_key([1], ['Operator'], 'NSA', 'EE', {}, '', SUMMARY)
+    plain = saved_scorings.saved_scoring_key([1], ['Operator'], 'NSA', 'EE', {}, '', SUMMARY)
     from src.modules.scoring.scoring_area_summary import normalize_area_summary_request
     assert 'postal_codes' not in normalize_area_summary_request(SUMMARY)
     assert normalize_area_summary_request({**SUMMARY, 'postal_codes': True})['postal_codes'] is True
-    assert saved_filters.saved_filter_key([1], ['Operator'], 'NSA', 'EE', {}, '', {**SUMMARY, 'postal_codes': True}) != plain
+    assert saved_scorings.saved_scoring_key([1], ['Operator'], 'NSA', 'EE', {}, '', {**SUMMARY, 'postal_codes': True}) != plain
     assert postal_areas.wanted({'area_summary': {**SUMMARY, 'postal_codes': True}})
     assert postal_areas.wanted({'area_summary': None, 'geographical_areas': {'postal_codes': True}})
     assert not postal_areas.wanted({'area_summary': SUMMARY}) and not postal_areas.wanted(None)
@@ -664,38 +664,38 @@ def test_the_map_of_the_postal_codes_is_kept_with_the_selection_but_is_not_its_i
     from src.modules.scoring.scoring_reports import _normalize_area_summary
 
     asked = {**SUMMARY, 'postal_codes': True}
-    # Only another map than the default one is said, so that the Saved Filters of before keep their form and their result.
+    # Only another map than the default one is said, so that the Saved Scorings of before keep their form and their result.
     for normalize in (normalize_area_summary_request, _normalize_area_summary):
         assert 'postal_map' not in normalize({**asked, 'postal_map': 'full'})
         assert normalize({**asked, 'postal_map': 'place'})['postal_map'] == 'place'
         assert normalize({**asked, 'postal_map': 'own'})['postal_map'] == 'own'
         assert 'postal_map' not in normalize({**asked, 'postal_map': 'other'})
         assert 'postal_map' not in normalize({**SUMMARY, 'postal_map': 'place'})
-    key = saved_filters.saved_filter_key([1], ['Operator'], 'NSA', 'EE', {}, '', asked)
-    assert saved_filters.saved_filter_key([1], ['Operator'], 'NSA', 'EE', {}, '', {**asked, 'postal_map': 'place'}) == key
+    key = saved_scorings.saved_scoring_key([1], ['Operator'], 'NSA', 'EE', {}, '', asked)
+    assert saved_scorings.saved_scoring_key([1], ['Operator'], 'NSA', 'EE', {}, '', {**asked, 'postal_map': 'place'}) == key
     assert postal_areas.chosen_map({'area_summary': asked}) == postal_areas.FULL
     assert postal_areas.chosen_map({'area_summary': {**asked, 'postal_map': 'own'}}) == postal_areas.OWN
     assert postal_areas.chosen_map(None) == postal_areas.FULL
 
 
-def test_another_map_replaces_the_result_of_the_same_saved_filter(repository, monkeypatch):
+def test_another_map_replaces_the_result_of_the_same_saved_scoring(repository, monkeypatch):
     dataset_id = _voice_dataset(repository)
     ask = {**SUMMARY, 'postal_codes': True}
-    first, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
-    done = saved_filters.calculate_saved_filter(repository, first['id'])
+    first, reused = saved_scorings.save_saved_scoring(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
+    done = saved_scorings.calculate_saved_scoring(repository, first['id'])
     assert done['result']['points_loss']['postal_maps'][0]['label'] == postal_areas.COPY_LABEL
     # Asking again with the same map is that result.
-    same, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
+    same, reused = saved_scorings.save_saved_scoring(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
     assert same['id'] == first['id'] and reused
-    # Another map: the same Saved Filter, calculated again, without another one.
+    # Another map: the same Saved Scoring, calculated again, without another one.
     rows = [('LS1', 'Leeds', 53.80, -1.55), ('M1', 'Manchester', 53.48, -2.24)]
     monkeypatch.setattr(postal_areas, 'countries_of_tests', lambda _repository, _sources: ['GBR'])
     monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: _geonames_zip('GB', rows))
     other = {**ask, 'postal_map': 'place'}
-    second, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=other)
+    second, reused = saved_scorings.save_saved_scoring(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=other)
     assert second['id'] == first['id'] and not reused and second['area_summary']['postal_map'] == 'place'
-    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [first['id']]
-    done = saved_filters.calculate_saved_filter(repository, first['id'])
+    assert [item['id'] for item in saved_scorings.list_saved_scorings(repository)] == [first['id']]
+    done = saved_scorings.calculate_saved_scoring(repository, first['id'])
     document = done['result']['points_loss']
     assert done['status'] == 'completed' and document['postal_maps'] == [{'code': 'GBR', 'name': 'United Kingdom', 'label': 'One point per place'}]
     names = {name for entry in document['shares'] for name in entry['areas'].get(POSTAL, {})}
@@ -704,17 +704,17 @@ def test_another_map_replaces_the_result_of_the_same_saved_filter(repository, mo
     # The maps and the exports say which one it is, with who to credit for it.
     assert build_scoring_views(done, done['result'])['insights']['postal_note'].startswith('Map: One point per place. GeoNames')
     # Its result is the one of that map.
-    assert saved_filters.find_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', area_summary=other)['up_to_date']
-    assert not saved_filters.find_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', area_summary=ask)['up_to_date']
-    # Edited with another map too, it stays one Saved Filter and is calculated again.
-    edited = saved_filters.edit_saved_filter(repository, first['id'], [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
-    assert edited['changed'] and edited['saved_filter']['id'] == first['id'] and edited['merged_filter_id'] is None
-    assert 'postal_map' not in edited['saved_filter']['area_summary']
-    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [first['id']]
-    done = saved_filters.calculate_saved_filter(repository, first['id'])
+    assert saved_scorings.find_saved_scoring(repository, [dataset_id], ['Operator'], 'NSA', area_summary=other)['up_to_date']
+    assert not saved_scorings.find_saved_scoring(repository, [dataset_id], ['Operator'], 'NSA', area_summary=ask)['up_to_date']
+    # Edited with another map too, it stays one Saved Scoring and is calculated again.
+    edited = saved_scorings.edit_saved_scoring(repository, first['id'], [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
+    assert edited['changed'] and edited['saved_scoring']['id'] == first['id'] and edited['merged_filter_id'] is None
+    assert 'postal_map' not in edited['saved_scoring']['area_summary']
+    assert [item['id'] for item in saved_scorings.list_saved_scorings(repository)] == [first['id']]
+    done = saved_scorings.calculate_saved_scoring(repository, first['id'])
     assert done['result']['points_loss']['postal_maps'][0]['label'] == postal_areas.COPY_LABEL
     # An edit with the same map changes nothing.
-    again = saved_filters.edit_saved_filter(repository, first['id'], [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
+    again = saved_scorings.edit_saved_scoring(repository, first['id'], [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
     assert not again['changed']
 
 
@@ -728,14 +728,14 @@ def test_the_page_chooses_the_map_only_with_postal_codes_and_says_which_one_it_u
     assert 'POSTAL_MAP_LABELS[summary.postal_map]' in script
 
 
-def test_a_saved_filter_that_asks_for_postal_codes_draws_them_with_its_map(repository):
+def test_a_saved_scoring_that_asks_for_postal_codes_draws_them_with_its_map(repository):
     dataset_id = _voice_dataset(repository)
-    postal, _reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', username='tester',
+    postal, _reused = saved_scorings.save_saved_scoring(repository, [dataset_id], ['Operator'], 'NSA', username='tester',
                                                       area_summary={**SUMMARY, 'postal_codes': True})
-    plain, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', username='tester',
+    plain, reused = saved_scorings.save_saved_scoring(repository, [dataset_id], ['Operator'], 'NSA', username='tester',
                                                     area_summary=SUMMARY)
     assert not reused and plain['id'] != postal['id']
-    done = saved_filters.calculate_saved_filter(repository, postal['id'])
+    done = saved_scorings.calculate_saved_scoring(repository, postal['id'])
     assert done['status'] == 'completed' and done['area_summary']['postal_codes'] is True
     document = done['result']['points_loss']
     assert any(POSTAL in entry['areas'] for entry in document['shares'])
@@ -745,5 +745,5 @@ def test_a_saved_filter_that_asks_for_postal_codes_draws_them_with_its_map(repos
     # (The polygons of the codes with tests too: those without losses are drawn in the colour of no loss.)
     assert set(document['boundaries'][POSTAL]) >= names - {points_loss.NOT_SPECIFIED}
     assert document['postal_attribution'].startswith('GeoNames') and document['postal_background']
-    other = saved_filters.calculate_saved_filter(repository, plain['id'])['result']['points_loss']
+    other = saved_scorings.calculate_saved_scoring(repository, plain['id'])['result']['points_loss']
     assert not any(POSTAL in entry['areas'] for entry in other['shares']) and POSTAL not in (other.get('boundaries') or {})

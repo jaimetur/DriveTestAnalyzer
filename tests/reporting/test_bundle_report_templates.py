@@ -1152,12 +1152,12 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
     assert export()['reused'] == [] and calls[-1] == ['2026-Q2']
 
 
-def test_the_scoring_section_is_generated_again_when_a_saved_filter_is_calculated_again(client, monkeypatch):
+def test_the_scoring_section_is_generated_again_when_a_saved_scoring_is_calculated_again(client, monkeypatch):
     login(client)
     definition = bundle_report_templates.normalize_definition({})
     scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
     signatures = iter([[1, '2026-10-19T10:00:00', '2026-10-19T10:00:00', 1], [1, '2026-10-19T11:00:00', '2026-10-19T11:00:00', 2]])
-    monkeypatch.setattr(bundle_report_templates, '_saved_filters_signature', lambda repository: next(signatures))
+    monkeypatch.setattr(bundle_report_templates, '_saved_scorings_signature', lambda repository: next(signatures))
     before = bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None)
     after = bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None)
     assert before != after
@@ -1178,20 +1178,20 @@ def test_an_update_of_the_application_generates_the_sections_again(client, monke
     assert "['Reused from an earlier export: ' + ', '.join(SECTION_TITLES.get(key, key) for key in result.reused)]" in source
 
 
-def test_a_saved_filter_of_the_same_cdrs_and_filters_is_used_whatever_its_split_by(monkeypatch):
+def test_a_saved_scoring_of_the_same_cdrs_and_filters_is_used_whatever_its_split_by(monkeypatch):
     def item(**changes):
         return {'id': 1, 'status': 'completed', 'dataset_ids': [3, 1, 2], 'nr_mode': 'NSA', 'baseline_operator': 'EE',
                 'scoring_profile_id': 'by-campaign', 'context_filters': {'Campaign': ['@latest-campaign'], 'Operator': ['VF']},
                 'levels': ['Operator', 'City', 'Campaign'], 'area_summary': None, **changes}
 
     starred = item(id=7)
-    monkeypatch.setattr(core, 'list_saved_filters', lambda _repository: [
+    monkeypatch.setattr(core, 'list_saved_scorings', lambda _repository: [
         item(id=5, status='failed'), item(id=6, dataset_ids=[1, 2]), item(id=8, scoring_profile_id='netcheck'), starred, item(id=9)])
     base = {'nr_mode': 'nsa', 'baseline_operator': 'ee', 'scoring_profile_id': 'by-campaign'}
     # The Campaign filter is not compared: the CDRs are the campaigns.
-    assert core._matching_saved_filter(None, base, [1, 2, 3], {'Operator': ['vf']}) is starred
-    assert core._matching_saved_filter(None, base, [1, 2, 3], {'Operator': ['EE']}) is None
-    assert core._matching_saved_filter(None, {**base, 'scoring_profile_id': None}, [1, 2, 3], {'Operator': ['VF']}) is None
+    assert core._matching_saved_scoring(None, base, [1, 2, 3], {'Operator': ['vf']}) is starred
+    assert core._matching_saved_scoring(None, base, [1, 2, 3], {'Operator': ['EE']}) is None
+    assert core._matching_saved_scoring(None, {**base, 'scoring_profile_id': None}, [1, 2, 3], {'Operator': ['VF']}) is None
 
 
 def test_favourite_elements_are_exported_and_imported_on_their_own(client):
@@ -1205,7 +1205,7 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
     # The message names one item or several (``1 Report``, ``2 Reports``).
     for target, label in (('bundle-report-template-favourites', 'Imported 1 Report Definition into'),
-                          ('scoring-favourites-filters', 'Scoring & GAP Favourite Scoring'),
+                          ('scoring-favourite-scorings', 'Scoring & GAP Favourite Scoring'),
                           ('scoring-report-templates', 'Scoring & GAP Report Template')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')
         assert exported.status_code == 200, exported.text
@@ -1229,8 +1229,8 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
         if target == 'bundle-report-template-favourites':
             assert [item['name'] for item in document['favourites']] == ['Quarterly']
             assert [item['name'] for item in bundle_report_templates.list_favourites(core.repository)] == ['Quarterly']
-        elif target == 'scoring-favourites-filters':
-            assert document['saved_filters'] == []
+        elif target == 'scoring-favourite-scorings':
+            assert document['saved_scorings'] == []
         else:
             # The saved configurations of the Scoring report editor travel on their own too.
             assert document['format'] == 'drivetest-analyzer-scoring-report-configurations'

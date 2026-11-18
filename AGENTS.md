@@ -57,7 +57,7 @@
   - ppt-templates
   - query-builder-queries
   - reporting-jobs
-  - scoring-favourite-filters
+  - scoring-favourite-scorings
   - scoring-methodologies
   - scoring-report-configurations
 - Skip those templates created by other users rather tan me (EJAITUR) or system.

@@ -203,7 +203,7 @@ def unassigned_values(rows_by_kind: dict[str, list[dict[str, Any]]]) -> dict[str
 def assignment_effects(
     kind: str, assignments: Iterable[tuple[str, str | None]], detected: Iterable[str], mappings: dict[str, str],
     canonical_labels: Iterable[str], rename: tuple[str, str] | None = None,
-    saved_filters: Callable[[str], int] | None = None, campaigns: dict[str, list[str]] | None = None,
+    saved_scorings: Callable[[str], int] | None = None, campaigns: dict[str, list[str]] | None = None,
 ) -> dict[str, list[Any]]:
     """What saving some assignments does, to confirm it first.
 
@@ -265,7 +265,7 @@ def assignment_effects(
         if label and (renamed(previous) or '').casefold() == label.casefold():
             continue
         moved.append({'value': source, 'from': previous, 'to': label,
-                      'filters': saved_filters(previous) if saved_filters else 0})
+                      'filters': saved_scorings(previous) if saved_scorings else 0})
     underscores = []
     if kind in {'operator', 'vendor'}:
         underscores = sorted({label for _source, label in changes

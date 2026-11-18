@@ -222,7 +222,7 @@ def owner_cards(maps: list[dict[str, Any]], places: dict[str, Any], sites: list[
                      for city, points in sorted(cities.items(), key=lambda pair: -pair[1])[:2] if city != NOT_SPECIFIED]
             owned = [row for row in high_sites.get(operator, []) if row.get('region') == name]
             # Results calculated before the points of each owner were kept per City or route have none: None, so the
-            # card asks for the Saved Filter recalculated rather than showing zeros.
+            # card asks for the Saved Scoring recalculated rather than showing zeros.
             cards.append({'owner': name, 'points': area['points'], 'share': area['share'] * 100,
                           'settings': {label: round(points or 0.0, 3) for label, points in settings.items()} if city_losses else None,
                           'main': main, 'areas': areas,

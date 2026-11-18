@@ -1,7 +1,7 @@
 """The tools of the AI Assistant: what it can read from the workspace to answer a question.
 
 Every tool only reads, through the functions the modules of the tool already use (the Scoring of a selection is
-calculated as a Saved Filter calculates it). The query tool (assistant_query) runs one read-only SELECT over the
+calculated as a Saved Scoring calculates it). The query tool (assistant_query) runs one read-only SELECT over the
 Non-Qualified Calls and the rows of the CDRs, without their coordinates or subscriber identifiers. The names in their
 results are the real ones; ``assistant.py`` masks them (see assistant_privacy) before they are sent to the engine, and
 puts the real names back in the arguments the engine sends.
@@ -48,7 +48,7 @@ TOOLS: list[dict[str, str]] = [
     {'name': 'workspace_overview', 'arguments': '{}',
      'description': 'The campaigns of each NR Mode (newest first, with their quarter, CDR types and methodology), the '
                     'operators with their role (focus, exclude), the vendors, regions and clusters, the number of '
-                    'cities, the scoring methodologies with their environments and points, and the Saved Filters. '
+                    'cities, the scoring methodologies with their environments and points, and the Saved Scorings. '
                     'It is already given with the first question; call it again only if it may have changed.'},
     {'name': 'list_values', 'arguments': '{"field": "City|Region|Cluster|Vendor|Operator|Campaign", "nr_mode": "NSA|SA (optional)"}',
      'description': 'Every value (code) of a field in the CDRs of the workspace, with the number of CDRs that hold it.'},
@@ -59,7 +59,7 @@ TOOLS: list[dict[str, str]] = [
                                      '["environments", "categories", "kpis", "gap", "insights"], "reference_operator": "OP3 '
                                      '(optional, the GAP reference)"}',
      'description': 'The Scoring & GAP Analysis points of the operators, calculated exactly as the module calculates a '
-                    'Saved Filter: each campaign with the methodology that applies to it, the operators the Operator '
+                    'Saved Scoring: each campaign with the methodology that applies to it, the operators the Operator '
                     'Maps exclude left out. Operator is always part of the split. Returns per group the total points, '
                     'the maximum and available points, whether the coverage is complete and the samples; with detail '
                     'the points per environment and per category, the KPIs that lose most points (value, points, points '
@@ -72,8 +72,8 @@ TOOLS: list[dict[str, str]] = [
                     'cells that served the test; '
                     '"VNx (Mixed)" means the test started or ended on a VNx cell and on another vendor, "Mixed '
                     '(non-VNx)" two other vendors.'},
-    {'name': 'saved_filters', 'arguments': '{"saved_filter_id": 12 (optional)}',
-     'description': 'Without an id: the Saved Filters of Scoring & GAP Analysis (name, NR Mode, split, status). With an '
+    {'name': 'saved_scorings', 'arguments': '{"saved_scoring_id": 12 (optional)}',
+     'description': 'Without an id: the Saved Scorings of Scoring & GAP Analysis (name, NR Mode, split, status). With an '
                     'id: the totals of its saved result (as the module shows them), without calculating anything.'},
     {'name': 'nq_calls', 'arguments': '{"group_by": ["operator", "failure_category"], "filters": {"campaign": ["CP1"], '
                                       '"service": ["data"]}, "limit": 50}',
@@ -114,7 +114,7 @@ TOOLS: list[dict[str, str]] = [
                     'comments of PPT Designer read them: the value of every group of each chart with its samples, which '
                     'direction is better, and the comments the rules write, and the chart_id (G1) that draws each chart in the '
                     'answer as the Design draws it. To analyse, comment on or show charts of a Design.'},
-    {'name': 'help_search', 'arguments': '{"query": "how to create a Saved Filter"}',
+    {'name': 'help_search', 'arguments': '{"query": "how to create a Saved Scoring"}',
      'description': 'The passages of the Help of DriveTest Analyzer that best match a question about how the tool works.'},
     {'name': 'calculate', 'arguments': '{"expressions": ["921.81 - 863.11", "292182 / 382472 * 100"]}',
      'description': 'Arithmetic (+ - * / and parentheses) on figures of the results, for differences, shares and '
@@ -159,7 +159,7 @@ def run_tool(context: ToolContext, name: str, arguments: dict[str, Any]) -> dict
     from src.modules.assistant import assistant_modules, assistant_query
 
     handlers = {'workspace_overview': workspace_overview, 'list_values': list_values, 'scoring': scoring,
-                'saved_filters': saved_filters, 'nq_calls': nq_calls, 'table_columns': assistant_query.table_columns,
+                'saved_scorings': saved_scorings, 'nq_calls': nq_calls, 'table_columns': assistant_query.table_columns,
                 'query': assistant_query.query, 'network_insights': assistant_modules.network_insights,
                 'ppt_designs': assistant_modules.ppt_designs, 'ppt_design_charts': assistant_modules.ppt_design_charts,
                 'help_search': help_search, 'calculate': calculate}
@@ -287,10 +287,10 @@ def workspace_overview(context: ToolContext, _arguments: dict[str, Any] | None =
         key=str.casefold)
     values = {field: sorted({value for catalogue in catalogues.values() for value in catalogue.get(field) or []}, key=str.casefold)
               for field in ('regions', 'clusters', 'cities')}
-    from src.modules.scoring.saved_filters import list_saved_filters
+    from src.modules.scoring.saved_scorings import list_saved_scorings
     try:
-        filters = list_saved_filters(repository)[:30]
-    except Exception:  # noqa: BLE001 - no Saved Filter table yet
+        filters = list_saved_scorings(repository)[:30]
+    except Exception:  # noqa: BLE001 - no Saved Scoring table yet
         filters = []
     return {
         'workspace': context.workspace_name,
@@ -300,7 +300,7 @@ def workspace_overview(context: ToolContext, _arguments: dict[str, Any] | None =
         'vendors': vendors,
         'regions': values['regions'], 'clusters': values['clusters'][:MAX_LIST_VALUES], 'city_count': len(values['cities']),
         'methodologies': _methodologies(context),
-        'saved_filters': [{'id': item['id'], 'name': item.get('name') or '', 'nr_mode': item.get('nr_mode'),
+        'saved_scorings': [{'id': item['id'], 'name': item.get('name') or '', 'nr_mode': item.get('nr_mode'),
                            'split_by': item.get('levels'), 'status': item.get('status'), 'starred': bool(item.get('pinned')),
                            'campaigns': item.get('resolved_campaigns') or (item.get('context_filters') or {}).get('Campaign') or []}
                           for item in filters],
@@ -382,7 +382,7 @@ def list_values(context: ToolContext, arguments: dict[str, Any]) -> dict[str, An
 # -- scoring ----------------------------------------------------------------------------------------------------------
 
 def scoring(context: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
-    from src.modules.scoring.saved_filters import calculate_selection
+    from src.modules.scoring.saved_scorings import calculate_selection
 
     campaigns = []
     for value in _strings(arguments.get('campaigns')) or ['latest']:
@@ -532,31 +532,31 @@ def _compact(row: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in row.items() if not (key in _KEYS and value is None)}
 
 
-# -- saved_filters ----------------------------------------------------------------------------------------------------
+# -- saved_scorings ----------------------------------------------------------------------------------------------------
 
-def saved_filters(context: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
-    from src.modules.scoring.saved_filters import get_saved_filter, list_saved_filters
+def saved_scorings(context: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    from src.modules.scoring.saved_scorings import get_saved_scoring, list_saved_scorings
 
-    filter_id = arguments.get('saved_filter_id')
+    filter_id = arguments.get('saved_scoring_id')
     if filter_id in (None, ''):
-        return {'saved_filters': [{'id': item['id'], 'name': item.get('name') or '', 'nr_mode': item.get('nr_mode'),
+        return {'saved_scorings': [{'id': item['id'], 'name': item.get('name') or '', 'nr_mode': item.get('nr_mode'),
                                    'split_by': item.get('levels'), 'status': item.get('status'), 'starred': bool(item.get('pinned')),
-                                   'last_used': item.get('last_used_at')} for item in list_saved_filters(context.repository)[:60]]}
+                                   'last_used': item.get('last_used_at')} for item in list_saved_scorings(context.repository)[:60]]}
     try:
-        saved = get_saved_filter(context.repository, int(filter_id), include_result=True)
+        saved = get_saved_scoring(context.repository, int(filter_id), include_result=True)
     except (TypeError, ValueError) as exc:
-        raise ToolError('saved_filter_id is the number of a Saved Filter.') from exc
+        raise ToolError('saved_scoring_id is the number of a Saved Scoring.') from exc
     if saved is None:
-        raise ToolError(f'There is no Saved Filter {filter_id}.')
+        raise ToolError(f'There is no Saved Scoring {filter_id}.')
     if saved.get('status') != 'completed' or not isinstance(saved.get('result'), dict):
         return {'id': saved['id'], 'name': saved.get('name') or '', 'status': saved.get('status'),
-                'note': 'This Saved Filter has no calculated result yet.'}
+                'note': 'This Saved Scoring has no calculated result yet.'}
     selection = {'campaigns': saved.get('resolved_campaigns') or [], 'nr_mode': saved.get('nr_mode'),
                  'levels': saved.get('levels'), 'context_filters': saved.get('context_filters') or {},
                  'methodology': saved.get('scoring_profile_name') or '', 'dataset_ids': saved.get('dataset_ids') or [],
                  'baseline_operator': saved.get('baseline_operator')}
     summary = summarize_scoring(saved['result'], selection, {'environments', 'categories', 'gap'})
-    summary['calculated_from'] = 'the saved result of the Saved Filter'
+    summary['calculated_from'] = 'the saved result of the Saved Scoring'
     return {'id': saved['id'], 'name': saved.get('name') or '', 'finished_at': saved.get('finished_at'), **summary}
 
 

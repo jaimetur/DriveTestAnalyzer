@@ -128,7 +128,7 @@ def test_the_buttons_live_in_dialogs_and_overlays_and_keep_clear_of_the_page_but
     # Both buttons keep clear of every button of the page they would cover, and below every floating section bar.
     assert 'const span = size.width * 2 + 6;' in buttons
     assert "document.querySelectorAll('.section-bar, [data-section-bar]')" in buttons
-    # Each module records its images (Scoring with its Saved Filter).
+    # Each module records its images (Scoring with its Saved Scoring).
     assert "record = imageDetails => recordImageExport('/api/image-export', {module, ...imageDetails})," in buttons
 
 

@@ -473,7 +473,7 @@ def report_configuration_items(document: Any) -> list[Item]:
 
 
 def _campaign_choice(entry: dict[str, Any]) -> bool:
-    """Whether a Saved Filter has a Campaign choice (Latest 2 campaigns…): it stands for the CDRs of each workspace,
+    """Whether a Saved Scoring has a Campaign choice (Latest 2 campaigns…): it stands for the CDRs of each workspace,
     so the CDRs its document names (those of the workspace that exported it) are not part of what it selects."""
     from src.modules.cdr.cdr_auto_selection import campaign_presets
 
@@ -482,13 +482,13 @@ def _campaign_choice(entry: dict[str, Any]) -> bool:
 
 
 def _selection_key(entry: dict[str, Any]) -> str:
-    """What a Saved Filter selects (its CDRs by file, unless it has a Campaign choice, and its selection), which finds
+    """What a Saved Scoring selects (its CDRs by file, unless it has a Campaign choice, and its selection), which finds
     it whatever its name."""
     cdrs = [] if _campaign_choice(entry) else sorted(
         str(ref.get('sha256') or '') for ref in entry.get('cdrs') or [] if isinstance(ref, dict))
     selection = {key: entry.get(key) for key in ('nr_mode', 'levels', 'baseline_operator', 'context_filters',
                                                   'scoring_profile_id', 'area_summary')}
-    # With or without Postal Codes it is the same Saved Filter (see saved_filters._resolve_imported_filters).
+    # With or without Postal Codes it is the same Saved Scoring (see saved_scorings._resolve_imported_filters).
     if isinstance(selection['area_summary'], dict):
         selection['area_summary'] = {key: value for key, value in selection['area_summary'].items() if key not in {'postal_codes', 'postal_map'}}
     return hashlib.sha256(_canonical({**selection, 'cdrs': cdrs}).encode('utf-8')).hexdigest()
@@ -505,10 +505,10 @@ def kept_postal_codes(values: dict[str, Any], previous: dict[str, Any]) -> dict[
 
 
 def favourites_order_changes(package: Any, before: Any) -> bool:
-    """Whether importing a Saved Filters document moves the Favourite Scorings of a workspace (``before``, its document):
-    those of the package go in its order, ahead of those only the workspace has (see saved_filters.import_saved_filters)."""
+    """Whether importing a Saved Scorings document moves the Favourite Scorings of a workspace (``before``, its document):
+    those of the package go in its order, ahead of those only the workspace has (see saved_scorings.import_saved_scorings)."""
     def starred(document: Any) -> list[Item]:
-        items = [item for item in favourites_filter_items(document) if item.values.get('pinned')]
+        items = [item for item in favourite_scoring_items(document) if item.values.get('pinned')]
         return sorted(items, key=lambda item: (item.values.get('position') is None, item.values.get('position') or 0))
 
     incoming, current = starred(package), starred(before)
@@ -519,12 +519,15 @@ def favourites_order_changes(package: Any, before: Any) -> bool:
     return [*moved, *(position for position in range(len(current)) if position not in moved)] != list(range(len(current)))
 
 
-def favourites_filter_items(document: Any) -> list[Item]:
-    """The Favourite Scorings of a Saved Filters document, found by what they select, then by their name. Those with a
-    Campaign choice are compared without their CDRs, as the import takes those the choice stands for here."""
+def favourite_scoring_items(document: Any) -> list[Item]:
+    """The Favourite Scorings of a Saved Scorings document, found by what they select, then by their name. Those with a
+    Campaign choice are compared without their CDRs, as the import takes those the choice stands for here (a Saved
+    Filters document of earlier versions too)."""
+    from src.modules.scoring.saved_scorings import current_saved_scorings_document
+
     return [Item(name=str(entry.get('name') or ''), uid=_selection_key(entry),
                  values={key: value for key, value in entry.items() if key != 'cdrs'} if _campaign_choice(entry) else entry)
-            for entry in _documents(document, 'saved_filters')]
+            for entry in _documents(current_saved_scorings_document(document), 'saved_scorings')]
 
 
 def auto_calculated_field_items(definitions: Any) -> list[Item]:
@@ -591,7 +594,7 @@ ELEMENT_ITEMS = {
     'query-builder-queries': lambda document: named_items(_documents(document, 'queries')),
     'network-insights-favourites': lambda document: named_items(_documents(document, 'favourites')),
     'bundle-report-template-favourites': report_items,
-    'scoring-favourites-filters': favourites_filter_items,
+    'scoring-favourite-scorings': favourite_scoring_items,
     'scoring-report-templates': report_configuration_items,
     'scoring-excluded-calls': lambda document: named_items(_documents(document, 'lists')),
     'reporting-jobs': lambda document: named_items(_documents(document, 'reporting_jobs')),
@@ -610,7 +613,7 @@ ELEMENT_NAMES = {
     'query-builder-queries': ('Query Builder query', 'Query Builder queries', ''),
     'network-insights-favourites': ('Network Insights Favourite', 'Network Insights Favourites', ''),
     'bundle-report-template-favourites': ('Report Definition', 'Report Definitions', ''),
-    'scoring-favourites-filters': ('Scoring & GAP Favourite Scoring', 'Scoring & GAP Favourite Scorings', ''),
+    'scoring-favourite-scorings': ('Scoring & GAP Favourite Scoring', 'Scoring & GAP Favourite Scorings', ''),
     'scoring-report-templates': ('Scoring & GAP Report Template', 'Scoring & GAP Report Templates', ''),
     'scoring-excluded-calls': ('list of Scoring Excluded Calls', 'lists of Scoring Excluded Calls', ''),
     'reporting-jobs': ('Report Schedule', 'Report Schedules', ''),

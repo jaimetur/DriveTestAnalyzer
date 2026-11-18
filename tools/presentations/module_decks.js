@@ -1295,7 +1295,7 @@ const VISUALS = {
     // How it got there: the steps of the question, then the engine.
     out += `<rect x="1110" y="14" width="530" height="532" rx="24" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`
       + t(1140, 60, 'Answered in 23 s', 26, '#ffffff', 800) + t(1140, 92, 'every step on the server', 18, '#9fb0cc');
-    [['TbBuildingWarehouse', 'Read the workspace', 'campaigns · operators · methodology'], ['TbTrophy', 'Score Operator × Vendor', 'as a Saved Filter, 0.8 s'],
+    [['TbBuildingWarehouse', 'Read the workspace', 'campaigns · operators · methodology'], ['TbTrophy', 'Score Operator × Vendor', 'as a Saved Scoring, 0.8 s'],
       ['TbCalculator', 'Calculate the shares', '74.8% of the samples'], ['TbShieldCheck', 'Check every figure', '6 of 6 traced to a result']].forEach(([name, title, detail], index) => {
       const y = 124 + index * 84;
       out += `<circle cx="1166" cy="${y + 28}" r="26" fill="${index === 3 ? '#1f9d55' : p.accent}"/><g transform="translate(1150 ${y + 12})">${icon(name, '#ffffff', 32)}</g>`

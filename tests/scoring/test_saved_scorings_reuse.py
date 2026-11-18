@@ -1,4 +1,4 @@
-"""Saved Filters: reused selections that travel as Favourite Scorings, find their CDRs by file in
+"""Saved Scorings: reused selections that travel as Favourite Scorings, find their CDRs by file in
 another workspace, tell when newer CDRs replace theirs, and keep their result when their CDRs are gone."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from src.modules.core.import_changes import favourites_order_changes
 from src.modules.core.repository import Repository, local_now_iso
 from tests.support.scoring_fixtures import load_initial_scoring_configuration
@@ -42,41 +42,41 @@ def _three_cdrs(repository: Repository, folder: Path, prefix: str = '') -> list[
             for kind in ('data', 'voice', 'speech')]
 
 
-def test_saved_filters_travel_without_results_and_find_their_cdrs_by_file(tmp_path):
+def test_saved_scorings_travel_without_results_and_find_their_cdrs_by_file(tmp_path):
     source = _workspace(tmp_path, 'source')
     ids = _three_cdrs(source, tmp_path / 'source')
-    used, _ = saved_filters.save_saved_filter(
+    used, _ = saved_scorings.save_saved_scoring(
         source, ids, ['Operator', 'Region'], 'NSA', context_filters={'Region': ['North']})
-    saved_filters.calculate_saved_filter(source, used['id'])
-    saved_filters.update_saved_filter(source, used['id'], name='North by region', pinned=True)
-    document = saved_filters.saved_filters_document(source)
-    [entry] = document['saved_filters']
+    saved_scorings.calculate_saved_scoring(source, used['id'])
+    saved_scorings.update_saved_scoring(source, used['id'], name='North by region', pinned=True)
+    document = saved_scorings.saved_scorings_document(source)
+    [entry] = document['saved_scorings']
     assert entry['name'] == 'North by region' and entry['pinned'] and 'result' not in entry
     assert {cdr['kind'] for cdr in entry['cdrs']} == {'data', 'voice', 'speech'}
     assert all(len(cdr['sha256']) == 64 for cdr in entry['cdrs'])
 
     # In another workspace the filters wait for their CDRs…
     target = _workspace(tmp_path, 'target')
-    assert saved_filters.import_saved_filters(target, document) == 1
-    [waiting] = saved_filters.list_saved_filters(target)
+    assert saved_scorings.import_saved_scorings(target, document) == 1
+    [waiting] = saved_scorings.list_saved_scorings(target)
     assert waiting['dataset_ids'] == [] and len(waiting['missing_cdrs']) == 3 and waiting['status'] == 'saved'
-    assert saved_filters.refresh_saved_filter(target, waiting['id'])[1].startswith(
-        'The CDRs of this Saved Filter are not in this workspace')
+    assert saved_scorings.refresh_saved_scoring(target, waiting['id'])[1].startswith(
+        'The CDRs of this Saved Scoring are not in this workspace')
     # …found by the SHA-256 of their files, whatever their names and ids there.
     _add_cdr(target, tmp_path / 'target', 'voice', 'Unrelated voice.xlsx', 'another voice file')
     target_ids = _three_cdrs(target, tmp_path / 'target', prefix='Renamed ')
-    [resolved] = saved_filters.list_saved_filters(target)
+    [resolved] = saved_scorings.list_saved_scorings(target)
     assert sorted(resolved['dataset_ids']) == sorted(target_ids)
     assert resolved['name'] == 'North by region' and resolved['pinned'] and resolved['missing_cdrs'] == []
     # Opened, it is calculated with the CDRs and methodology of this workspace.
-    assert saved_filters.refresh_saved_filter(target, resolved['id']) == (True, '')
-    calculated = saved_filters.calculate_saved_filter(target, resolved['id'])
+    assert saved_scorings.refresh_saved_scoring(target, resolved['id']) == (True, '')
+    calculated = saved_scorings.calculate_saved_scoring(target, resolved['id'])
     assert calculated['status'] == 'completed' and calculated['result']['scoring']
-    # Imported again, it joins the Saved Filter it already is.
-    saved_filters.import_saved_filters(target, document)
-    assert [item['id'] for item in saved_filters.list_saved_filters(target)] == [resolved['id']]
-    # The same selection made here is that Saved Filter.
-    same, reused = saved_filters.save_saved_filter(
+    # Imported again, it joins the Saved Scoring it already is.
+    saved_scorings.import_saved_scorings(target, document)
+    assert [item['id'] for item in saved_scorings.list_saved_scorings(target)] == [resolved['id']]
+    # The same selection made here is that Saved Scoring.
+    same, reused = saved_scorings.save_saved_scoring(
         target, target_ids, ['Operator', 'Region'], 'NSA', context_filters={'Region': ['North']})
     assert same['id'] == resolved['id'] and reused
 
@@ -87,155 +87,155 @@ def test_a_final_cdr_replacing_a_daily_one_is_offered_and_deleted_cdrs_keep_the_
     data_id = _add_cdr(repository, folder, 'data', 'UK_Data_CDR_20260715.xlsx', 'daily data', stage='daily')
     voice_id = _add_cdr(repository, folder, 'voice', 'UK_Voice_Final.xlsx', 'voice file')
     speech_id = _add_cdr(repository, folder, 'speech', 'UK_Speech_Final.xlsx', 'speech file')
-    saved_filter, _ = saved_filters.save_saved_filter(repository, [data_id, voice_id, speech_id],
+    saved_scoring, _ = saved_scorings.save_saved_scoring(repository, [data_id, voice_id, speech_id],
                                                                        ['Operator'], 'NSA')
-    saved_filters.calculate_saved_filter(repository, saved_filter['id'])
-    assert saved_filters.list_saved_filters(repository)[0]['newer_cdrs'] == []
+    saved_scorings.calculate_saved_scoring(repository, saved_scoring['id'])
+    assert saved_scorings.list_saved_scorings(repository)[0]['newer_cdrs'] == []
 
     final_id = _add_cdr(repository, folder, 'data', 'UK_Data_CDR_Final.xlsx', 'final data')
-    [listed] = saved_filters.list_saved_filters(repository)
+    [listed] = saved_scorings.list_saved_scorings(repository)
     assert listed['newer_cdrs'] == [{'id': data_id, 'name': 'UK_Data_CDR_20260715.xlsx', 'replaced_by': final_id,
                                      'replaced_by_name': 'UK_Data_CDR_Final.xlsx'}]
 
     # Without one of its CDRs, the saved result is still shown, saying why it is not calculated again.
     repository.delete_dataset(voice_id)
-    queued, unavailable = saved_filters.refresh_saved_filter(repository, saved_filter['id'])
+    queued, unavailable = saved_scorings.refresh_saved_scoring(repository, saved_scoring['id'])
     assert not queued and 'no longer exist' in unavailable
-    kept = saved_filters.get_saved_filter(repository, saved_filter['id'], include_result=True)
+    kept = saved_scorings.get_saved_scoring(repository, saved_scoring['id'], include_result=True)
     assert kept['status'] == 'completed' and kept['result']['scoring']
 
 
-def test_use_newer_cdrs_updates_the_same_saved_filter_and_merges_one_with_that_selection(tmp_path):
+def test_use_newer_cdrs_updates_the_same_saved_scoring_and_merges_one_with_that_selection(tmp_path):
     repository = _workspace(tmp_path, 'workspace')
     folder = tmp_path / 'workspace'
     data_id = _add_cdr(repository, folder, 'data', 'UK_Data_CDR_20260715.xlsx', 'daily data', stage='daily')
     voice_id = _add_cdr(repository, folder, 'voice', 'UK_Voice_Final.xlsx', 'voice file')
     speech_id = _add_cdr(repository, folder, 'speech', 'UK_Speech_Final.xlsx', 'speech file')
-    saved_filter, _ = saved_filters.save_saved_filter(repository, [data_id, voice_id, speech_id], ['Operator'], 'NSA')
-    saved_filters.calculate_saved_filter(repository, saved_filter['id'])
-    saved_filters.update_saved_filter(repository, saved_filter['id'], pinned=True)
+    saved_scoring, _ = saved_scorings.save_saved_scoring(repository, [data_id, voice_id, speech_id], ['Operator'], 'NSA')
+    saved_scorings.calculate_saved_scoring(repository, saved_scoring['id'])
+    saved_scorings.update_saved_scoring(repository, saved_scoring['id'], pinned=True)
     final_id = _add_cdr(repository, folder, 'data', 'UK_Data_CDR_Final.xlsx', 'final data')
-    # A Saved Filter that already has the newer selection is merged, giving its name.
-    other, _ = saved_filters.save_saved_filter(repository, [final_id, voice_id, speech_id], ['Operator'], 'NSA')
-    saved_filters.update_saved_filter(repository, other['id'], name='2026-Q3')
+    # A Saved Scoring that already has the newer selection is merged, giving its name.
+    other, _ = saved_scorings.save_saved_scoring(repository, [final_id, voice_id, speech_id], ['Operator'], 'NSA')
+    saved_scorings.update_saved_scoring(repository, other['id'], name='2026-Q3')
 
-    updated = saved_filters.use_newer_cdrs(repository, saved_filter['id'], 'super')
+    updated = saved_scorings.use_newer_cdrs(repository, saved_scoring['id'], 'super')
 
     assert updated['merged_filter_id'] == other['id']
     assert [item['replaced_by'] for item in updated['replaced']] == [final_id]
-    [listed] = saved_filters.list_saved_filters(repository)
-    assert listed['id'] == saved_filter['id'] and listed['pinned'] and listed['name'] == '2026-Q3'
+    [listed] = saved_scorings.list_saved_scorings(repository)
+    assert listed['id'] == saved_scoring['id'] and listed['pinned'] and listed['name'] == '2026-Q3'
     assert listed['dataset_ids'] == [final_id, voice_id, speech_id]
     assert listed['status'] == 'queued' and listed['newer_cdrs'] == []
-    found = saved_filters.find_saved_filter(repository, [final_id, voice_id, speech_id], ['Operator'], 'NSA')
-    assert found['id'] == saved_filter['id']
+    found = saved_scorings.find_saved_scoring(repository, [final_id, voice_id, speech_id], ['Operator'], 'NSA')
+    assert found['id'] == saved_scoring['id']
     try:
-        saved_filters.use_newer_cdrs(repository, saved_filter['id'])
+        saved_scorings.use_newer_cdrs(repository, saved_scoring['id'])
     except ValueError as exc:
         assert 'Wait until' in str(exc)
     else:
-        raise AssertionError('A queued Saved Filter must not change its CDRs.')
+        raise AssertionError('A queued Saved Scoring must not change its CDRs.')
 
 
-def test_edit_saved_filter_changes_its_selection_in_place_and_merges_one_with_that_selection(tmp_path):
+def test_edit_saved_scoring_changes_its_selection_in_place_and_merges_one_with_that_selection(tmp_path):
     repository = _workspace(tmp_path, 'workspace')
     ids = _three_cdrs(repository, tmp_path / 'workspace')
-    saved_filter, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')
-    saved_filters.calculate_saved_filter(repository, saved_filter['id'])
-    saved_filters.update_saved_filter(repository, saved_filter['id'], name='2026-Q3', pinned=True)
-    # A Saved Filter that already has the new selection is merged into the one edited.
-    other, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Region'], 'NSA',
+    saved_scoring, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator'], 'NSA')
+    saved_scorings.calculate_saved_scoring(repository, saved_scoring['id'])
+    saved_scorings.update_saved_scoring(repository, saved_scoring['id'], name='2026-Q3', pinned=True)
+    # A Saved Scoring that already has the new selection is merged into the one edited.
+    other, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Region'], 'NSA',
                                                context_filters={'Region': ['North']})
-    saved_filters.calculate_saved_filter(repository, other['id'])
+    saved_scorings.calculate_saved_scoring(repository, other['id'])
 
-    edited = saved_filters.edit_saved_filter(repository, saved_filter['id'], ids, ['Operator', 'Region'], 'NSA',
+    edited = saved_scorings.edit_saved_scoring(repository, saved_scoring['id'], ids, ['Operator', 'Region'], 'NSA',
                                              username='super', context_filters={'Region': ['North']})
 
     assert edited['changed'] and edited['merged_filter_id'] == other['id']
     assert edited['previous']['levels'] == ['Operator'] and edited['previous']['context_filters']['Region'] == []
-    [listed] = saved_filters.list_saved_filters(repository)
-    assert listed['id'] == saved_filter['id'] and listed['pinned'] and listed['name'] == '2026-Q3'
+    [listed] = saved_scorings.list_saved_scorings(repository)
+    assert listed['id'] == saved_scoring['id'] and listed['pinned'] and listed['name'] == '2026-Q3'
     assert listed['levels'] == ['Operator', 'Region'] and listed['context_filters']['Region'] == ['North']
     assert listed['status'] == 'queued'
-    found = saved_filters.find_saved_filter(repository, ids, ['Operator', 'Region'], 'NSA', context_filters={'Region': ['North']})
-    assert found['id'] == saved_filter['id']
+    found = saved_scorings.find_saved_scoring(repository, ids, ['Operator', 'Region'], 'NSA', context_filters={'Region': ['North']})
+    assert found['id'] == saved_scoring['id']
     try:
-        saved_filters.edit_saved_filter(repository, saved_filter['id'], ids, ['Operator'], 'NSA')
+        saved_scorings.edit_saved_scoring(repository, saved_scoring['id'], ids, ['Operator'], 'NSA')
     except ValueError as exc:
         assert 'Wait until' in str(exc)
     else:
-        raise AssertionError('A queued Saved Filter must not be edited.')
+        raise AssertionError('A queued Saved Scoring must not be edited.')
     # Calculated, the same selection changes nothing and keeps its result.
-    saved_filters.calculate_saved_filter(repository, saved_filter['id'])
-    unchanged = saved_filters.edit_saved_filter(repository, saved_filter['id'], ids, ['Operator', 'Region'], 'NSA',
+    saved_scorings.calculate_saved_scoring(repository, saved_scoring['id'])
+    unchanged = saved_scorings.edit_saved_scoring(repository, saved_scoring['id'], ids, ['Operator', 'Region'], 'NSA',
                                                 context_filters={'Region': ['North']})
     assert not unchanged['changed'] and unchanged['merged_filter_id'] is None
-    assert saved_filters.get_saved_filter(repository, saved_filter['id'])['status'] == 'completed'
+    assert saved_scorings.get_saved_scoring(repository, saved_scoring['id'])['status'] == 'completed'
 
 
-def test_edit_saved_filter_endpoint_is_recorded_and_calculates_only_a_changed_selection(client, monkeypatch):
+def test_edit_saved_scoring_endpoint_is_recorded_and_calculates_only_a_changed_selection(client, monkeypatch):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     repository = app_module.repository
     calls = []
 
     def edit(_repository, filter_id, dataset_ids, levels, nr_mode, **options):
         calls.append({'filter_id': filter_id, 'dataset_ids': dataset_ids, 'levels': levels, 'nr_mode': nr_mode, **options})
-        return {'saved_filter': {'id': filter_id, 'name': 'Q3'}, 'changed': len(calls) == 1,
+        return {'saved_scoring': {'id': filter_id, 'name': 'Q3'}, 'changed': len(calls) == 1,
                 'previous': {'nr_mode': 'NSA', 'levels': ['Operator']}, 'merged_filter_id': None}
 
-    monkeypatch.setattr(app_module, 'edit_saved_filter', edit)
+    monkeypatch.setattr(app_module, 'edit_saved_scoring', edit)
     monkeypatch.setattr(app_module, 'validate_complete_scoring_cdr_selection', lambda _repository, ids, *_args, **_kwargs: ids)
     queued = []
-    monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
-    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda *_args: None)
+    monkeypatch.setattr(app_module, '_queue_saved_scoring_calculation', lambda _repository, filter_id: queued.append(filter_id))
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_scorings', lambda *_args: None)
     payload = {'dataset_ids': [4, 5, 6], 'aggregation_levels': ['Operator', 'Region'], 'nr_mode': 'NSA',
                'baseline_operator': 'EE', 'context_filters': {'Region': ['North']}}
 
-    response = client.post('/api/scoring/saved-filters/7/edit', json=payload)
+    response = client.post('/api/scoring/saved-scorings/7/edit', json=payload)
 
     assert response.status_code == 200
-    assert response.json() == {'saved_filter': {'id': 7, 'name': 'Q3'}, 'cached': False, 'changed': True}
+    assert response.json() == {'saved_scoring': {'id': 7, 'name': 'Q3'}, 'cached': False, 'changed': True}
     assert calls[0]['dataset_ids'] == [4, 5, 6] and calls[0]['levels'] == ['Operator', 'Region']
     assert calls[0]['username'] == 'super' and calls[0]['context_filters']['Region'] == ['North']
     assert queued == [7]
-    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'edit_saved_filter']
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'edit_saved_scoring']
     assert '"previous": {"nr_mode": "NSA", "levels": ["Operator"]}' in event['details']
     assert '"levels": ["Operator", "Region"]' in event['details'] and '"changed": true' in event['details']
     # The same selection again: nothing is calculated.
-    assert client.post('/api/scoring/saved-filters/7/edit', json=payload).json()['cached'] is True
+    assert client.post('/api/scoring/saved-scorings/7/edit', json=payload).json()['cached'] is True
     assert queued == [7]
 
 
-def test_duplicate_saved_filter_saves_a_copy_with_another_selection_after_the_original(tmp_path):
+def test_duplicate_saved_scoring_saves_a_copy_with_another_selection_after_the_original(tmp_path):
     repository = _workspace(tmp_path, 'workspace')
     ids = _three_cdrs(repository, tmp_path / 'workspace')
-    first, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')
-    saved_filters.calculate_saved_filter(repository, first['id'])
-    saved_filters.update_saved_filter(repository, first['id'], name='2026-Q3', pinned=True)
-    second, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
-    saved_filters.update_saved_filter(repository, second['id'], pinned=True)
+    first, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator'], 'NSA')
+    saved_scorings.calculate_saved_scoring(repository, first['id'])
+    saved_scorings.update_saved_scoring(repository, first['id'], name='2026-Q3', pinned=True)
+    second, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    saved_scorings.update_saved_scoring(repository, second['id'], pinned=True)
     # Starred last, the second one goes first: 2026-Q3 is second.
-    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [second['id'], first['id']]
+    assert [item['id'] for item in saved_scorings.list_saved_scorings(repository)] == [second['id'], first['id']]
 
-    copy = saved_filters.duplicate_saved_filter(repository, first['id'], ids, ['Operator', 'Region'], 'NSA',
+    copy = saved_scorings.duplicate_saved_scoring(repository, first['id'], ids, ['Operator', 'Region'], 'NSA',
                                                 name='  2026-Q3   North ', username='super',
                                                 context_filters={'Region': ['North']})
 
     assert copy['id'] not in (first['id'], second['id'])
     assert copy['name'] == '2026-Q3 North' and copy['pinned'] and copy['status'] == 'queued'
     assert copy['levels'] == ['Operator', 'Region'] and copy['context_filters']['Region'] == ['North']
-    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [second['id'], first['id'], copy['id']]
-    original = saved_filters.get_saved_filter(repository, first['id'])
+    assert [item['id'] for item in saved_scorings.list_saved_scorings(repository)] == [second['id'], first['id'], copy['id']]
+    original = saved_scorings.get_saved_scoring(repository, first['id'])
     assert original['name'] == '2026-Q3' and original['status'] == 'completed' and original['levels'] == ['Operator']
-    # The selection of the copied Saved Filter, or of another one, is not saved again.
-    for levels, message in ((['Operator'], 'still has the filters'), (['Operator', 'Campaign'], f'Saved Filter {second["id"]} already')):
+    # The selection of the copied Saved Scoring, or of another one, is not saved again.
+    for levels, message in ((['Operator'], 'still has the filters'), (['Operator', 'Campaign'], f'Saved Scoring {second["id"]} already')):
         with pytest.raises(ValueError, match=message):
-            saved_filters.duplicate_saved_filter(repository, first['id'], ids, levels, 'NSA', name='Again')
-    assert len(saved_filters.list_saved_filters(repository)) == 3
-    assert saved_filters.duplicate_saved_filter(repository, 999, ids, ['Operator', 'City'], 'NSA') is None
+            saved_scorings.duplicate_saved_scoring(repository, first['id'], ids, levels, 'NSA', name='Again')
+    assert len(saved_scorings.list_saved_scorings(repository)) == 3
+    assert saved_scorings.duplicate_saved_scoring(repository, 999, ids, ['Operator', 'City'], 'NSA') is None
 
 
-def test_duplicate_saved_filter_endpoint_is_recorded_and_calculates_the_copy(client, monkeypatch):
+def test_duplicate_saved_scoring_endpoint_is_recorded_and_calculates_the_copy(client, monkeypatch):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     repository = app_module.repository
     calls = []
@@ -243,66 +243,66 @@ def test_duplicate_saved_filter_endpoint_is_recorded_and_calculates_the_copy(cli
     def duplicate(_repository, filter_id, dataset_ids, levels, nr_mode, **options):
         calls.append({'filter_id': filter_id, 'dataset_ids': dataset_ids, 'levels': levels, 'nr_mode': nr_mode, **options})
         if options['name'] == 'Taken':
-            raise ValueError('Saved Filter 3 already has these filters: change them to save the copy.')
+            raise ValueError('Saved Scoring 3 already has these filters: change them to save the copy.')
         return {'id': 12, 'name': options['name'], 'pinned': True}
 
-    monkeypatch.setattr(app_module, 'duplicate_saved_filter', duplicate)
+    monkeypatch.setattr(app_module, 'duplicate_saved_scoring', duplicate)
     monkeypatch.setattr(app_module, 'validate_complete_scoring_cdr_selection', lambda _repository, ids, *_args, **_kwargs: ids)
     queued = []
-    monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
-    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda *_args: None)
+    monkeypatch.setattr(app_module, '_queue_saved_scoring_calculation', lambda _repository, filter_id: queued.append(filter_id))
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_scorings', lambda *_args: None)
     payload = {'dataset_ids': [4, 5, 6], 'aggregation_levels': ['Operator', 'Campaign'], 'nr_mode': 'NSA',
                'baseline_operator': 'EE', 'context_filters': {'Campaign': ['@latest-3-campaigns']}, 'name': 'Latest 3'}
 
-    response = client.post('/api/scoring/saved-filters/7/duplicate', json=payload)
+    response = client.post('/api/scoring/saved-scorings/7/duplicate', json=payload)
 
     assert response.status_code == 200
-    assert response.json() == {'saved_filter': {'id': 12, 'name': 'Latest 3', 'pinned': True}, 'cached': False}
+    assert response.json() == {'saved_scoring': {'id': 12, 'name': 'Latest 3', 'pinned': True}, 'cached': False}
     assert calls[0]['filter_id'] == 7 and calls[0]['username'] == 'super' and calls[0]['name'] == 'Latest 3'
     assert calls[0]['context_filters']['Campaign'] == ['@latest-3-campaigns']
     assert queued == [12]
-    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'duplicate_saved_filter']
-    assert '"saved_filter_id": 12' in event['details'] and '"source_filter_id": 7' in event['details']
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'duplicate_saved_scoring']
+    assert '"saved_scoring_id": 12' in event['details'] and '"source_filter_id": 7' in event['details']
     assert '"name": "Latest 3"' in event['details'] and '"@latest-3-campaigns"' in event['details']
-    # A selection that is already a Saved Filter: nothing is saved or calculated.
-    refused = client.post('/api/scoring/saved-filters/7/duplicate', json={**payload, 'name': 'Taken'})
+    # A selection that is already a Saved Scoring: nothing is saved or calculated.
+    refused = client.post('/api/scoring/saved-scorings/7/duplicate', json={**payload, 'name': 'Taken'})
     assert refused.status_code == 400 and 'already has these filters' in refused.json()['detail']
     assert queued == [12]
 
 
-def test_opening_a_saved_filter_is_recorded_in_app_events(client, monkeypatch):
+def test_opening_a_saved_scoring_is_recorded_in_app_events(client, monkeypatch):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     repository = app_module.repository
     record = {'id': 9, 'name': 'Q3 London', 'pinned': True, 'status': 'completed', 'use_count': 4}
-    monkeypatch.setattr(app_module, 'mark_saved_filter_used', lambda _repository, filter_id: record if filter_id == 9 else None)
-    monkeypatch.setattr(app_module, 'get_saved_filter', lambda _repository, filter_id: record if filter_id == 9 else None)
-    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda *_args: None)
+    monkeypatch.setattr(app_module, 'mark_saved_scoring_used', lambda _repository, filter_id: record if filter_id == 9 else None)
+    monkeypatch.setattr(app_module, 'get_saved_scoring', lambda _repository, filter_id: record if filter_id == 9 else None)
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_scorings', lambda *_args: None)
 
-    assert client.post('/api/scoring/saved-filters/9/use').status_code == 200
+    assert client.post('/api/scoring/saved-scorings/9/use').status_code == 200
 
     events = {row['action']: [] for row in repository.list_logs(limit=20)}
     for row in repository.list_logs(limit=20):
         events[row['action']].append(json.loads(row['details']))
-    assert events['open_saved_filter'] == [{'saved_filter_id': 9, 'name': 'Q3 London', 'starred': True,
+    assert events['open_saved_scoring'] == [{'saved_scoring_id': 9, 'name': 'Q3 London', 'starred': True,
                                             'status': 'completed', 'use_count': 4}]
 
 
-def test_a_saved_filter_opened_from_the_filter_navigator_says_so_in_app_events(client, monkeypatch):
+def test_a_saved_scoring_opened_from_the_filter_navigator_says_so_in_app_events(client, monkeypatch):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     record = {'id': 9, 'name': 'Q3 London SA', 'pinned': True, 'status': 'saved', 'use_count': 2}
-    monkeypatch.setattr(app_module, 'mark_saved_filter_used', lambda _repository, filter_id: record if filter_id == 9 else None)
-    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda *_args: None)
+    monkeypatch.setattr(app_module, 'mark_saved_scoring_used', lambda _repository, filter_id: record if filter_id == 9 else None)
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_scorings', lambda *_args: None)
 
-    assert client.post('/api/scoring/saved-filters/9/use?source=navigator').status_code == 200
-    assert client.post('/api/scoring/saved-filters/9/use?source=other').status_code == 200
+    assert client.post('/api/scoring/saved-scorings/9/use?source=navigator').status_code == 200
+    assert client.post('/api/scoring/saved-scorings/9/use?source=other').status_code == 200
 
-    events = [json.loads(row['details']) for row in app_module.repository.list_logs(limit=20) if row['action'] == 'open_saved_filter']
-    assert {'saved_filter_id': 9, 'name': 'Q3 London SA', 'starred': True, 'status': 'saved', 'use_count': 2,
+    events = [json.loads(row['details']) for row in app_module.repository.list_logs(limit=20) if row['action'] == 'open_saved_scoring']
+    assert {'saved_scoring_id': 9, 'name': 'Q3 London SA', 'starred': True, 'status': 'saved', 'use_count': 2,
             'source': 'Filter Navigator'} in events
-    assert {'saved_filter_id': 9, 'name': 'Q3 London SA', 'starred': True, 'status': 'saved', 'use_count': 2} in events
+    assert {'saved_scoring_id': 9, 'name': 'Q3 London SA', 'starred': True, 'status': 'saved', 'use_count': 2} in events
 
 
-def test_favourites_filters_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
+def test_favourite_scorings_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303
     workspace = app_module.active_workspace
@@ -313,74 +313,74 @@ def test_favourites_filters_travel_with_their_own_backup_element(client, tmp_pat
     folder = tmp_path / 'cdrs'
     folder.mkdir()
     ids = _three_cdrs(repository, folder)
-    used, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')
-    saved_filters.update_saved_filter(repository, used['id'], name='Weekly view', pinned=True)
-    other, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    used, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator'], 'NSA')
+    saved_scorings.update_saved_scoring(repository, used['id'], name='Weekly view', pinned=True)
+    other, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
     backup_path = app_module.create_recurring_database_backup({
-        'components': ['scoring_configuration', 'scoring_favourites_filters'], 'workspace_ids': [workspace.id],
+        'components': ['scoring_configuration', 'scoring_favourite_scorings'], 'workspace_ids': [workspace.id],
         'backup_path': str(tmp_path), 'max_backups': 5,
     })
     for item in (used, other):
-        saved_filters.delete_saved_filter(repository, item['id'])
+        saved_scorings.delete_saved_scoring(repository, item['id'])
     # The Scoring & GAP Analysis Methodologies no longer carries them.
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
-    assert saved_filters.list_saved_filters(repository) == []
+    assert saved_scorings.list_saved_scorings(repository) == []
     # The Favourite Scorings (not the others) travel as an element of their own.
-    app_module.restore_database_backup(backup_path, ['scoring_favourites_filters'])
-    [restored] = saved_filters.list_saved_filters(repository)
+    app_module.restore_database_backup(backup_path, ['scoring_favourite_scorings'])
+    [restored] = saved_scorings.list_saved_scorings(repository)
     assert restored['name'] == 'Weekly view' and restored['pinned'] and sorted(restored['dataset_ids']) == sorted(ids)
-    assert 'scoring-favourites-filters' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
-    assert app_module.archive_workspace_components_for_target('scoring-favourites-filters') == ['scoring_favourites_filters']
-    assert 'scoring_favourites_filters' in app_module.full_workspace_archive_components()
-    # Scoring & GAP Analysis Methodologies packages created before keep restoring their Saved Filters (and those made
-    # before Saved Filters existed leave the current ones).
-    earlier_package = json.dumps(saved_filters.saved_filters_document(repository)).encode()
-    saved_filters.delete_saved_filter(repository, restored['id'])
-    app_module._restore_workspace_saved_filters(workspace, earlier_package)
-    app_module._restore_workspace_saved_filters(workspace, None)
-    assert [item['name'] for item in saved_filters.list_saved_filters(repository)] == ['Weekly view']
+    assert 'scoring-favourite-scorings' in app_module.WORKSPACE_ELEMENT_EXPORT_TARGETS
+    assert app_module.archive_workspace_components_for_target('scoring-favourite-scorings') == ['scoring_favourite_scorings']
+    assert 'scoring_favourite_scorings' in app_module.full_workspace_archive_components()
+    # Scoring & GAP Analysis Methodologies packages created before keep restoring their Saved Scorings (and those made
+    # before Saved Scorings existed leave the current ones).
+    earlier_package = json.dumps(saved_scorings.saved_scorings_document(repository)).encode()
+    saved_scorings.delete_saved_scoring(repository, restored['id'])
+    app_module._restore_workspace_saved_scorings(workspace, earlier_package)
+    app_module._restore_workspace_saved_scorings(workspace, None)
+    assert [item['name'] for item in saved_scorings.list_saved_scorings(repository)] == ['Weekly view']
 
 
 def _starred_order(repository: Repository) -> list[int]:
-    return [int(item['id']) for item in saved_filters.list_saved_filters(repository) if item['pinned']]
+    return [int(item['id']) for item in saved_scorings.list_saved_scorings(repository) if item['pinned']]
 
 
-def test_starred_saved_filters_keep_their_place_and_are_moved_by_dragging(tmp_path):
+def test_starred_saved_scorings_keep_their_place_and_are_moved_by_dragging(tmp_path):
     repository = _workspace(tmp_path, 'source')
     ids = _three_cdrs(repository, tmp_path / 'source')
-    created = [saved_filters.save_saved_filter(repository, ids, levels, 'NSA')[0]['id']
+    created = [saved_scorings.save_saved_scoring(repository, ids, levels, 'NSA')[0]['id']
                for levels in (['Operator'], ['Operator', 'Region'], ['Operator', 'Campaign'])]
     first, second, third = created
-    # A newly starred Saved Filter goes first; opening one does not move it.
+    # A newly starred Saved Scoring goes first; opening one does not move it.
     for filter_id in created:
-        saved_filters.update_saved_filter(repository, filter_id, pinned=True)
+        saved_scorings.update_saved_scoring(repository, filter_id, pinned=True)
     assert _starred_order(repository) == [third, second, first]
-    saved_filters.mark_saved_filter_used(repository, first)
+    saved_scorings.mark_saved_scoring_used(repository, first)
     assert _starred_order(repository) == [third, second, first]
     # Dragged: the order given, the starred ones left out after it.
-    assert saved_filters.reorder_saved_filters(repository, [first, third]) == [first, third, second]
+    assert saved_scorings.reorder_saved_scorings(repository, [first, third]) == [first, third, second]
     assert _starred_order(repository) == [first, third, second]
     # Unstarred, it leaves the order of the starred ones.
-    saved_filters.update_saved_filter(repository, third, pinned=False)
+    saved_scorings.update_saved_scoring(repository, third, pinned=False)
     assert _starred_order(repository) == [first, second]
-    assert saved_filters.get_saved_filter(repository, third)['position'] is None
+    assert saved_scorings.get_saved_scoring(repository, third)['position'] is None
 
-    # The order travels with the Saved Filters.
-    document = saved_filters.saved_filters_document(repository)
+    # The order travels with the Saved Scorings.
+    document = saved_scorings.saved_scorings_document(repository)
     target = _workspace(tmp_path, 'target')
-    assert saved_filters.import_saved_filters(target, document) == 3
-    imported = [item for item in saved_filters.list_saved_filters(target) if item['pinned']]
+    assert saved_scorings.import_saved_scorings(target, document) == 3
+    imported = [item for item in saved_scorings.list_saved_scorings(target) if item['pinned']]
     assert [item['levels'] for item in imported] == [['Operator'], ['Operator', 'Region']]
 
 
 def _favourite(repository: Repository, dataset_ids: list[int], region: str) -> int:
-    saved, _ = saved_filters.save_saved_filter(repository, dataset_ids, ['Operator'], 'NSA', context_filters={'Region': [region]})
-    saved_filters.update_saved_filter(repository, saved['id'], name=region, pinned=True)
+    saved, _ = saved_scorings.save_saved_scoring(repository, dataset_ids, ['Operator'], 'NSA', context_filters={'Region': [region]})
+    saved_scorings.update_saved_scoring(repository, saved['id'], name=region, pinned=True)
     return saved['id']
 
 
 def _starred_names(repository: Repository) -> list[str]:
-    return [item['name'] for item in saved_filters.list_saved_filters(repository) if item['pinned']]
+    return [item['name'] for item in saved_scorings.list_saved_scorings(repository) if item['pinned']]
 
 
 def _favourites_in_two_orders(tmp_path: Path) -> tuple[dict[str, Any], Repository]:
@@ -389,98 +389,98 @@ def _favourites_in_two_orders(tmp_path: Path) -> tuple[dict[str, Any], Repositor
     source = _workspace(tmp_path, 'source')
     source_ids = _three_cdrs(source, tmp_path / 'source')
     regions = {region: _favourite(source, source_ids, region) for region in ('North', 'South', 'East', 'West')}
-    saved_filters.reorder_saved_filters(source, [regions[region] for region in ('West', 'North', 'East', 'South')])
+    saved_scorings.reorder_saved_scorings(source, [regions[region] for region in ('West', 'North', 'East', 'South')])
     target = _workspace(tmp_path, 'target')
     target_ids = _three_cdrs(target, tmp_path / 'target', prefix='Renamed ')
     regions = {region: _favourite(target, target_ids, region) for region in ('North', 'South', 'East', 'Only here')}
-    saved_filters.reorder_saved_filters(target, [regions[region] for region in ('Only here', 'South', 'North', 'East')])
-    return json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True))), target
+    saved_scorings.reorder_saved_scorings(target, [regions[region] for region in ('Only here', 'South', 'North', 'East')])
+    return json.loads(json.dumps(saved_scorings.saved_scorings_document(source, favourites_only=True))), target
 
 
-def test_a_transfer_gives_the_favourites_filters_the_order_of_the_package(tmp_path):
+def test_a_transfer_gives_the_favourite_scorings_the_order_of_the_package(tmp_path):
     document, target = _favourites_in_two_orders(tmp_path)
-    ids = {item['name']: item['id'] for item in saved_filters.list_saved_filters(target)}
+    ids = {item['name']: item['id'] for item in saved_scorings.list_saved_scorings(target)}
     # What the preview tells, before the import does it.
-    before = saved_filters.saved_filters_document(target, favourites_only=True)
+    before = saved_scorings.saved_scorings_document(target, favourites_only=True)
     assert favourites_order_changes(document, before)
-    saved_filters.import_saved_filters(target, document)
+    saved_scorings.import_saved_scorings(target, document)
     # Those it has move, without being added again, and the one only it has follows them.
     assert _starred_names(target) == ['West', 'North', 'East', 'South', 'Only here']
-    joined = {item['name']: item['id'] for item in saved_filters.list_saved_filters(target)}
+    joined = {item['name']: item['id'] for item in saved_scorings.list_saved_scorings(target)}
     assert {name: joined[name] for name in ids} == ids
     # In that order, nothing moves.
-    assert not favourites_order_changes(document, saved_filters.saved_filters_document(target, favourites_only=True))
-    saved_filters.import_saved_filters(target, document)
+    assert not favourites_order_changes(document, saved_scorings.saved_scorings_document(target, favourites_only=True))
+    saved_scorings.import_saved_scorings(target, document)
     assert _starred_names(target) == ['West', 'North', 'East', 'South', 'Only here']
 
 
-def test_the_favourites_filters_exported_after_a_transfer_keep_its_order(tmp_path):
+def test_the_favourite_scorings_exported_after_a_transfer_keep_its_order(tmp_path):
     document, target = _favourites_in_two_orders(tmp_path)
-    saved_filters.import_saved_filters(target, document)
+    saved_scorings.import_saved_scorings(target, document)
     # Places before the first one (not above 0) travel as any other.
-    positions = saved_filters.saved_filters_document(target, favourites_only=True)
+    positions = saved_scorings.saved_scorings_document(target, favourites_only=True)
     fresh = _workspace(tmp_path, 'fresh')
     _three_cdrs(fresh, tmp_path / 'fresh')
-    saved_filters.import_saved_filters(fresh, json.loads(json.dumps(positions)))
+    saved_scorings.import_saved_scorings(fresh, json.loads(json.dumps(positions)))
     assert _starred_names(fresh) == ['West', 'North', 'East', 'South', 'Only here']
 
 
 @pytest.mark.parametrize('takes_order', [True, False])
-def test_favourites_filters_without_an_order_leave_those_of_the_workspace_where_they_are(tmp_path, takes_order):
+def test_favourite_scorings_without_an_order_leave_those_of_the_workspace_where_they_are(tmp_path, takes_order):
     document, target = _favourites_in_two_orders(tmp_path)
     if takes_order:
         # A document of an earlier version; else, the starter Favourite Scorings, which follow those of the workspace.
-        document = {**document, 'saved_filters': [{key: value for key, value in entry.items() if key != 'position'}
-                                                  for entry in document['saved_filters']]}
-        assert not favourites_order_changes(document, saved_filters.saved_filters_document(target, favourites_only=True))
-    saved_filters.import_saved_filters(target, document, takes_order=takes_order)
+        document = {**document, 'saved_scorings': [{key: value for key, value in entry.items() if key != 'position'}
+                                                  for entry in document['saved_scorings']]}
+        assert not favourites_order_changes(document, saved_scorings.saved_scorings_document(target, favourites_only=True))
+    saved_scorings.import_saved_scorings(target, document, takes_order=takes_order)
     assert _starred_names(target) == ['Only here', 'South', 'North', 'East', 'West']
 
 
-def test_the_starred_saved_filters_keep_the_order_they_had_before_their_place_was_stored(tmp_path):
+def test_the_starred_saved_scorings_keep_the_order_they_had_before_their_place_was_stored(tmp_path):
     repository = _workspace(tmp_path, 'source')
     ids = _three_cdrs(repository, tmp_path / 'source')
-    older = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')[0]['id']
-    newer = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Region'], 'NSA')[0]['id']
+    older = saved_scorings.save_saved_scoring(repository, ids, ['Operator'], 'NSA')[0]['id']
+    newer = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Region'], 'NSA')[0]['id']
     with repository.connection() as connection:
-        connection.execute("UPDATE saved_filters SET pinned = 1, last_used_at = '2026-01-01T00:00:00+00:00' WHERE id = ?", (older,))
-        connection.execute("UPDATE saved_filters SET pinned = 1, last_used_at = '2026-02-01T00:00:00+00:00' WHERE id = ?", (newer,))
-        connection.execute('ALTER TABLE saved_filters DROP COLUMN position')
+        connection.execute("UPDATE saved_scorings SET pinned = 1, last_used_at = '2026-01-01T00:00:00+00:00' WHERE id = ?", (older,))
+        connection.execute("UPDATE saved_scorings SET pinned = 1, last_used_at = '2026-02-01T00:00:00+00:00' WHERE id = ?", (newer,))
+        connection.execute('ALTER TABLE saved_scorings DROP COLUMN position')
     repository.initialize()
     assert _starred_order(repository) == [newer, older]
-    assert [saved_filters.get_saved_filter(repository, filter_id)['position'] for filter_id in (newer, older)] == [1, 2]
+    assert [saved_scorings.get_saved_scoring(repository, filter_id)['position'] for filter_id in (newer, older)] == [1, 2]
 
 
-def test_dragging_saved_filters_is_recorded_in_app_events(client, monkeypatch):
+def test_dragging_saved_scorings_is_recorded_in_app_events(client, monkeypatch):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     repository = app_module.repository
-    monkeypatch.setattr(saved_filters, 'reorder_saved_filters', lambda _repository, ids: [int(value) for value in ids])
-    monkeypatch.setattr(app_module, 'list_saved_filters',
+    monkeypatch.setattr(saved_scorings, 'reorder_saved_scorings', lambda _repository, ids: [int(value) for value in ids])
+    monkeypatch.setattr(app_module, 'list_saved_scorings',
                         lambda _repository: [{'id': 4, 'pinned': True}, {'id': 9, 'pinned': True}])
-    monkeypatch.setattr(app_module, 'reorder_saved_filters', lambda _repository, ids: [int(value) for value in ids])
-    response = client.post('/api/scoring/saved-filters/order', json={'filter_ids': [9, 4]})
+    monkeypatch.setattr(app_module, 'reorder_saved_scorings', lambda _repository, ids: [int(value) for value in ids])
+    response = client.post('/api/scoring/saved-scorings/order', json={'filter_ids': [9, 4]})
     assert response.status_code == 200 and response.json() == {'order': [9, 4]}
-    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'reorder_saved_filters']
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'reorder_saved_scorings']
     assert '"previous_order": [4, 9]' in event['details'] and '"order": [9, 4]' in event['details']
 
 
-def test_use_newer_cdrs_endpoint_is_recorded_and_leaves_the_open_saved_filter_when_not_selecting(client, monkeypatch):
+def test_use_newer_cdrs_endpoint_is_recorded_and_leaves_the_open_saved_scoring_when_not_selecting(client, monkeypatch):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     repository = app_module.repository
     replaced = [{'id': 3, 'name': 'Daily.xlsx', 'replaced_by': 8, 'replaced_by_name': 'Final.xlsx'}]
     monkeypatch.setattr(app_module, 'use_newer_cdrs', lambda _repository, filter_id, _username: {
-        'saved_filter': {'id': filter_id, 'name': 'Q3', 'dataset_ids': [8, 5, 6]}, 'replaced': replaced, 'merged_filter_id': None})
+        'saved_scoring': {'id': filter_id, 'name': 'Q3', 'dataset_ids': [8, 5, 6]}, 'replaced': replaced, 'merged_filter_id': None})
     queued, pruned = [], []
-    monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
-    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda _repository, keep_id, _username: pruned.append(keep_id))
+    monkeypatch.setattr(app_module, '_queue_saved_scoring_calculation', lambda _repository, filter_id: queued.append(filter_id))
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_scorings', lambda _repository, keep_id, _username: pruned.append(keep_id))
 
-    response = client.post('/api/scoring/saved-filters/7/use-newer-cdrs', json={'select': False})
+    response = client.post('/api/scoring/saved-scorings/7/use-newer-cdrs', json={'select': False})
 
-    assert response.status_code == 200 and response.json()['saved_filter']['id'] == 7
+    assert response.status_code == 200 and response.json()['saved_scoring']['id'] == 7
     assert queued == [7] and pruned == []
-    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'saved_filter_use_newer_cdrs']
+    [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'saved_scoring_use_newer_cdrs']
     assert '"replaced_by_file": "Final.xlsx"' in event['details'] and '"opened": false' in event['details']
-    client.post('/api/scoring/saved-filters/7/use-newer-cdrs')
+    client.post('/api/scoring/saved-scorings/7/use-newer-cdrs')
     assert pruned == [7]
 
 
@@ -517,58 +517,58 @@ def test_scoring_report_templates_travel_with_their_own_backup_element(client, t
     assert 'Scoring &amp; GAP Report Templates (from active workspace)' in page
 
 
-def test_saved_filters_travel_with_their_geographical_areas(tmp_path):
+def test_saved_scorings_travel_with_their_geographical_areas(tmp_path):
     source = _workspace(tmp_path, 'source')
     ids = _three_cdrs(source, tmp_path / 'source')
     area = {'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'], 'main_cities': True, 'time_split': 'Quarterly'}
-    used, _ = saved_filters.save_saved_filter(source, ids, ['Operator', 'Region'], 'NSA', baseline_operator='VF',
+    used, _ = saved_scorings.save_saved_scoring(source, ids, ['Operator', 'Region'], 'NSA', baseline_operator='VF',
                                               area_summary=area)
-    saved_filters.update_saved_filter(source, used['id'], pinned=True)
-    [before] = saved_filters.list_saved_filters(source)
-    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
-    # Main Cities travel as such: the workspace that calculates the Saved Filter resolves them with its own.
-    [entry] = document['saved_filters']
+    saved_scorings.update_saved_scoring(source, used['id'], pinned=True)
+    [before] = saved_scorings.list_saved_scorings(source)
+    document = json.loads(json.dumps(saved_scorings.saved_scorings_document(source, favourites_only=True)))
+    # Main Cities travel as such: the workspace that calculates the Saved Scoring resolves them with its own.
+    [entry] = document['saved_scorings']
     assert entry['area_summary'] == before['area_summary'] == area
     # Packages made before the Focus operators came from the Operator Maps still import.
     entry['compared_operators'] = ['EE', 'O2']
 
     target = _workspace(tmp_path, 'target')
-    saved_filters.import_saved_filters(target, document)
+    saved_scorings.import_saved_scorings(target, document)
     _three_cdrs(target, tmp_path / 'target', prefix='Renamed ')
     fields = ('nr_mode', 'levels', 'baseline_operator', 'context_filters', 'area_summary', 'pinned')
-    [after] = saved_filters.list_saved_filters(target)
+    [after] = saved_scorings.list_saved_scorings(target)
     assert {key: after[key] for key in fields} == {key: before[key] for key in fields}
-    assert saved_filters.refresh_saved_filter(target, after['id']) == (True, '')
+    assert saved_scorings.refresh_saved_scoring(target, after['id']) == (True, '')
 
 
-def test_favourites_filters_with_a_campaign_choice_take_the_cdrs_it_stands_for_in_each_workspace(tmp_path):
+def test_favourite_scorings_with_a_campaign_choice_take_the_cdrs_it_stands_for_in_each_workspace(tmp_path):
     source = _workspace(tmp_path, 'source')
     _three_cdrs(source, tmp_path / 'source')
-    used, _ = saved_filters.save_saved_filter(source, [], ['Operator'], 'NSA', context_filters={'Campaign': ['@latest-campaign']})
-    saved_filters.update_saved_filter(source, used['id'], name='Latest campaign', pinned=True)
-    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
+    used, _ = saved_scorings.save_saved_scoring(source, [], ['Operator'], 'NSA', context_filters={'Campaign': ['@latest-campaign']})
+    saved_scorings.update_saved_scoring(source, used['id'], name='Latest campaign', pinned=True)
+    document = json.loads(json.dumps(saved_scorings.saved_scorings_document(source, favourites_only=True)))
     # Another workspace with other files: the Favourite Scoring waits until it has CDRs of the campaign it stands for.
     target = _workspace(tmp_path, 'target')
-    saved_filters.import_saved_filters(target, document)
-    assert saved_filters.list_saved_filters(target)[0]['dataset_ids'] == []
+    saved_scorings.import_saved_scorings(target, document)
+    assert saved_scorings.list_saved_scorings(target)[0]['dataset_ids'] == []
     target_ids = [_add_cdr(target, tmp_path / 'target', kind, f'Other {kind}.xlsx', f'other {kind} file')
                   for kind in ('data', 'voice', 'speech')]
-    [resolved] = saved_filters.list_saved_filters(target)
+    [resolved] = saved_scorings.list_saved_scorings(target)
     assert sorted(resolved['dataset_ids']) == sorted(target_ids) and resolved['name'] == 'Latest campaign' and resolved['pinned']
     # The starter Favourite Scorings have no CDRs: they wait for those of their Campaign choice.
-    entry = {key: value for key, value in document['saved_filters'][0].items() if key != 'cdrs'}
+    entry = {key: value for key, value in document['saved_scorings'][0].items() if key != 'cdrs'}
     fresh = _workspace(tmp_path, 'fresh')
-    assert saved_filters.import_saved_filters(fresh, {**document, 'saved_filters': [entry]}) == 1
-    [waiting] = saved_filters.list_saved_filters(fresh)
+    assert saved_scorings.import_saved_scorings(fresh, {**document, 'saved_scorings': [entry]}) == 1
+    [waiting] = saved_scorings.list_saved_scorings(fresh)
     assert waiting['dataset_ids'] == [] and waiting['missing_cdrs'] == ['Latest campaign CDRs']
     fresh_ids = _three_cdrs(fresh, tmp_path / 'fresh')
-    assert sorted(saved_filters.list_saved_filters(fresh)[0]['dataset_ids']) == sorted(fresh_ids)
-    # Without a Campaign choice, a Saved Filter needs its CDRs.
+    assert sorted(saved_scorings.list_saved_scorings(fresh)[0]['dataset_ids']) == sorted(fresh_ids)
+    # Without a Campaign choice, a Saved Scoring needs its CDRs.
     with pytest.raises(ValueError, match='invalid'):
-        saved_filters.import_saved_filters(fresh, {**document, 'saved_filters': [{**entry, 'context_filters': {}}]})
+        saved_scorings.import_saved_scorings(fresh, {**document, 'saved_scorings': [{**entry, 'context_filters': {}}]})
 
 
-def test_favourites_filters_out_of_date_are_calculated_while_the_application_is_idle(client, tmp_path: Path, monkeypatch) -> None:
+def test_favourite_scorings_out_of_date_are_calculated_while_the_application_is_idle(client, tmp_path: Path, monkeypatch) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303
     workspace = app_module.active_workspace
@@ -579,26 +579,26 @@ def test_favourites_filters_out_of_date_are_calculated_while_the_application_is_
     folder = tmp_path / 'cdrs'
     folder.mkdir()
     ids = _three_cdrs(repository, folder)
-    favourite, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA')
-    saved_filters.update_saved_filter(repository, favourite['id'], name='Weekly view', pinned=True)
-    other, _ = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    favourite, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator'], 'NSA')
+    saved_scorings.update_saved_scoring(repository, favourite['id'], name='Weekly view', pinned=True)
+    other, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
     for item in (favourite, other):
-        saved_filters.calculate_saved_filter(repository, item['id'])
+        saved_scorings.calculate_saved_scoring(repository, item['id'])
     queued = []
-    monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
+    monkeypatch.setattr(app_module, '_queue_saved_scoring_calculation', lambda _repository, filter_id: queued.append(filter_id))
     kept = []
     monkeypatch.setattr(app_module, '_submit_workspace_job', lambda _repository, callback, *args, **_kwargs: kept.append((callback, args[1])))
     # Up to date: nothing is calculated; its result as served, not kept yet, is (ticket #168).
-    app_module._calculate_favourites_filters_when_idle()
-    assert queued == [] and kept == [(app_module._keep_saved_filter_result, favourite['id'])]
+    app_module._calculate_favourite_scorings_when_idle()
+    assert queued == [] and kept == [(app_module._keep_saved_scoring_result, favourite['id'])]
     # Out of date (here, an older calculation): the Favourite Scoring is calculated again, not the others.
     with repository.connection() as connection:
-        connection.execute("UPDATE saved_filters SET result_key = 'older' WHERE id IN (?, ?)", (favourite['id'], other['id']))
-    app_module._calculate_favourites_filters_when_idle()
+        connection.execute("UPDATE saved_scorings SET result_key = 'older' WHERE id IN (?, ?)", (favourite['id'], other['id']))
+    app_module._calculate_favourite_scorings_when_idle()
     assert queued == [favourite['id']]
     [event] = [row for row in repository.list_logs(limit=20) if row['action'] == 'scoring_calculation_requested']
     assert event['username'] == 'system' and '"idle": true' in event['details'] and 'Weekly view' in event['details']
-    assert ('_calculate_favourites_filters_when_idle' in
+    assert ('_calculate_favourite_scorings_when_idle' in
             [callback.__name__ for _seconds, callback in app_module.IDLE_TASK_CALLBACKS])
 
 
@@ -607,70 +607,70 @@ def test_operator_filters_take_patterns_and_exclusions_when_they_are_calculated(
     ids = _three_cdrs(repository, tmp_path / 'w')
 
     def scored(values):
-        saved, _ = saved_filters.save_saved_filter(repository, ids, ['Operator'], 'NSA', context_filters={'Operator': values})
-        result = saved_filters.calculate_saved_filter(repository, saved['id'])['result']
+        saved, _ = saved_scorings.save_saved_scoring(repository, ids, ['Operator'], 'NSA', context_filters={'Operator': values})
+        result = saved_scorings.calculate_saved_scoring(repository, saved['id'])['result']
         return saved, sorted({str(row.get('operator') or row.get('Operator')) for row in result['scoring']})
 
     excluded, operators = scored(['Not Three*'])
     assert operators == ['EE', 'Vodafone UK'] and excluded['context_filters']['Operator'] == ['Not Three*']
     assert scored(['vodafone*', 'EE'])[1] == ['EE', 'Vodafone UK']
-    # Kept as such in the documents of the Saved Filters, which take them to other workspaces.
-    saved_filters.update_saved_filter(repository, excluded['id'], pinned=True)
-    [entry] = saved_filters.saved_filters_document(repository, favourites_only=True)['saved_filters']
+    # Kept as such in the documents of the Saved Scorings, which take them to other workspaces.
+    saved_scorings.update_saved_scoring(repository, excluded['id'], pinned=True)
+    [entry] = saved_scorings.saved_scorings_document(repository, favourites_only=True)['saved_scorings']
     assert entry['context_filters']['Operator'] == ['Not Three*']
 
 
-def test_an_imported_favourites_filter_replaces_the_name_and_creator_of_the_same_selection(tmp_path):
+def test_an_imported_favourite_scoring_replaces_the_name_and_creator_of_the_same_selection(tmp_path):
     source = _workspace(tmp_path, 'source')
     ids = _three_cdrs(source, tmp_path / 'source')
-    used, _ = saved_filters.save_saved_filter(source, ids, ['Operator'], 'NSA')
-    saved_filters.update_saved_filter(source, used['id'], name='Imported name', pinned=True, username='ana')
-    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
-    assert document['saved_filters'][0]['created_by'] == 'ana'
+    used, _ = saved_scorings.save_saved_scoring(source, ids, ['Operator'], 'NSA')
+    saved_scorings.update_saved_scoring(source, used['id'], name='Imported name', pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_scorings.saved_scorings_document(source, favourites_only=True)))
+    assert document['saved_scorings'][0]['created_by'] == 'ana'
 
     target = _workspace(tmp_path, 'target')
     target_ids = _three_cdrs(target, tmp_path / 'target')
-    local, _ = saved_filters.save_saved_filter(target, target_ids, ['Operator'], 'NSA')
-    saved_filters.update_saved_filter(target, local['id'], name='Local name')
+    local, _ = saved_scorings.save_saved_scoring(target, target_ids, ['Operator'], 'NSA')
+    saved_scorings.update_saved_scoring(target, local['id'], name='Local name')
     with target.connection() as connection:
-        connection.execute("UPDATE saved_filters SET created_by = 'bob' WHERE id = ?", (local['id'],))
+        connection.execute("UPDATE saved_scorings SET created_by = 'bob' WHERE id = ?", (local['id'],))
     # The creator rule of the import: the creator in the document when that user is active here.
-    assert saved_filters.import_saved_filters(target, document, creator=lambda package, _local: package or 'importer') == 1
-    [replaced] = saved_filters.list_saved_filters(target)
+    assert saved_scorings.import_saved_scorings(target, document, creator=lambda package, _local: package or 'importer') == 1
+    [replaced] = saved_scorings.list_saved_scorings(target)
     assert replaced['id'] == local['id'] and replaced['name'] == 'Imported name' and replaced['pinned']
     assert replaced['created_by'] == 'ana'
 
     # A star of the workspace stays with whoever gave it when the imported one has none.
-    saved_filters.update_saved_filter(target, local['id'], name='Starred here', username='bob')
+    saved_scorings.update_saved_scoring(target, local['id'], name='Starred here', username='bob')
     with target.connection() as connection:
-        connection.execute("UPDATE saved_filters SET created_by = 'bob' WHERE id = ?", (local['id'],))
-    document['saved_filters'][0].update(pinned=False, name='Unstarred there', created_by='carol')
-    saved_filters.import_saved_filters(target, document, creator=lambda package, _local: package or 'importer')
-    [kept] = saved_filters.list_saved_filters(target)
+        connection.execute("UPDATE saved_scorings SET created_by = 'bob' WHERE id = ?", (local['id'],))
+    document['saved_scorings'][0].update(pinned=False, name='Unstarred there', created_by='carol')
+    saved_scorings.import_saved_scorings(target, document, creator=lambda package, _local: package or 'importer')
+    [kept] = saved_scorings.list_saved_scorings(target)
     assert kept['name'] == 'Unstarred there' and kept['pinned'] and kept['created_by'] == 'bob'
 
 
-def test_an_import_prepares_only_its_favourites_filters_and_tells_its_progress(tmp_path):
+def test_an_import_prepares_only_its_favourite_scorings_and_tells_its_progress(tmp_path):
     source = _workspace(tmp_path, 'source')
     ids = _three_cdrs(source, tmp_path / 'source')
     for levels in (['Operator'], ['Operator', 'Region']):
-        used, _ = saved_filters.save_saved_filter(source, ids, levels, 'NSA')
-        saved_filters.update_saved_filter(source, used['id'], pinned=True, username='ana')
-    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
+        used, _ = saved_scorings.save_saved_scoring(source, ids, levels, 'NSA')
+        saved_scorings.update_saved_scoring(source, used['id'], pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_scorings.saved_scorings_document(source, favourites_only=True)))
     target = _workspace(tmp_path, 'target')
-    # A Saved Filter of an earlier import still waits for CDRs this workspace does not have.
-    waiting = {**document['saved_filters'][0], 'cdrs': [{'sha256': 'f' * 64, 'name': 'Elsewhere.xlsx', 'kind': 'data'}]}
-    saved_filters.import_saved_filters(target, {**document, 'saved_filters': [waiting]})
+    # A Saved Scoring of an earlier import still waits for CDRs this workspace does not have.
+    waiting = {**document['saved_scorings'][0], 'cdrs': [{'sha256': 'f' * 64, 'name': 'Elsewhere.xlsx', 'kind': 'data'}]}
+    saved_scorings.import_saved_scorings(target, {**document, 'saved_scorings': [waiting]})
     _three_cdrs(target, tmp_path / 'target')
 
     phases: list[tuple[str, float]] = []
-    assert saved_filters.import_saved_filters(target, document, progress=lambda phase, share: phases.append((phase, share))) == 2
-    # The CDRs are identified by their files once, and only the two Saved Filters of the package are prepared.
+    assert saved_scorings.import_saved_scorings(target, document, progress=lambda phase, share: phases.append((phase, share))) == 2
+    # The CDRs are identified by their files once, and only the two Saved Scorings of the package are prepared.
     assert [phase for phase, _share in phases if phase.startswith('preparing')] == [
-        'preparing Saved Filter 1 of 2', 'preparing Saved Filter 2 of 2']
+        'preparing Saved Scoring 1 of 2', 'preparing Saved Scoring 2 of 2']
     assert any(phase.startswith('identifying CDR 1 of 3') for phase, _share in phases)
     assert [share for _phase, share in phases] == sorted(share for _phase, share in phases)
-    assert sum(bool(item['dataset_ids']) for item in saved_filters.list_saved_filters(target)) == 2
+    assert sum(bool(item['dataset_ids']) for item in saved_scorings.list_saved_scorings(target)) == 2
 
 
 def test_a_cdr_file_that_only_moved_keeps_its_hash(tmp_path):

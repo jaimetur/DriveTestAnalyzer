@@ -1,1 +1,1 @@
-"""Scoring & GAP Analysis: the calculation, Saved Filters, history, impact, views and exports."""
+"""Scoring & GAP Analysis: the calculation, Saved Scorings, history, impact, views and exports."""

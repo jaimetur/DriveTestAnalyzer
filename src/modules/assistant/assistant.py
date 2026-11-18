@@ -2,7 +2,7 @@
 
 The engine (Kiro CLI or Claude, those of Super Admin → AI Comment Writers, with the key of the server or of the user)
 interprets the question and asks for the tools it needs (assistant_tools: the workspace, the Scoring and its Summary,
-the Saved Filters, the Non-Qualified Calls, a read-only SQL query over the NQ Calls and the CDR rows, Network Insights,
+the Saved Scorings, the Non-Qualified Calls, a read-only SQL query over the NQ Calls and the CDR rows, Network Insights,
 the charts of PPT Designer, the Help and a calculator); the server runs them and the engine writes the answer.
 Nothing it receives names a customer: the names of operators, vendors, areas, campaigns, methodologies and users are
 codes (assistant_privacy), and the server puts the real names back in the answer. Every figure of an answer must come
@@ -60,7 +60,7 @@ EXAMPLE_QUESTIONS = (
     'List the JOIN_IDs of the NQ Calls in a Cluster of at least 4 calls and in a Time-Window issue of at least 4 calls.',
     'Comment on the RSRP and SINR of each operator in the latest campaign (Network Insights).',
     'Analyse the first chart of the first PPT Design and give me your comments.',
-    'How do I create a Saved Filter that follows the latest campaign?',
+    'How do I create a Saved Scoring that follows the latest campaign?',
 )
 
 SYSTEM_PROMPT = '''You are the AI Assistant of DriveTest Analyzer, a tool that analyses drive-test benchmark measurements (the
@@ -81,7 +81,7 @@ How to work:
   difference, a share or a ratio call the calculate tool first. Never estimate or invent a figure.
 - Plan the fewest tool calls; call several tools in the same step when they do not depend on each other.
 - Read the workspace context given with the question (campaigns of each NR Mode with their quarter, operators with
-  their role, vendors, methodologies, Saved Filters) and the glossary before calling tools.
+  their role, vendors, methodologies, Saved Scorings) and the glossary before calling tools.
 - A quarter (2026-Q3) is the campaign of that quarter; when the quarter has an NSA and an SA campaign, answer for the
   NSA one and say the SA one exists (or answer both when that is short). "Latest campaign" is newest_rank 1.
 - To answer about some operators, split by Operator and use "only" in the scoring tool: an Operator filter changes the
@@ -877,12 +877,12 @@ def _summary(name: str, result: dict[str, Any]) -> str:
         return (f'{result.get("name")}: slides {", ".join(str(item.get("slide")) for item in slides)} '
                 f'({sum(len(item.get("charts") or []) for item in slides)} charts{": " + ", ".join(ids) if ids else ""})')
     if name == 'workspace_overview':
-        return 'Campaigns, operators, vendors, areas, methodologies and Saved Filters of the workspace'
+        return 'Campaigns, operators, vendors, areas, methodologies and Saved Scorings of the workspace'
     if name == 'list_values':
         return f'{result.get("count", 0)} values of {result.get("field")}'
-    if name == 'saved_filters':
-        return f'Saved Filter {result.get("id")}: {result.get("name")}' if 'id' in result else \
-            f'{len(result.get("saved_filters") or [])} Saved Filters'
+    if name == 'saved_scorings':
+        return f'Saved Scoring {result.get("id")}: {result.get("name")}' if 'id' in result else \
+            f'{len(result.get("saved_scorings") or [])} Saved Scorings'
     if name == 'help_search':
         return '; '.join(f'{item["chapter"]} › {item["section"]}' for item in result.get('passages') or [])
     if name == 'calculate':

@@ -45,7 +45,7 @@ def test_operator_and_vendor_renames_change_only_the_renamed_label():
         'dataset_id=3&operator=VF&operator=EE&city=VF_UK'
 
 
-def test_renaming_an_operator_in_the_maps_renames_it_in_report_configurations_and_saved_filters(client):
+def test_renaming_an_operator_in_the_maps_renames_it_in_report_configurations_and_saved_scorings(client):
     login(client)
     repository = core.repository
     report = default_report_configuration(context_filters={'Operator': ['EE', 'VF']})
@@ -63,24 +63,24 @@ def test_renaming_an_operator_in_the_maps_renames_it_in_report_configurations_an
     assert json.loads(repository.get_workspace_state('nq_calls_filters')) == {'operator_vendor': ['VF_UK_Ericsson'], 'city': ['VF']}
 
 
-def test_renaming_an_operator_renames_it_in_the_scoring_saved_filters_and_the_favourites(client):
+def test_renaming_an_operator_renames_it_in_the_scoring_saved_scorings_and_the_favourites(client):
     from src.modules.reporting import bundle_report_templates
     from src.modules.network_insights import network_insights_favourites
-    from src.modules.scoring.saved_filters import SAVED_FILTERS_TABLE, saved_filter_key
+    from src.modules.scoring.saved_scorings import SAVED_SCORINGS_TABLE, saved_scoring_key
 
     login(client)
     repository = core.repository
-    # A Saved Filter with an automatic Campaign choice (found by its selection whatever its CDRs) and one with its CDRs.
+    # A Saved Scoring with an automatic Campaign choice (found by its selection whatever its CDRs) and one with its CDRs.
     area = {'breakdown': 'Region', 'cities': [], 'time_split': 'Campaign', 'main_cities': True}
     latest = {'Operator': ['EE', 'VF'], 'Campaign': ['@latest-campaign']}
     pinned = {'Operator_Vendor': ['VF_Ericsson']}
-    rows = [(saved_filter_key([], ['Operator', 'Campaign'], 'NSA', 'VF', latest, 'by-campaign', area), 'Latest', '["Operator", "Campaign"]',
+    rows = [(saved_scoring_key([], ['Operator', 'Campaign'], 'NSA', 'VF', latest, 'by-campaign', area), 'Latest', '["Operator", "Campaign"]',
              {'context_filters': latest, 'scoring_profile_id': 'by-campaign', 'area_summary': area, 'sources': [{'operators': ['VF']}]}, '[1, 2, 3]'),
-            (saved_filter_key([7], ['Operator'], 'NSA', 'VF', pinned, '', None), 'Pinned', '["Operator"]',
+            (saved_scoring_key([7], ['Operator'], 'NSA', 'VF', pinned, '', None), 'Pinned', '["Operator"]',
              {'context_filters': pinned, 'resolved_context_filters': pinned}, '[7]')]
     with repository.connection() as connection:
         for key, name, levels, snapshot, ids in rows:
-            connection.execute(f"INSERT INTO {SAVED_FILTERS_TABLE} (selection_key, name, nr_mode, levels_json, baseline_operator, "
+            connection.execute(f"INSERT INTO {SAVED_SCORINGS_TABLE} (selection_key, name, nr_mode, levels_json, baseline_operator, "
                                "source_metadata_json, dataset_ids_json, status) VALUES (?, ?, 'NSA', ?, 'VF', ?, ?, 'completed')",
                                (key, name, levels, json.dumps(snapshot), ids))
     template = bundle_report_templates.save_favourite(repository, None, 'Weekly bundle', {
@@ -94,16 +94,16 @@ def test_renaming_an_operator_renames_it_in_the_scoring_saved_filters_and_the_fa
 
     with repository.connection() as connection:
         saved = {row['name']: row for row in connection.execute(
-            f'SELECT name, selection_key, baseline_operator, source_metadata_json FROM {SAVED_FILTERS_TABLE}').fetchall()}
+            f'SELECT name, selection_key, baseline_operator, source_metadata_json FROM {SAVED_SCORINGS_TABLE}').fetchall()}
     first, second = (json.loads(saved[name]['source_metadata_json']) for name in ('Latest', 'Pinned'))
     assert saved['Latest']['baseline_operator'] == saved['Pinned']['baseline_operator'] == 'VF_UK'
     assert first['context_filters']['Operator'] == ['EE', 'VF_UK'] and second['resolved_context_filters'] == {'Operator_Vendor': ['VF_UK_Ericsson']}
     # The names of the CDRs stay; the selections are found again with the new label.
     assert first['sources'] == [{'operators': ['VF']}]
-    assert saved['Latest']['selection_key'] == saved_filter_key([], ['Operator', 'Campaign'], 'NSA', 'VF_UK',
+    assert saved['Latest']['selection_key'] == saved_scoring_key([], ['Operator', 'Campaign'], 'NSA', 'VF_UK',
                                                                 {'Operator': ['EE', 'VF_UK'], 'Campaign': ['@latest-campaign']},
                                                                 'by-campaign', area)
-    assert saved['Pinned']['selection_key'] == saved_filter_key([7], ['Operator'], 'NSA', 'VF_UK', {'Operator_Vendor': ['VF_UK_Ericsson']}, '', None)
+    assert saved['Pinned']['selection_key'] == saved_scoring_key([7], ['Operator'], 'NSA', 'VF_UK', {'Operator_Vendor': ['VF_UK_Ericsson']}, '', None)
     filters = bundle_report_templates.get_favourite(repository, template['id'])['definition']['filters']
     assert (filters['operators'], filters['operator_vendors']) == (['VF_UK'], ['VF_UK_Ericsson'])
     controls = network_insights_favourites.get_favourite(repository, analysis['id'])['selection']['controls']

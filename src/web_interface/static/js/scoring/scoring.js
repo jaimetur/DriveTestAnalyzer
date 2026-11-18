@@ -154,14 +154,16 @@
   }
   applyThemeStyles();
 
-  const savedFiltersUrl = root.dataset.savedFiltersUrl || '/api/scoring/saved-filters';
-  // The Saved Filters whose result is being loaded: choosing one again meanwhile waits for that answer instead of
+  const savedScoringsUrl = root.dataset.savedScoringsUrl || '/api/scoring/saved-scorings';
+  // The Saved Scorings whose result is being loaded: choosing one again meanwhile waits for that answer instead of
   // asking the server to build the same result twice at once (ticket #168), and the card says it is opening.
   const loadingResults = new Set();
   const selectionUrl = root.dataset.selectionUrl || '/api/scoring/selection';
-  const exportBase = root.dataset.exportBase || '/scoring/saved-filters';
-  const requestedSavedFilterId = new URLSearchParams(window.location.search).get('saved_filter_id');
-  const requestedSavedFilterIdPending = {value: requestedSavedFilterId};
+  const exportBase = root.dataset.exportBase || '/scoring/saved-scorings';
+  // (saved_filter_id: the links made until v0.12.7, when the Saved Scorings were Saved Filters.)
+  const requestedSavedScoringId = new URLSearchParams(window.location.search).get('saved_scoring_id')
+    || new URLSearchParams(window.location.search).get('saved_filter_id');
+  const requestedSavedScoringIdPending = {value: requestedSavedScoringId};
   const scoringViewStorageKey = [
     'drivetest-analyzer', 'scoring-view',
     encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
@@ -173,7 +175,7 @@
       const stored = JSON.parse(window.sessionStorage.getItem(scoringViewStorageKey) || 'null');
       if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
       return {
-        savedFilterId: typeof stored.saved_filter_id === 'string' && stored.saved_filter_id ? stored.saved_filter_id : null,
+        savedScoringId: [stored.saved_scoring_id, stored.saved_filter_id].find(value => typeof value === 'string' && value) || null,
         // (Tabs saved by earlier versions: Best Network is Scoring Charts, Locations is Geographical Areas.)
         resultTab: stored.result_tab === 'best-network' ? 'charts' : stored.result_tab === 'locations' ? 'geographical-areas'
           : resultTabNames.has(stored.result_tab) ? stored.result_tab : null,
@@ -216,7 +218,7 @@
   function persistScoringViewState() {
     try {
       window.sessionStorage.setItem(scoringViewStorageKey, JSON.stringify({
-        saved_filter_id: selectedSavedFilterId,
+        saved_scoring_id: selectedSavedScoringId,
         result_tab: activeResultTab,
         // While the saved position is restored, the page is still growing: keep the saved one.
         scroll_y: typeof scoringViewScrollRestoring !== 'undefined' && (scoringViewScrollRestorePending || scoringViewScrollRestoring)
@@ -262,7 +264,7 @@
   // The tab bar of the results stays at the top while they are scrolled (scoring.html), and so does the bar of Select all
   // to Delete while the Favourite Scorings are: marked then, to draw them with the colour of the panel behind them.
   const resultTabsBar = root.querySelector('.scoring-result-tabs');
-  const stickyBars = [resultTabsBar, root.querySelector('[data-saved-filters-bulk]')].filter(Boolean);
+  const stickyBars = [resultTabsBar, root.querySelector('[data-saved-scorings-bulk]')].filter(Boolean);
   let resultTabsFrame = 0;
   function syncResultTabsStuck() {
     resultTabsFrame = 0;
@@ -290,7 +292,7 @@
   const datasetKindLabels = {data: 'Data', voice: 'Voice', speech: 'Speech'};
   // NR Mode and Campaign choose the CDRs of the calculation: the server answers with them (those the combined CDR
   // tables include for the campaigns) and with the values each context filter offers among every CDR of the NR
-  // Mode, each filter those the other filters leave. A Saved Filter opened in the panel keeps its own CDRs until
+  // Mode, each filter those the other filters leave. A Saved Scoring opened in the panel keeps its own CDRs until
   // the NR Mode or a filter changes.
   const autoCdrsUrl = root.dataset.cdrSelectionUrl || '/api/scoring/cdr-selection';
   const autoCdrSection = root.querySelector('[data-scoring-auto-cdrs]');
@@ -315,7 +317,7 @@
     if (typeof ResizeObserver === 'function') new ResizeObserver(fitAutoCdrLists).observe(autoCdrGroups);
   }
   let autoCdrs = {options: null, incomplete: []};
-  // The filter values of a selection restored (a Saved Filter used or edited, or an edit cancelled), kept in the lists until
+  // The filter values of a selection restored (a Saved Scoring used or edited, or an edit cancelled), kept in the lists until
   // the CDRs and the lists of its NR Mode and filters arrive: until then the lists still belong to the selection before
   // it (or are empty), and its values, its automatic Campaign choice included, would be lost and saved without them.
   let restoredContextValues = null;
@@ -386,22 +388,22 @@
   const calculateButton = root.querySelector('[data-calculate-scoring]');
   const recalculateButton = root.querySelector('[data-recalculate-scoring]');
   const calculationPanel = root.querySelector('.scoring-controls');
-  // A Saved Filter edited from its pencil: the panel, moved into a dialog, shows its selection with automatic CDRs, and
+  // A Saved Scoring edited from its pencil: the panel, moved into a dialog, shows its selection with automatic CDRs, and
   // Save Changes gives it the selection of the panel.
-  const editDialog = root.querySelector('[data-saved-filter-edit-dialog]');
-  const editBanner = root.querySelector('[data-saved-filter-editing]');
-  const editTitle = root.querySelector('[data-saved-filter-editing-title]');
-  const editText = root.querySelector('[data-saved-filter-editing-text]');
+  const editDialog = root.querySelector('[data-saved-scoring-edit-dialog]');
+  const editBanner = root.querySelector('[data-saved-scoring-editing]');
+  const editTitle = root.querySelector('[data-saved-scoring-editing-title]');
+  const editText = root.querySelector('[data-saved-scoring-editing-text]');
   const editTextDefault = editText?.textContent || '';
-  const editSaveButton = root.querySelector('[data-saved-filter-edit-save]');
+  const editSaveButton = root.querySelector('[data-saved-scoring-edit-save]');
   const editSaveLabel = editSaveButton?.querySelector('span') || null;
-  const editCancelButton = root.querySelector('[data-saved-filter-edit-cancel]');
-  let editingSavedFilter = null;
+  const editCancelButton = root.querySelector('[data-saved-scoring-edit-cancel]');
+  let editingSavedScoring = null;
   // The selection of the panel before the editing (given back when it is cancelled) and the place of the panel.
   let selectionBeforeEdit = null;
   let editPanelPlaceholder = null;
   // The strip of Scoring & GAP Analysis (drawn once per frame), the selection of the scoring shown (taken when the
-  // selection is its Saved Filter), whether the selection is still that one, and Apply & Calculate waiting for the check.
+  // selection is its Saved Scoring), whether the selection is still that one, and Apply & Calculate waiting for the check.
   let configStripFrame = 0;
   let shownSelection = null;
   let selectionMatchesShown = true;
@@ -417,7 +419,7 @@
   const areaSummaryTimeSplit = root.querySelector('[data-scoring-area-time-split]');
   const areaSummaryBreakdown = root.querySelector('[data-scoring-area-breakdown]');
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
-  // Postal Codes in the Points Lost Map: only for the Saved Filters that ask for them.
+  // Postal Codes in the Points Lost Map: only for the Saved Scorings that ask for them.
   const areaSummaryPostalCodes = root.querySelector('[data-scoring-area-postal-codes]');
   // And the map they use, of those the workspace has or a calculation downloads.
   const areaSummaryPostalMap = root.querySelector('[data-scoring-area-postal-map]');
@@ -434,39 +436,39 @@
   const trendCitiesSelect = root.querySelector('[data-scoring-trend-cities]');
   const trendAreasFields = root.querySelector('[data-scoring-trend-areas-fields]');
   const message = root.querySelector('[data-scoring-message]');
-  const savedFilterLists = [...root.querySelectorAll('[data-saved-filter-list]')];
-  const savedFilterPanelList = savedFilterLists.find(list => list.closest('.saved-filters-panel')) || null;
-  const canReorderSavedFilters = document.body.dataset.authenticatedRole !== 'user-viewer';
-  let draggedSavedFilterRow = null;
-  // The Saved Filters checked in the Saved Filters panel, to update them together with Use newer CDRs or delete them.
-  const checkedSavedFilterIds = new Set();
-  const savedFiltersBulk = root.querySelector('[data-saved-filters-bulk]');
-  const savedFiltersSelectAll = root.querySelector('[data-saved-filters-select-all]');
-  const savedFiltersUseNewer = root.querySelector('[data-saved-filters-use-newer]');
-  const savedFiltersDelete = root.querySelector('[data-saved-filters-delete]');
-  const savedFiltersMove = [...root.querySelectorAll('[data-saved-filters-move]')];
-  // The orders of the Saved Filters are saved one after the other, so the last move is the one kept.
-  let savedFilterOrderRequest = Promise.resolve();
-  let updatingSavedFiltersCdrs = false;
-  let deletingCheckedSavedFilters = false;
-  let savedFiltersRenderPending = false;
-  const savedFilterList = savedFilterLists[0];
-  // The Saved Filter selectors of the module, on top of the Calculation panel and of Scoring & GAP Results: the selected
+  const savedScoringLists = [...root.querySelectorAll('[data-saved-scoring-list]')];
+  const savedScoringPanelList = savedScoringLists.find(list => list.closest('.saved-scorings-panel')) || null;
+  const canReorderSavedScorings = document.body.dataset.authenticatedRole !== 'user-viewer';
+  let draggedSavedScoringRow = null;
+  // The Saved Scorings checked in the Saved Scorings panel, to update them together with Use newer CDRs or delete them.
+  const checkedSavedScoringIds = new Set();
+  const savedScoringsBulk = root.querySelector('[data-saved-scorings-bulk]');
+  const savedScoringsSelectAll = root.querySelector('[data-saved-scorings-select-all]');
+  const savedScoringsUseNewer = root.querySelector('[data-saved-scorings-use-newer]');
+  const savedScoringsDelete = root.querySelector('[data-saved-scorings-delete]');
+  const savedScoringsMove = [...root.querySelectorAll('[data-saved-scorings-move]')];
+  // The orders of the Saved Scorings are saved one after the other, so the last move is the one kept.
+  let savedScoringOrderRequest = Promise.resolve();
+  let updatingSavedScoringsCdrs = false;
+  let deletingCheckedSavedScorings = false;
+  let savedScoringsRenderPending = false;
+  const savedScoringList = savedScoringLists[0];
+  // The Saved Scoring selectors of the module, on top of the Calculation panel and of Scoring & GAP Results: the selected
   // card of the first one is drawn and the others are its copies.
-  const savedFilterSelectors = [...root.querySelectorAll('[data-saved-filter-selector]')];
+  const savedScoringSelectors = [...root.querySelectorAll('[data-saved-scoring-selector]')];
   // The Filter Navigator: the Favourite Scorings as a tree (Area → NR Mode → Campaign) with a search, opened from the
   // Favourite Scorings panel and from the button of each selector. The branches opened stay open while the page is open;
   // while searching, every branch with a match is open but the ones closed meanwhile.
-  const navigatorDialog = root.querySelector('[data-saved-filter-navigator]');
-  const navigatorTree = navigatorDialog?.querySelector('[data-saved-filter-navigator-tree]') || null;
-  const navigatorSearch = navigatorDialog?.querySelector('[data-saved-filter-navigator-search]') || null;
-  const navigatorCount = navigatorDialog?.querySelector('[data-saved-filter-navigator-count]') || null;
+  const navigatorDialog = root.querySelector('[data-saved-scoring-navigator]');
+  const navigatorTree = navigatorDialog?.querySelector('[data-saved-scoring-navigator-tree]') || null;
+  const navigatorSearch = navigatorDialog?.querySelector('[data-saved-scoring-navigator-search]') || null;
+  const navigatorCount = navigatorDialog?.querySelector('[data-saved-scoring-navigator-count]') || null;
   const navigatorExpanded = new Set();
   const navigatorSearchCollapsed = new Set();
   // The selector the Filter Navigator was opened from (null: the Favourite Scorings panel).
   let navigatorOrigin = null;
-  const selectedSavedFilterCards = [...root.querySelectorAll('[data-selected-saved-filter-card]')];
-  const selectedSavedFilterCard = selectedSavedFilterCards[0];
+  const selectedSavedScoringCards = [...root.querySelectorAll('[data-selected-saved-scoring-card]')];
+  const selectedSavedScoringCard = selectedSavedScoringCards[0];
   const resultsTabbed = root.querySelector('.scoring-results-tabbed');
   const resultNotesStack = root.querySelector('.scoring-notes-stack');
   const environmentControl = root.querySelector('[data-result-environment-control]');
@@ -505,44 +507,44 @@
   const gapKpiOrderSetting = document.querySelector('[data-gap-kpi-order-setting]');
   if (gapKpiOrderSetting) gapKpiOrderSetting.value = gapKpiOrder;
   const scoringValueObservers = new Map();
-  const deletedSavedFilterIds = new Set();
-  const deletingSavedFilterIds = new Set();
-  let savedFilters = [];
+  const deletedSavedScoringIds = new Set();
+  const deletingSavedScoringIds = new Set();
+  let savedScorings = [];
   let calculationMatchKey = '';
-  // Set by the Saved Filter polling: check the same selection again without disabling the buttons meanwhile.
+  // Set by the Saved Scoring polling: check the same selection again without disabling the buttons meanwhile.
   let calculationMatchRefresh = false;
   // A check of the selection is on its way; a refresh meanwhile waits for its answer and checks again after it.
   let calculationMatchPending = false;
   let calculationMatchRecheck = false;
-  // The selection of the Calculation panel is no Saved Filter: the results of the opened one are not shown with it.
+  // The selection of the Calculation panel is no Saved Scoring: the results of the opened one are not shown with it.
   let selectionUnmatched = false;
-  // The name of the copy while a Saved Filter is duplicated (null while it is edited, or neither).
+  // The name of the copy while a Saved Scoring is duplicated (null while it is edited, or neither).
   let duplicateName = null;
   // The status of the selected CDRs and filters (calculating, recalculating, already calculated or ready) stays
-  // while the Saved Filter list refreshes every few seconds; Saved Filters submitted with Recalculate say so.
+  // while the Saved Scoring list refreshes every few seconds; Saved Scorings submitted with Recalculate say so.
   let selectionStatus = {key: '', text: '', kind: ''};
-  const recalculatingSavedFilters = new Set();
+  const recalculatingSavedScorings = new Set();
   let calculationMatchRevision = 0;
   let calculationMatchTimer = null;
   let submittingCalculation = false;
-  let selectedSavedFilterId = restoredScoringViewState.savedFilterId;
-  let selectedSavedFilter = null;
+  let selectedSavedScoringId = restoredScoringViewState.savedScoringId;
+  let selectedSavedScoring = null;
   // Whether the selected card of the Scoring Results dropdown shows every detail (Details); folded at first.
-  let selectedSavedFilterUnfolded = false;
+  let selectedSavedScoringUnfolded = false;
   let selectedEnvironment = restoredScoringViewState.environment || 'all';
-  // Best Network or Most Reliable: both scorings share the Saved Filter, its filters and its aggregation.
+  // Best Network or Most Reliable: both scorings share the Saved Scoring, its filters and its aggregation.
   let selectedScoring = restoredScoringViewState.scoring || 'best_network';
   let selectedNrLayout = restoredScoringViewState.nrLayout || 'interleaved';
   if (nrLayoutSelect) nrLayoutSelect.value = selectedNrLayout;
   let selectedNrCharts = restoredScoringViewState.nrCharts || 'same';
   if (nrChartsSelect) nrChartsSelect.value = selectedNrCharts;
   let currentEffectiveEnvironment = null;
-  let environmentDefaultSavedFilterId = null;
+  let environmentDefaultSavedScoringId = null;
   let currentResults = null;
-  let currentResultsSavedFilterId = null;
+  let currentResultsSavedScoringId = null;
   // The NR Mode · operator pairs out of scope of the result being drawn (SA · Three), named beside each pane heading.
   let resultOutOfScope = [];
-  // The filters of the Saved Filter whose results are shown, for the area, operators and vendors in the chart and
+  // The filters of the Saved Scoring whose results are shown, for the area, operators and vendors in the chart and
   // table titles.
   let resultScopeFilters = {};
   // Reloading the page (or opening it again from the bar at the bottom of a phone) keeps the selected results tab;
@@ -573,14 +575,14 @@
   showResultTab(activeResultTab);
   let chartFocusReturn = null;
   let previousBodyOverflow = '';
-  let userSelectedSavedFilter = Boolean(selectedSavedFilterId);
+  let userSelectedSavedScoring = Boolean(selectedSavedScoringId);
   let refreshInFlight = false;
   let timer = null;
-  // Opening a Saved Filter whose CDRs or methodology changed queues it again. A list of Saved Filters requested before
+  // Opening a Saved Scoring whose CDRs or methodology changed queues it again. A list of Saved Scorings requested before
   // that answer still reads it completed: the calculating state it answered is kept over such a list, so its old result
   // is not shown and its progress keeps being followed.
-  let savedFilterRequests = 0;
-  const calculatingSavedFilters = new Map();
+  let savedScoringRequests = 0;
+  const calculatingSavedScorings = new Map();
   let selectionLoaded = false;
   let selectionPersisted = false;
   let selectionDirty = false;
@@ -603,17 +605,17 @@
     }
     return fallback;
   };
-  const savedFilterIdOf = savedFilter => String(valueOf(savedFilter, ['id'], ''));
-  const normalizeStatus = savedFilter => {
-    const raw = String(valueOf(savedFilter, ['status', 'state'], 'queued')).toLowerCase();
+  const savedScoringIdOf = savedScoring => String(valueOf(savedScoring, ['id'], ''));
+  const normalizeStatus = savedScoring => {
+    const raw = String(valueOf(savedScoring, ['status', 'state'], 'queued')).toLowerCase();
     if (['done', 'success', 'succeeded', 'complete', 'completed', 'finished', 'ready'].includes(raw)) return 'completed';
     if (['error', 'failure', 'failed', 'cancelled', 'canceled', 'stopped'].includes(raw)) return 'failed';
     if (['processing', 'running', 'in_progress', 'in-progress'].includes(raw)) return 'processing';
     if (['queued', 'pending', 'created'].includes(raw)) return 'queued';
     return raw.replaceAll('_', ' ') || 'queued';
   };
-  const isActive = savedFilter => ['queued', 'processing'].includes(normalizeStatus(savedFilter));
-  const isComplete = savedFilter => normalizeStatus(savedFilter) === 'completed';
+  const isActive = savedScoring => ['queued', 'processing'].includes(normalizeStatus(savedScoring));
+  const isComplete = savedScoring => normalizeStatus(savedScoring) === 'completed';
   const selectedLevels = () => currentHierarchy.filter(level => aggregationInputByLevel.get(level)?.checked);
   const selectedDatasetIds = () => datasetInputs.filter(input => input.checked && !input.closest('[data-dataset-option]')?.hidden).map(input => input.value);
 
@@ -1386,7 +1388,7 @@
     }
   }
 
-  // The panel shows the CDRs of the Saved Filter (or, with automaticCdrs, those of its NR Mode and Campaign); the lists
+  // The panel shows the CDRs of the Saved Scoring (or, with automaticCdrs, those of its NR Mode and Campaign); the lists
   // of its filters follow for its NR Mode and filters.
   // The filter values of a selection about to be restored, kept in the lists until those of its NR Mode and filters
   // arrive (see restoredContextValues).
@@ -1398,29 +1400,29 @@
     }));
   }
 
-  function restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs = false} = {}) {
-    // A Saved Filter with an automatic Campaign choice follows the campaigns and CDRs it stands for now.
-    const campaignChoice = Object.entries(savedFilter.context_filters || {})
+  function restoreCalculationSelectionFromSavedScoring(savedScoring, {automaticCdrs = false} = {}) {
+    // A Saved Scoring with an automatic Campaign choice follows the campaigns and CDRs it stands for now.
+    const campaignChoice = Object.entries(savedScoring.context_filters || {})
       .some(([key, values]) => key.toLowerCase() === 'campaign' && (Array.isArray(values) ? values : [values]).some(isCampaignPreset));
     pinnedCdrs = !automaticCdrs && !campaignChoice;
-    keepRestoredContextValues(savedFilter.context_filters);
+    keepRestoredContextValues(savedScoring.context_filters);
     applySavedCalculationSelection({
-      dataset_ids: savedFilter.dataset_ids || [],
-      aggregation_levels: savedFilter.aggregation_levels || savedFilter.levels || [],
-      nr_mode: savedFilter.nr_mode,
-      baseline_operator: savedFilter.baseline_operator,
-      scoring_profile_id: savedFilter.scoring_profile_id,
-      context_filters: savedFilter.context_filters || {},
+      dataset_ids: savedScoring.dataset_ids || [],
+      aggregation_levels: savedScoring.aggregation_levels || savedScoring.levels || [],
+      nr_mode: savedScoring.nr_mode,
+      baseline_operator: savedScoring.baseline_operator,
+      scoring_profile_id: savedScoring.scoring_profile_id,
+      context_filters: savedScoring.context_filters || {},
       // Its Geographical Areas & Scoring Trends (Region and London for one saved without them).
-      area_summary: savedFilter.area_summary && (savedFilter.area_summary.breakdown || (savedFilter.area_summary.cities || []).length
-        || savedFilter.area_summary.main_cities)
-        ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None', campaigns: savedFilter.area_summary.campaigns || [],
+      area_summary: savedScoring.area_summary && (savedScoring.area_summary.breakdown || (savedScoring.area_summary.cities || []).length
+        || savedScoring.area_summary.main_cities)
+        ? {...savedScoring.area_summary, breakdown: savedScoring.area_summary.breakdown || 'None', campaigns: savedScoring.area_summary.campaigns || [],
           enabled: true}
-        : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
-          country_areas: savedFilter.area_summary?.country_areas, trends: savedFilter.area_summary?.trends,
-          ...(Array.isArray(savedFilter.area_summary?.trend_cities) ? {trend_breakdown: savedFilter.area_summary.trend_breakdown,
-            trend_cities: savedFilter.area_summary.trend_cities, trend_main_cities: savedFilter.area_summary.trend_main_cities} : {}),
-          campaigns: savedFilter.area_summary?.campaigns || [], ...(savedFilter.area_summary?.postal_codes ? {postal_codes: true, postal_map: savedFilter.area_summary.postal_map} : {})},
+        : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedScoring.area_summary?.time_split || 'Campaign',
+          country_areas: savedScoring.area_summary?.country_areas, trends: savedScoring.area_summary?.trends,
+          ...(Array.isArray(savedScoring.area_summary?.trend_cities) ? {trend_breakdown: savedScoring.area_summary.trend_breakdown,
+            trend_cities: savedScoring.area_summary.trend_cities, trend_main_cities: savedScoring.area_summary.trend_main_cities} : {}),
+          campaigns: savedScoring.area_summary?.campaigns || [], ...(savedScoring.area_summary?.postal_codes ? {postal_codes: true, postal_map: savedScoring.area_summary.postal_map} : {})},
     });
     scheduleSelectionSave();
     scheduleAutoCdrRefresh({delay: 0});
@@ -1447,7 +1449,7 @@
     });
   }
 
-  // The lists of the filters, and (unless a Saved Filter keeps its own) the CDRs the server chose.
+  // The lists of the filters, and (unless a Saved Scoring keeps its own) the CDRs the server chose.
   function applyAutoCdrResponse(body) {
     autoCdrs = {
       options: body?.options && typeof body.options === 'object' ? body.options : {},
@@ -1513,7 +1515,7 @@
     return hierarchyDisplayValue({level: 'Campaign', value});
   }
 
-  // The CDRs of the selection that carry its campaigns: an opened Saved Filter can keep CDRs of other campaigns, whose
+  // The CDRs of the selection that carry its campaigns: an opened Saved Scoring can keep CDRs of other campaigns, whose
   // rows its Campaign filter leaves out, and they are not shown as used.
   function usedDatasetIds() {
     const ids = selectedDatasetIds();
@@ -1557,7 +1559,7 @@
     // The CDRs by type, as every module lists them (dimmed while the server chooses them again).
     globalThis.renderAutoCdrList?.(root.querySelector('[data-auto-cdr-groups]'), autoCdrs.options ? cdrs : null, {loading: !autoCdrs.options});
     if (autoCdrSource) {
-      autoCdrSource.textContent = pinnedCdrs ? 'CDRs of the opened Saved Filter' : 'Chosen automatically';
+      autoCdrSource.textContent = pinnedCdrs ? 'CDRs of the opened Saved Scoring' : 'Chosen automatically';
       autoCdrSource.dataset.source = pinnedCdrs ? 'saved' : 'auto';
     }
     if (autoCdrReset) autoCdrReset.hidden = !pinnedCdrs;
@@ -1641,9 +1643,9 @@
     }).catch(() => {});
   }
 
-  function contextFilterSummary(savedFilter) {
-    const filters = savedFilter?.context_filters && typeof savedFilter.context_filters === 'object'
-      ? savedFilter.context_filters : {};
+  function contextFilterSummary(savedScoring) {
+    const filters = savedScoring?.context_filters && typeof savedScoring.context_filters === 'object'
+      ? savedScoring.context_filters : {};
     const entries = contextFilterDefinitions.flatMap(({key}) => {
       const values = filters[key] ?? filters[key.toLowerCase()];
       const normalized = uniqueCatalogueValues(Array.isArray(values) ? values : (values ? [values] : []));
@@ -1668,7 +1670,7 @@
       scoring_profile_id: scoringProfileSelect?.value || undefined,
       nr_mode: nrFilter.value || 'NSA',
       baseline_operator: baselineInput.value.trim(),
-      // An automatic Campaign choice (Latest campaign…) is sent as such: the Saved Filter keeps it and resolves it when
+      // An automatic Campaign choice (Latest campaign…) is sent as such: the Saved Scoring keeps it and resolves it when
       // it is calculated.
       context_filters: selectedContextFilters({keepPresets: true}),
       area_summary: areaSummaryPayload(),
@@ -1688,7 +1690,7 @@
         ...(summary.trend_main_cities ? {trend_main_cities: true} : {})} : {})};
   }
 
-  // Calculate Scoring, or Open Scoring (a folder open) when the selection is a Saved Filter with its result up to date.
+  // Calculate Scoring, or Open Scoring (a folder open) when the selection is a Saved Scoring with its result up to date.
   const CALCULATE_ICON = calculateButton?.querySelector('svg')?.outerHTML || '';
   const OPEN_ICON = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
     + 'stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 15.5v-10a1 1 0 0 1 1-1h4l1.8 1.8H15a1 1 0 0 1 1 1V8.5"/>'
@@ -1701,7 +1703,7 @@
     if (!calculateButton || (calculateButton.dataset.action || 'calculate') === action) return;
     calculateButton.dataset.action = action;
     calculateButton.innerHTML = `${open ? OPEN_ICON : CALCULATE_ICON}<span>${open ? 'Open Scoring' : 'Calculate Scoring'}</span>`;
-    calculateButton.title = open ? 'Open the Saved Filter of this selection with its result' : '';
+    calculateButton.title = open ? 'Open the Saved Scoring of this selection with its result' : '';
   }
 
   function updateCalculationMatch(ready) {
@@ -1733,64 +1735,64 @@
     calculationMatchPending = true;
     calculationMatchTimer = window.setTimeout(async () => {
       try {
-        const response = await requestJson(`${savedFiltersUrl}/match`, {method: 'POST', body: JSON.stringify(payload)});
+        const response = await requestJson(`${savedScoringsUrl}/match`, {method: 'POST', body: JSON.stringify(payload)});
         if (revision !== calculationMatchRevision || submittingCalculation) return;
-        // The selection was used before: Calculate opens its Saved Filter (calculated again when its CDRs or
+        // The selection was used before: Calculate opens its Saved Scoring (calculated again when its CDRs or
         // methodology changed), Recalculate calculates it again anyway.
-        const existing = response.saved_filter;
+        const existing = response.saved_scoring;
         calculateButton.disabled = Boolean(existing) && isActive(existing);
         recalculateButton.disabled = !existing || isActive(existing);
         let text = 'Ready to calculate the scoring with the configuration above.';
         let kind = '';
         if (existing && isActive(existing)) {
-          const verb = recalculatingSavedFilters.has(String(savedFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';
+          const verb = recalculatingSavedScorings.has(String(savedScoringIdOf(existing))) ? 'Recalculating' : 'Calculating';
           text = `${verb} the scoring of the selected CDRs and filters…`;
           kind = 'busy';
-        } else if (existing?.up_to_date && loadingResults.has(String(savedFilterIdOf(existing)))) {
+        } else if (existing?.up_to_date && loadingResults.has(String(savedScoringIdOf(existing)))) {
           text = OPENING_MESSAGE;
           kind = 'busy';
         } else if (existing?.up_to_date) {
           text = UP_TO_DATE_MESSAGE;
         } else if (existing) {
-          text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs, methodology and Postal Codes map.';
+          text = 'This selection is a Saved Scoring: Calculate updates its result with the current CDRs, methodology and Postal Codes map.';
         }
-        if (editingSavedFilter && duplicateName !== null) {
-          // Save as New Filter saves a selection that is no Saved Filter yet.
-          const copiedId = String(savedFilterIdOf(editingSavedFilter));
+        if (editingSavedScoring && duplicateName !== null) {
+          // Save as New Filter saves a selection that is no Saved Scoring yet.
+          const copiedId = String(savedScoringIdOf(editingSavedScoring));
           text = !existing ? 'Save as New Filter saves this selection as a new Favourite Scoring and calculates it.'
-            : String(savedFilterIdOf(existing)) === copiedId ? 'This is still the selection of the Saved Filter being duplicated: change it to save the copy.'
-            : `Saved Filter ${savedFilterIdOf(existing)} already has this selection: change it to save the copy.`;
+            : String(savedScoringIdOf(existing)) === copiedId ? 'This is still the selection of the Saved Scoring being duplicated: change it to save the copy.'
+            : `Saved Scoring ${savedScoringIdOf(existing)} already has this selection: change it to save the copy.`;
           kind = '';
           if (editSaveButton) editSaveButton.disabled = Boolean(existing);
-        } else if (editingSavedFilter) {
-          // Save Changes gives the selection to the Saved Filter being edited.
-          const editedId = String(savedFilterIdOf(editingSavedFilter));
-          text = !existing ? 'Save Changes gives this selection to the Saved Filter and calculates it again.'
-            : String(savedFilterIdOf(existing)) === editedId ? ((existing.area_summary?.postal_map || 'full') !== (selectedAreaSummary().postal_codes ? selectedAreaSummary().postal_map : (existing.area_summary?.postal_map || 'full'))
-              ? 'Save Changes gives this Postal Codes map to the Saved Filter and calculates it again.' : 'This is the selection of the Saved Filter being edited.')
-            : `Saved Filter ${savedFilterIdOf(existing)} has this selection: Save Changes merges it into the one being edited.`;
+        } else if (editingSavedScoring) {
+          // Save Changes gives the selection to the Saved Scoring being edited.
+          const editedId = String(savedScoringIdOf(editingSavedScoring));
+          text = !existing ? 'Save Changes gives this selection to the Saved Scoring and calculates it again.'
+            : String(savedScoringIdOf(existing)) === editedId ? ((existing.area_summary?.postal_map || 'full') !== (selectedAreaSummary().postal_codes ? selectedAreaSummary().postal_map : (existing.area_summary?.postal_map || 'full'))
+              ? 'Save Changes gives this Postal Codes map to the Saved Scoring and calculates it again.' : 'This is the selection of the Saved Scoring being edited.')
+            : `Saved Scoring ${savedScoringIdOf(existing)} has this selection: Save Changes merges it into the one being edited.`;
           kind = '';
         }
-        showCalculateAction(Boolean(existing?.up_to_date) && !isActive(existing) && !editingSavedFilter);
-        // A new selection that is a Saved Filter with its result up to date (a Favourite Scoring chosen in the blocks)
+        showCalculateAction(Boolean(existing?.up_to_date) && !isActive(existing) && !editingSavedScoring);
+        // A new selection that is a Saved Scoring with its result up to date (a Favourite Scoring chosen in the blocks)
         // opens at once, without Open Scoring; not while the scoring is closed, nor the one already open or opening.
-        const openNow = !refresh && existing?.up_to_date && !isActive(existing) && !editingSavedFilter
-          && String(savedFilterIdOf(existing)) !== String(selectedSavedFilterId || '');
-        showUnmatchedSelection(!existing && !editingSavedFilter);
-        if (!editingSavedFilter && typeof shownSavedFilterId === 'function') {
+        const openNow = !refresh && existing?.up_to_date && !isActive(existing) && !editingSavedScoring
+          && String(savedScoringIdOf(existing)) !== String(selectedSavedScoringId || '');
+        showUnmatchedSelection(!existing && !editingSavedScoring);
+        if (!editingSavedScoring && typeof shownSavedScoringId === 'function') {
           // The blocks of the strip are compared with the selection of the scoring shown.
-          const shownId = shownSavedFilterId();
-          const same = Boolean(existing) && Boolean(shownId) && String(savedFilterIdOf(existing)) === shownId;
+          const shownId = shownSavedScoringId();
+          const same = Boolean(existing) && Boolean(shownId) && String(savedScoringIdOf(existing)) === shownId;
           selectionMatchesShown = !shownId || same;
           if (same) shownSelection = calculationSelectionFromControls();
         }
         if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
         selectionStatus = {key, text, kind};
         setMessage(text, kind);
-        if (openNow) useSavedFilter(existing, {source: 'selection', quiet: true});
+        if (openNow) useSavedScoring(existing, {source: 'selection', quiet: true});
       } catch (error) {
         if (revision === calculationMatchRevision && !submittingCalculation) {
-          setMessage(error.message || 'Unable to check the Saved Filters.', 'error');
+          setMessage(error.message || 'Unable to check the Saved Scorings.', 'error');
         }
       } finally {
         if (revision === calculationMatchRevision) {
@@ -1806,7 +1808,7 @@
     }, 180);
   }
 
-  // A selection that is no Saved Filter keeps the results of the opened one in sight, the strip saying that its changes
+  // A selection that is no Saved Scoring keeps the results of the opened one in sight, the strip saying that its changes
   // are not calculated yet; without results shown, the card asks instead to choose a Favourite Scoring or to calculate
   // the selection.
   function showUnmatchedSelection(unmatched) {
@@ -1817,20 +1819,20 @@
 
   // The results and the selected card show while a scoring is open whose selection is that of the Calculation panel.
   function syncResultsShown() {
-    const hidden = selectionUnmatched && !currentResultsSavedFilterId;
+    const hidden = selectionUnmatched && !currentResultsSavedScoringId;
     if (resultsTabbed) resultsTabbed.hidden = hidden;
     if (resultNotesStack) resultNotesStack.hidden = hidden;
-    for (const selector of savedFilterSelectors) selector.classList.toggle('is-unmatched', hidden);
-    setExportLinks(currentResultsSavedFilterId || '', Boolean(currentResultsSavedFilterId));
-    renderSavedFilters();
+    for (const selector of savedScoringSelectors) selector.classList.toggle('is-unmatched', hidden);
+    setExportLinks(currentResultsSavedScoringId || '', Boolean(currentResultsSavedScoringId));
+    renderSavedScorings();
     if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
   }
 
   function unmatchedSelectionNotice() {
     const notice = document.createElement('span');
-    notice.className = 'saved-filter-unmatched';
+    notice.className = 'saved-scoring-unmatched';
     const title = document.createElement('strong');
-    title.textContent = 'No Saved Filter matches the configuration';
+    title.textContent = 'No Saved Scoring matches the configuration';
     const text = document.createElement('span');
     text.textContent = 'Choose a Favourite Scoring in the Filter Navigator, or calculate a new scoring with this configuration (Calculate Scoring).';
     notice.append(title, text);
@@ -1979,41 +1981,41 @@
     return parsed.toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'});
   }
 
-  function savedFilterSummary(savedFilter) {
-    const names = valueOf(savedFilter, ['dataset_names', 'cdr_names', 'campaigns'], null);
+  function savedScoringSummary(savedScoring) {
+    const names = valueOf(savedScoring, ['dataset_names', 'cdr_names', 'campaigns'], null);
     if (Array.isArray(names) && names.length) return names.join(', ');
-    const ids = valueOf(savedFilter, ['dataset_ids', 'cdr_ids'], []);
-    const count = Array.isArray(ids) ? ids.length : Number(valueOf(savedFilter, ['dataset_count'], 0));
-    const campaign = valueOf(savedFilter, ['campaign', 'campaign_name', 'campaigns'], '');
+    const ids = valueOf(savedScoring, ['dataset_ids', 'cdr_ids'], []);
+    const count = Array.isArray(ids) ? ids.length : Number(valueOf(savedScoring, ['dataset_count'], 0));
+    const campaign = valueOf(savedScoring, ['campaign', 'campaign_name', 'campaigns'], '');
     return [campaign || `${count || 'Selected'} CDR${count === 1 ? '' : 's'}`].filter(Boolean).join('');
   }
 
-  function savedFilterCdrNames(savedFilter) {
-    let names = valueOf(savedFilter, ['dataset_names', 'cdr_names', 'source_names'], null);
+  function savedScoringCdrNames(savedScoring) {
+    let names = valueOf(savedScoring, ['dataset_names', 'cdr_names', 'source_names'], null);
     if (!Array.isArray(names) || !names.length) {
-      const metadata = savedFilter?.source_metadata;
+      const metadata = savedScoring?.source_metadata;
       const entries = Array.isArray(metadata) ? metadata : (metadata && typeof metadata === 'object' ? Object.values(metadata) : []);
       names = entries.map(entry => firstValue(entry, ['name', 'dataset_name', 'cdr_name'], '')).filter(Boolean);
     }
     return Array.isArray(names) ? uniqueCatalogueValues(names) : [];
   }
 
-  function savedFilterCdrSummary(savedFilter) {
-    const names = savedFilterCdrNames(savedFilter);
+  function savedScoringCdrSummary(savedScoring) {
+    const names = savedScoringCdrNames(savedScoring);
     if (names.length) return names.join(', ');
-    const ids = valueOf(savedFilter, ['dataset_ids', 'cdr_ids'], []);
-    const count = Array.isArray(ids) ? ids.length : Number(valueOf(savedFilter, ['dataset_count'], 0));
+    const ids = valueOf(savedScoring, ['dataset_ids', 'cdr_ids'], []);
+    const count = Array.isArray(ids) ? ids.length : Number(valueOf(savedScoring, ['dataset_count'], 0));
     return `${count || 'Selected'} CDR${count === 1 ? '' : 's'}`;
   }
 
-  function savedSavedFilterValues(savedFilter, key) {
-    for (const filters of [savedFilter?.context_filters, savedFilter?.resolved_context_filters]) {
+  function savedSavedScoringValues(savedScoring, key) {
+    for (const filters of [savedScoring?.context_filters, savedScoring?.resolved_context_filters]) {
       if (!filters || typeof filters !== 'object') continue;
       const value = firstValue(filters, [key], null);
       if (value === null || value === undefined) continue;
       const rawValues = Array.isArray(value) ? value : [value];
       const values = uniqueCatalogueValues(key === 'Vendor' ? rawValues.map(scoringVendorName) : rawValues);
-      const datasetIds = valueOf(savedFilter, ['dataset_ids', 'cdr_ids'], []);
+      const datasetIds = valueOf(savedScoring, ['dataset_ids', 'cdr_ids'], []);
       const catalogueKey = catalogueKeyByLevel.get(key);
       if (values.length && Array.isArray(datasetIds) && datasetIds.length
           && datasetIds.every(id => Array.isArray(datasetCatalogues.get(String(id))?.[catalogueKey]))) {
@@ -2027,26 +2029,26 @@
     return [];
   }
 
-  function savedFilterCardTitleSegments(savedFilter) {
-    const filterValue = (key, fallback) => savedSavedFilterValues(savedFilter, key).join(', ') || fallback;
-    const campaignFilter = savedSavedFilterValues(savedFilter, 'Campaign');
+  function savedScoringCardTitleSegments(savedScoring) {
+    const filterValue = (key, fallback) => savedSavedScoringValues(savedScoring, key).join(', ') || fallback;
+    const campaignFilter = savedSavedScoringValues(savedScoring, 'Campaign');
     const campaigns = campaignFilter.length
       ? [...new Set(campaignFilter.map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
         .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right))
-      : savedFilterCampaigns(savedFilter).filter(value => value !== 'Unspecified');
+      : savedScoringCampaigns(savedScoring).filter(value => value !== 'Unspecified');
     let campaignValue = campaigns.length ? campaigns.join(', ') : 'All Campaigns';
     // An automatic choice (All available campaigns…) is shown as such, with the campaigns it stood for last time.
     const choice = campaignFilter.find(isCampaignPreset);
     if (choice) {
-      const resolved = [...new Set((Array.isArray(savedFilter?.resolved_campaigns) ? savedFilter.resolved_campaigns : [])
+      const resolved = [...new Set((Array.isArray(savedScoring?.resolved_campaigns) ? savedScoring.resolved_campaigns : [])
         .map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
         .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right));
       campaignValue = resolved.length ? `${campaignPresetLabels[choice]} (${resolved.join(', ')})` : campaignPresetLabels[choice];
     }
     return [
-      {dimension: 'neutral', value: formatDate(valueOf(savedFilter, ['last_used_at', 'created_at'], ''))},
+      {dimension: 'neutral', value: formatDate(valueOf(savedScoring, ['last_used_at', 'created_at'], ''))},
       // (NSA vs SA reads so.)
-      {dimension: 'nr-mode', value: (mode => (mode === 'NSA+SA' ? 'NSA vs SA' : mode))(valueOf(savedFilter, ['nr_mode'], 'All NR Modes'))},
+      {dimension: 'nr-mode', value: (mode => (mode === 'NSA+SA' ? 'NSA vs SA' : mode))(valueOf(savedScoring, ['nr_mode'], 'All NR Modes'))},
       {dimension: 'region', value: filterValue('Region', 'All Regions')},
       {dimension: 'cluster', value: filterValue('Cluster', 'All Clusters')},
       {dimension: 'city', value: filterValue('City', 'All Cities')},
@@ -2056,15 +2058,15 @@
     ];
   }
 
-  function savedFilterCardTitle(savedFilter) {
-    return savedFilterCardTitleSegments(savedFilter).map(segment => segment.value).join(' ● ');
+  function savedScoringCardTitle(savedScoring) {
+    return savedScoringCardTitleSegments(savedScoring).map(segment => segment.value).join(' ● ');
   }
 
-  // The labels on top of the card of a Saved Filter, each with the values of a field in its colour: first the Region,
+  // The labels on top of the card of a Saved Scoring, each with the values of a field in its colour: first the Region,
   // Cluster or City it filters (Nationwide when it filters none of them), then the Operator or Vendor it filters (its
   // Campaign and NR Mode aside).
-  function savedFilterScopes(savedFilter) {
-    const filtered = levels => levels.map(level => ({level, values: savedSavedFilterValues(savedFilter, level)}))
+  function savedScoringScopes(savedScoring) {
+    const filtered = levels => levels.map(level => ({level, values: savedSavedScoringValues(savedScoring, level)}))
       .filter(item => item.values.length)
       .map(({level, values}) => ({dimension: level.toLowerCase(), text: values.join(', '), title: `${level}: ${values.join(', ')}`}));
     const areas = filtered(['Region', 'Cluster', 'City']);
@@ -2081,11 +2083,11 @@
     });
   }
 
-  function savedFilterCampaigns(savedFilter) {
-    let campaigns = campaignLabels(savedFilter?.campaigns);
-    if (!campaigns.length) campaigns = campaignLabels(valueOf(savedFilter, ['campaign', 'campaign_name'], null));
+  function savedScoringCampaigns(savedScoring) {
+    let campaigns = campaignLabels(savedScoring?.campaigns);
+    if (!campaigns.length) campaigns = campaignLabels(valueOf(savedScoring, ['campaign', 'campaign_name'], null));
     if (!campaigns.length) {
-      const metadata = savedFilter?.source_metadata;
+      const metadata = savedScoring?.source_metadata;
       const entries = Array.isArray(metadata) ? metadata : (metadata && typeof metadata === 'object' ? Object.values(metadata) : []);
       campaigns = entries.flatMap(entry => campaignLabels(entry));
     }
@@ -2095,28 +2097,28 @@
     return unique.length ? unique : ['Unspecified'];
   }
 
-  function savedFilterLevels(savedFilter) {
-    const levels = valueOf(savedFilter, ['aggregation_levels', 'levels'], []);
+  function savedScoringLevels(savedScoring) {
+    const levels = valueOf(savedScoring, ['aggregation_levels', 'levels'], []);
     return Array.isArray(levels) ? (levels.length ? levels.join(' → ') : 'Operator') : String(levels || 'Operator');
   }
 
-  // The campaigns of the Scoring Trends of a Saved Filter: those of its trends (an automatic choice with the campaigns it
-  // stood for last time), else those of the Saved Filter.
-  function savedFilterTrendCampaigns(savedFilter) {
+  // The campaigns of the Scoring Trends of a Saved Scoring: those of its trends (an automatic choice with the campaigns it
+  // stood for last time), else those of the Saved Scoring.
+  function savedScoringTrendCampaigns(savedScoring) {
     const display = values => [...new Set(values.map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
       .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right));
-    const own = (Array.isArray(savedFilter?.area_summary?.campaigns) ? savedFilter.area_summary.campaigns : []).filter(Boolean);
-    if (!own.length) return savedFilterCardTitleSegments(savedFilter).find(segment => segment.dimension === 'campaign')?.value || 'All Campaigns';
-    const resolved = display(Array.isArray(savedFilter?.trend_campaigns) ? savedFilter.trend_campaigns : []);
+    const own = (Array.isArray(savedScoring?.area_summary?.campaigns) ? savedScoring.area_summary.campaigns : []).filter(Boolean);
+    if (!own.length) return savedScoringCardTitleSegments(savedScoring).find(segment => segment.dimension === 'campaign')?.value || 'All Campaigns';
+    const resolved = display(Array.isArray(savedScoring?.trend_campaigns) ? savedScoring.trend_campaigns : []);
     const choice = own.find(isCampaignPreset);
     if (choice) return resolved.length ? `${campaignPresetLabels[choice]} (${resolved.join(', ')})` : campaignPresetLabels[choice];
     return display(own).join(', ');
   }
 
-  // The Geographical Areas of a Saved Filter as [kind, label, value] triples: its Breakdown and Separate cities (each Region
+  // The Geographical Areas of a Saved Scoring as [kind, label, value] triples: its Breakdown and Separate cities (each Region
   // and London for one saved without them, as it is calculated).
-  function savedFilterAreaSummaryParts(savedFilter) {
-    const summary = savedFilter?.area_summary && typeof savedFilter.area_summary === 'object' ? savedFilter.area_summary : {};
+  function savedScoringAreaSummaryParts(savedScoring) {
+    const summary = savedScoring?.area_summary && typeof savedScoring.area_summary === 'object' ? savedScoring.area_summary : {};
     let cities = [...(summary.main_cities ? ['Main Cities'] : []), ...(Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean)];
     let breakdown = summary.breakdown && summary.breakdown !== 'None' ? summary.breakdown : null;
     if (!breakdown && !cities.length) [breakdown, cities] = ['Region', ['London']];
@@ -2124,18 +2126,18 @@
       ...(summary.postal_codes ? [['postal', 'Postal Codes', POSTAL_MAP_LABELS[summary.postal_map] || POSTAL_MAP_LABELS.full]] : [])];
   }
 
-  // The time split of the National & Geographical Areas Trends of a Saved Filter.
-  function savedFilterTimeSplit(savedFilter) {
-    const split = savedFilter?.area_summary?.time_split;
+  // The time split of the National & Geographical Areas Trends of a Saved Scoring.
+  function savedScoringTimeSplit(savedScoring) {
+    const split = savedScoring?.area_summary?.time_split;
     return {All: 'All selected CDRs'}[split] || split || 'Campaign';
   }
 
-  // The calculation time of a Saved Filter (start to finish), or its elapsed time while it runs.
-  function savedFilterDurationText(savedFilter, now = Date.now()) {
-    const started = Date.parse(valueOf(savedFilter, ['started_at'], '') || '');
+  // The calculation time of a Saved Scoring (start to finish), or its elapsed time while it runs.
+  function savedScoringDurationText(savedScoring, now = Date.now()) {
+    const started = Date.parse(valueOf(savedScoring, ['started_at'], '') || '');
     if (!Number.isFinite(started)) return '';
-    const finished = Date.parse(valueOf(savedFilter, ['finished_at'], '') || '');
-    const end = Number.isFinite(finished) ? finished : (isActive(savedFilter) ? now : NaN);
+    const finished = Date.parse(valueOf(savedScoring, ['finished_at'], '') || '');
+    const end = Number.isFinite(finished) ? finished : (isActive(savedScoring) ? now : NaN);
     if (!Number.isFinite(end)) return '';
     const seconds = Math.max(0, Math.round((end - started) / 1000));
     if (seconds < 60) return `${seconds} s`;
@@ -2143,16 +2145,16 @@
     return `${Math.floor(seconds / 3600)} h ${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')} min`;
   }
 
-  function progressValue(savedFilter) {
-    const raw = Number(valueOf(savedFilter, ['progress', 'progress_percent', 'percentage'], 0));
+  function progressValue(savedScoring) {
+    const raw = Number(valueOf(savedScoring, ['progress', 'progress_percent', 'percentage'], 0));
     if (!Number.isFinite(raw)) return 0;
     return Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw));
   }
 
-  // The pinned Saved Filters first, then the latest used.
-  // The starred Saved Filters in their place (opening one does not move it; they are moved by dragging them), then the
+  // The pinned Saved Scorings first, then the latest used.
+  // The starred Saved Scorings in their place (opening one does not move it; they are moved by dragging them), then the
   // others, the latest used first.
-  function sortedSavedFilters(records) {
+  function sortedSavedScorings(records) {
     const place = record => (record.pinned && Number.isFinite(Number(record.position)) && record.position !== null
       ? Number(record.position) : Infinity);
     return [...records].sort((left, right) => {
@@ -2164,320 +2166,320 @@
     });
   }
 
-  // The Saved Filters unfolded in a list (the Saved Filters panel or the dropdown of the Scoring Results); folded at first.
-  const unfoldedSavedFilters = new Map();
-  function unfoldedSavedFilterIds(list) {
-    if (!unfoldedSavedFilters.has(list)) unfoldedSavedFilters.set(list, new Set());
-    return unfoldedSavedFilters.get(list);
+  // The Saved Scorings unfolded in a list (the Saved Scorings panel or the dropdown of the Scoring Results); folded at first.
+  const unfoldedSavedScorings = new Map();
+  function unfoldedSavedScoringIds(list) {
+    if (!unfoldedSavedScorings.has(list)) unfoldedSavedScorings.set(list, new Set());
+    return unfoldedSavedScorings.get(list);
   }
 
-  function syncSavedFilterLists() {
-    for (const list of savedFilterLists.slice(1)) {
-      list.replaceChildren(...Array.from(savedFilterList.children, row => row.cloneNode(true)));
+  function syncSavedScoringLists() {
+    for (const list of savedScoringLists.slice(1)) {
+      list.replaceChildren(...Array.from(savedScoringList.children, row => row.cloneNode(true)));
     }
-    // In the Saved Filters panel the starred Saved Filters are moved by dragging the tab on the side of their card.
-    if (savedFilterPanelList && canReorderSavedFilters) {
-      for (const row of savedFilterPanelList.querySelectorAll('.saved-filter-row')) {
+    // In the Saved Scorings panel the starred Saved Scorings are moved by dragging the tab on the side of their card.
+    if (savedScoringPanelList && canReorderSavedScorings) {
+      for (const row of savedScoringPanelList.querySelectorAll('.saved-scoring-row')) {
         const handle = document.createElement('span');
-        handle.className = 'saved-filter-drag-handle';
-        handle.dataset.savedFilterDragHandle = '';
-        handle.title = 'Drag to move this Saved Filter in the list';
+        handle.className = 'saved-scoring-drag-handle';
+        handle.dataset.savedScoringDragHandle = '';
+        handle.title = 'Drag to move this Saved Scoring in the list';
         handle.setAttribute('aria-hidden', 'true');
         row.classList.add('is-reorderable');
         row.prepend(handle);
       }
     }
-    if (savedFilterPanelList) {
-      for (const row of savedFilterPanelList.querySelectorAll('.saved-filter-row')) {
-        const id = row.dataset.savedFilterRow;
+    if (savedScoringPanelList) {
+      for (const row of savedScoringPanelList.querySelectorAll('.saved-scoring-row')) {
+        const id = row.dataset.savedScoringRow;
         const check = document.createElement('label');
-        check.className = 'saved-filter-check';
-        check.title = 'Select this Saved Filter';
+        check.className = 'saved-scoring-check';
+        check.title = 'Select this Saved Scoring';
         const input = document.createElement('input');
         input.type = 'checkbox';
-        input.dataset.savedFilterCheck = id;
-        input.checked = checkedSavedFilterIds.has(id);
-        input.setAttribute('aria-label', `Select Saved Filter ${id}`);
+        input.dataset.savedScoringCheck = id;
+        input.checked = checkedSavedScoringIds.has(id);
+        input.setAttribute('aria-label', `Select Saved Scoring ${id}`);
         check.append(input);
         // On top of the tab on the left of the card (the drag tab, when the card can be moved).
         row.classList.add('is-checkable');
         row.prepend(check);
       }
     }
-    // Each list keeps the Saved Filters unfolded in it.
-    for (const list of savedFilterLists) {
-      const unfolded = unfoldedSavedFilterIds(list);
-      for (const row of list.querySelectorAll('.saved-filter-row')) {
-        const open = unfolded.has(row.dataset.savedFilterRow);
+    // Each list keeps the Saved Scorings unfolded in it.
+    for (const list of savedScoringLists) {
+      const unfolded = unfoldedSavedScoringIds(list);
+      for (const row of list.querySelectorAll('.saved-scoring-row')) {
+        const open = unfolded.has(row.dataset.savedScoringRow);
         row.classList.toggle('is-expanded', open);
-        row.querySelector('.saved-filter-item')?.setAttribute('aria-expanded', String(open));
+        row.querySelector('.saved-scoring-item')?.setAttribute('aria-expanded', String(open));
       }
     }
-    syncSavedFiltersBulk();
+    syncSavedScoringsBulk();
   }
 
-  // The Select all box and the Use newer CDRs button on top of the Saved Filters panel, for the checked Saved Filters.
-  function syncSavedFiltersBulk() {
-    if (!savedFiltersBulk) return;
-    const listed = savedFilters.filter(savedFilter => savedFilter.pinned).map(savedFilterIdOf);
-    for (const id of [...checkedSavedFilterIds]) if (!listed.includes(id)) checkedSavedFilterIds.delete(id);
-    savedFiltersBulk.hidden = !listed.length;
-    savedFiltersSelectAll.checked = listed.length > 0 && checkedSavedFilterIds.size === listed.length;
-    savedFiltersSelectAll.indeterminate = checkedSavedFilterIds.size > 0 && checkedSavedFilterIds.size < listed.length;
-    const order = starredSavedFilterOrder();
-    for (const button of savedFiltersMove) {
-      // Readers cannot move Saved Filters; a button is off when no checked Saved Filter can move that way.
-      button.hidden = !canReorderSavedFilters;
-      const step = button.dataset.savedFiltersMove === 'up' ? -1 : 1;
-      button.disabled = deletingCheckedSavedFilters || movedSavedFilterOrder(order, step).join() === order.join();
+  // The Select all box and the Use newer CDRs button on top of the Saved Scorings panel, for the checked Saved Scorings.
+  function syncSavedScoringsBulk() {
+    if (!savedScoringsBulk) return;
+    const listed = savedScorings.filter(savedScoring => savedScoring.pinned).map(savedScoringIdOf);
+    for (const id of [...checkedSavedScoringIds]) if (!listed.includes(id)) checkedSavedScoringIds.delete(id);
+    savedScoringsBulk.hidden = !listed.length;
+    savedScoringsSelectAll.checked = listed.length > 0 && checkedSavedScoringIds.size === listed.length;
+    savedScoringsSelectAll.indeterminate = checkedSavedScoringIds.size > 0 && checkedSavedScoringIds.size < listed.length;
+    const order = starredSavedScoringOrder();
+    for (const button of savedScoringsMove) {
+      // Readers cannot move Saved Scorings; a button is off when no checked Saved Scoring can move that way.
+      button.hidden = !canReorderSavedScorings;
+      const step = button.dataset.savedScoringsMove === 'up' ? -1 : 1;
+      button.disabled = deletingCheckedSavedScorings || movedSavedScoringOrder(order, step).join() === order.join();
     }
     // (Readers only have Use newer CDRs, without the separators around it.)
-    savedFiltersBulk.querySelectorAll('.bulk-toolbar-separator').forEach(separator => { separator.hidden = !canReorderSavedFilters; });
-    const withNewer = savedFiltersWithNewerCdrs();
-    savedFiltersUseNewer.textContent = withNewer.length ? `Use newer CDRs (${withNewer.length})` : 'Use newer CDRs';
-    savedFiltersUseNewer.disabled = updatingSavedFiltersCdrs || !withNewer.length;
-    if (savedFiltersDelete) {
-      // Readers cannot delete Saved Filters.
-      savedFiltersDelete.hidden = !canReorderSavedFilters;
-      savedFiltersDelete.textContent = checkedSavedFilterIds.size ? `Delete (${checkedSavedFilterIds.size})` : 'Delete';
-      savedFiltersDelete.disabled = deletingCheckedSavedFilters || updatingSavedFiltersCdrs || !checkedSavedFilterIds.size;
+    savedScoringsBulk.querySelectorAll('.bulk-toolbar-separator').forEach(separator => { separator.hidden = !canReorderSavedScorings; });
+    const withNewer = savedScoringsWithNewerCdrs();
+    savedScoringsUseNewer.textContent = withNewer.length ? `Use newer CDRs (${withNewer.length})` : 'Use newer CDRs';
+    savedScoringsUseNewer.disabled = updatingSavedScoringsCdrs || !withNewer.length;
+    if (savedScoringsDelete) {
+      // Readers cannot delete Saved Scorings.
+      savedScoringsDelete.hidden = !canReorderSavedScorings;
+      savedScoringsDelete.textContent = checkedSavedScoringIds.size ? `Delete (${checkedSavedScoringIds.size})` : 'Delete';
+      savedScoringsDelete.disabled = deletingCheckedSavedScorings || updatingSavedScoringsCdrs || !checkedSavedScoringIds.size;
     }
   }
 
-  function savedFiltersWithNewerCdrs() {
-    return savedFilters.filter(savedFilter => checkedSavedFilterIds.has(savedFilterIdOf(savedFilter))
-      && (savedFilter.newer_cdrs || []).length && !isActive(savedFilter));
+  function savedScoringsWithNewerCdrs() {
+    return savedScorings.filter(savedScoring => checkedSavedScoringIds.has(savedScoringIdOf(savedScoring))
+      && (savedScoring.newer_cdrs || []).length && !isActive(savedScoring));
   }
 
-  // The starred Saved Filters in the order of their list.
-  function starredSavedFilterOrder() {
-    return sortedSavedFilters(savedFilters).filter(savedFilter => savedFilter.pinned).map(savedFilterIdOf);
+  // The starred Saved Scorings in the order of their list.
+  function starredSavedScoringOrder() {
+    return sortedSavedScorings(savedScorings).filter(savedScoring => savedScoring.pinned).map(savedScoringIdOf);
   }
 
-  // The order of the starred Saved Filters with each checked one a place up (step -1) or down (step 1): a checked one
+  // The order of the starred Saved Scorings with each checked one a place up (step -1) or down (step 1): a checked one
   // trades places with the unchecked one next to it, so checked ones side by side move together and stop at the end.
-  function movedSavedFilterOrder(order, step) {
+  function movedSavedScoringOrder(order, step) {
     const moved = [...order];
     const indexes = moved.map((_, index) => index);
     for (const index of step < 0 ? indexes.slice(1) : indexes.slice(0, -1).reverse()) {
-      if (checkedSavedFilterIds.has(moved[index]) && !checkedSavedFilterIds.has(moved[index + step])) {
+      if (checkedSavedScoringIds.has(moved[index]) && !checkedSavedScoringIds.has(moved[index + step])) {
         [moved[index], moved[index + step]] = [moved[index + step], moved[index]];
       }
     }
     return moved;
   }
 
-  if (savedFilterPanelList && savedFiltersBulk) {
-    savedFilterPanelList.addEventListener('change', event => {
-      const input = event.target instanceof Element ? event.target.closest('[data-saved-filter-check]') : null;
+  if (savedScoringPanelList && savedScoringsBulk) {
+    savedScoringPanelList.addEventListener('change', event => {
+      const input = event.target instanceof Element ? event.target.closest('[data-saved-scoring-check]') : null;
       if (!input) return;
-      if (input.checked) checkedSavedFilterIds.add(input.dataset.savedFilterCheck);
-      else checkedSavedFilterIds.delete(input.dataset.savedFilterCheck);
-      syncSavedFiltersBulk();
+      if (input.checked) checkedSavedScoringIds.add(input.dataset.savedScoringCheck);
+      else checkedSavedScoringIds.delete(input.dataset.savedScoringCheck);
+      syncSavedScoringsBulk();
     });
-    savedFiltersSelectAll.addEventListener('change', () => {
-      checkedSavedFilterIds.clear();
-      if (savedFiltersSelectAll.checked) {
-        savedFilters.filter(savedFilter => savedFilter.pinned).forEach(savedFilter => checkedSavedFilterIds.add(savedFilterIdOf(savedFilter)));
+    savedScoringsSelectAll.addEventListener('change', () => {
+      checkedSavedScoringIds.clear();
+      if (savedScoringsSelectAll.checked) {
+        savedScorings.filter(savedScoring => savedScoring.pinned).forEach(savedScoring => checkedSavedScoringIds.add(savedScoringIdOf(savedScoring)));
       }
-      for (const input of savedFilterPanelList.querySelectorAll('[data-saved-filter-check]')) {
-        input.checked = checkedSavedFilterIds.has(input.dataset.savedFilterCheck);
+      for (const input of savedScoringPanelList.querySelectorAll('[data-saved-scoring-check]')) {
+        input.checked = checkedSavedScoringIds.has(input.dataset.savedScoringCheck);
       }
-      syncSavedFiltersBulk();
+      syncSavedScoringsBulk();
     });
-    // Move Up and Move Down move the checked Saved Filters one place in the list, as dragging them would.
-    for (const button of savedFiltersMove) {
+    // Move Up and Move Down move the checked Saved Scorings one place in the list, as dragging them would.
+    for (const button of savedScoringsMove) {
       button.addEventListener('click', () => {
-        const step = button.dataset.savedFiltersMove === 'up' ? -1 : 1;
-        const order = movedSavedFilterOrder(starredSavedFilterOrder(), step);
-        saveSavedFilterOrder(order);
+        const step = button.dataset.savedScoringsMove === 'up' ? -1 : 1;
+        const order = movedSavedScoringOrder(starredSavedScoringOrder(), step);
+        saveSavedScoringOrder(order);
         // The moved cards light up where they land, and the one that leads the way stays in view below this bar, which
         // stays at the top while the panel is scrolled.
-        const rows = [...savedFilterPanelList.querySelectorAll('.saved-filter-row')]
-          .filter(row => checkedSavedFilterIds.has(row.dataset.savedFilterRow));
+        const rows = [...savedScoringPanelList.querySelectorAll('.saved-scoring-row')]
+          .filter(row => checkedSavedScoringIds.has(row.dataset.savedScoringRow));
         rows.forEach(row => row.classList.add('is-moved'));
         const leading = step < 0 ? rows[0] : rows[rows.length - 1];
         if (leading) {
-          const clear = (parseFloat(getComputedStyle(savedFiltersBulk).top) || 0) + savedFiltersBulk.offsetHeight + 12;
+          const clear = (parseFloat(getComputedStyle(savedScoringsBulk).top) || 0) + savedScoringsBulk.offsetHeight + 12;
           const box = leading.getBoundingClientRect();
           if (box.top < clear) window.scrollBy({top: box.top - clear, behavior: 'auto'});
           else if (box.bottom > window.innerHeight - 12) window.scrollBy({top: box.bottom - window.innerHeight + 12, behavior: 'auto'});
         }
       });
     }
-    // Each checked Saved Filter with newer CDRs is updated with them and calculated again in the background; the one
+    // Each checked Saved Scoring with newer CDRs is updated with them and calculated again in the background; the one
     // being looked at stays open.
-    savedFiltersUseNewer.addEventListener('click', async () => {
-      const targets = savedFiltersWithNewerCdrs();
+    savedScoringsUseNewer.addEventListener('click', async () => {
+      const targets = savedScoringsWithNewerCdrs();
       if (!targets.length) return;
-      updatingSavedFiltersCdrs = true;
-      syncSavedFiltersBulk();
-      setMessage(`Updating ${targets.length} Saved Filter${targets.length === 1 ? '' : 's'} with the newer CDRs…`, 'busy');
+      updatingSavedScoringsCdrs = true;
+      syncSavedScoringsBulk();
+      setMessage(`Updating ${targets.length} Saved Scoring${targets.length === 1 ? '' : 's'} with the newer CDRs…`, 'busy');
       const failures = [];
-      for (const savedFilter of targets) {
-        const id = savedFilterIdOf(savedFilter);
+      for (const savedScoring of targets) {
+        const id = savedScoringIdOf(savedScoring);
         try {
-          await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}/use-newer-cdrs`, {
+          await requestJson(`${savedScoringsUrl}/${encodeURIComponent(id)}/use-newer-cdrs`, {
             method: 'POST', body: JSON.stringify({select: false}),
           });
           resultCache.delete(id);
         } catch (error) {
-          failures.push(`${savedFilter.name || `Filter ID ${id}`}: ${error.message}`);
+          failures.push(`${savedScoring.name || `Filter ID ${id}`}: ${error.message}`);
         }
       }
-      updatingSavedFiltersCdrs = false;
+      updatingSavedScoringsCdrs = false;
       const updated = targets.length - failures.length;
-      if (failures.length) setMessage(`Updated ${updated} of ${targets.length} Saved Filters. ${failures.join(' ')}`, 'error');
-      else setMessage(`${updated} Saved Filter${updated === 1 ? '' : 's'} updated with the newer CDRs and queued to calculate again.`, 'success');
-      await refreshSavedFilters();
+      if (failures.length) setMessage(`Updated ${updated} of ${targets.length} Saved Scorings. ${failures.join(' ')}`, 'error');
+      else setMessage(`${updated} Saved Scoring${updated === 1 ? '' : 's'} updated with the newer CDRs and queued to calculate again.`, 'success');
+      await refreshSavedScorings();
     });
-    // The checked Saved Filters are deleted together, after one confirmation, with their results.
-    savedFiltersDelete?.addEventListener('click', async () => {
-      const targets = savedFilters.filter(savedFilter => checkedSavedFilterIds.has(savedFilterIdOf(savedFilter)));
-      if (!targets.length || deletingCheckedSavedFilters) return;
+    // The checked Saved Scorings are deleted together, after one confirmation, with their results.
+    savedScoringsDelete?.addEventListener('click', async () => {
+      const targets = savedScorings.filter(savedScoring => checkedSavedScoringIds.has(savedScoringIdOf(savedScoring)));
+      if (!targets.length || deletingCheckedSavedScorings) return;
       const count = targets.length;
       const active = targets.filter(isActive).length;
-      const copy = `Delete ${count} Saved Filter${count === 1 ? '' : 's'} and ${count === 1 ? 'its result' : 'their results'}?`
+      const copy = `Delete ${count} Saved Scoring${count === 1 ? '' : 's'} and ${count === 1 ? 'its result' : 'their results'}?`
         + `${active ? ` The pending result of ${active} of them will be discarded.` : ''} The CDRs and the Scoring History stay.`;
       const accepted = typeof showConfirmDialog === 'function'
-        ? await showConfirmDialog(copy, {title: `Delete ${count} Saved Filter${count === 1 ? '' : 's'}`, confirmLabel: 'Delete'})
+        ? await showConfirmDialog(copy, {title: `Delete ${count} Saved Scoring${count === 1 ? '' : 's'}`, confirmLabel: 'Delete'})
         : window.confirm(copy);
       if (!accepted) return;
-      deletingCheckedSavedFilters = true;
-      syncSavedFiltersBulk();
-      setMessage(`Deleting ${count} Saved Filter${count === 1 ? '' : 's'}…`, 'busy');
+      deletingCheckedSavedScorings = true;
+      syncSavedScoringsBulk();
+      setMessage(`Deleting ${count} Saved Scoring${count === 1 ? '' : 's'}…`, 'busy');
       try {
-        const body = await requestJson(`${savedFiltersUrl}/delete`, {
-          method: 'POST', body: JSON.stringify({ids: targets.map(savedFilter => Number(savedFilterIdOf(savedFilter)))}),
+        const body = await requestJson(`${savedScoringsUrl}/delete`, {
+          method: 'POST', body: JSON.stringify({ids: targets.map(savedScoring => Number(savedScoringIdOf(savedScoring)))}),
         });
         const deleted = new Set((body?.deleted || []).map(String));
-        deleted.forEach(id => { deletedSavedFilterIds.add(id); resultCache.delete(id); checkedSavedFilterIds.delete(id); });
-        savedFilters = savedFilters.filter(record => !deleted.has(savedFilterIdOf(record)));
+        deleted.forEach(id => { deletedSavedScoringIds.add(id); resultCache.delete(id); checkedSavedScoringIds.delete(id); });
+        savedScorings = savedScorings.filter(record => !deleted.has(savedScoringIdOf(record)));
         calculationMatchKey = '';
-        if (editingSavedFilter && deleted.has(savedFilterIdOf(editingSavedFilter))) stopSavedFilterEdit();
+        if (editingSavedScoring && deleted.has(savedScoringIdOf(editingSavedScoring))) stopSavedScoringEdit();
         updateSelection();
-        if (deleted.has(selectedSavedFilterId)) {
-          selectedSavedFilterId = null;
-          selectedSavedFilter = null;
+        if (deleted.has(selectedSavedScoringId)) {
+          selectedSavedScoringId = null;
+          selectedSavedScoring = null;
           currentResults = null;
-          currentResultsSavedFilterId = null;
-          userSelectedSavedFilter = false;
-          renderNoResult('Calculate a scoring or choose Saved Filters to see their results.');
+          currentResultsSavedScoringId = null;
+          userSelectedSavedScoring = false;
+          renderNoResult('Calculate a scoring or choose Saved Scorings to see their results.');
         }
         const missing = (body?.missing || []).length;
-        setMessage(`${deleted.size} Saved Filter${deleted.size === 1 ? '' : 's'} and ${deleted.size === 1 ? 'its result' : 'their results'} deleted.`
+        setMessage(`${deleted.size} Saved Scoring${deleted.size === 1 ? '' : 's'} and ${deleted.size === 1 ? 'its result' : 'their results'} deleted.`
           + (missing ? ` ${missing} no longer existed.` : ''), 'success');
       } catch (error) {
-        setMessage(error.message || 'The Saved Filters could not be deleted.', 'error');
+        setMessage(error.message || 'The Saved Scorings could not be deleted.', 'error');
       } finally {
-        deletingCheckedSavedFilters = false;
-        renderSavedFilters();
+        deletingCheckedSavedScorings = false;
+        renderSavedScorings();
       }
-      await refreshSavedFilters();
+      await refreshSavedScorings();
     });
   }
 
-  // Dragging a starred Saved Filter in the Saved Filters panel (or Move Up and Move Down, which give the ``order``) moves
+  // Dragging a starred Saved Scoring in the Saved Scorings panel (or Move Up and Move Down, which give the ``order``) moves
   // it in the list; its place is saved for every user of the workspace.
-  async function saveSavedFilterOrder(order = [...savedFilterPanelList.querySelectorAll('.saved-filter-row')].map(row => row.dataset.savedFilterRow)) {
-    const previous = sortedSavedFilters(savedFilters).filter(savedFilter => savedFilter.pinned).map(savedFilterIdOf);
+  async function saveSavedScoringOrder(order = [...savedScoringPanelList.querySelectorAll('.saved-scoring-row')].map(row => row.dataset.savedScoringRow)) {
+    const previous = sortedSavedScorings(savedScorings).filter(savedScoring => savedScoring.pinned).map(savedScoringIdOf);
     if (order.join() === previous.join()) return;
     order.forEach((id, index) => {
-      const record = savedFilters.find(savedFilter => savedFilterIdOf(savedFilter) === id);
+      const record = savedScorings.find(savedScoring => savedScoringIdOf(savedScoring) === id);
       if (record) record.position = index + 1;
     });
-    renderSavedFilters();
-    const request = savedFilterOrderRequest.then(() => requestJson(`${savedFiltersUrl}/order`, {
+    renderSavedScorings();
+    const request = savedScoringOrderRequest.then(() => requestJson(`${savedScoringsUrl}/order`, {
       method: 'POST', body: JSON.stringify({filter_ids: order.map(Number)}),
     }));
-    savedFilterOrderRequest = request.catch(() => {});
+    savedScoringOrderRequest = request.catch(() => {});
     try {
       await request;
     } catch (error) {
-      setMessage(error.message || 'The order of the Saved Filters could not be saved.', 'error');
-      refreshSavedFilters();
+      setMessage(error.message || 'The order of the Saved Scorings could not be saved.', 'error');
+      refreshSavedScorings();
     }
   }
-  if (savedFilterPanelList && canReorderSavedFilters) {
-    // Only the tab makes its card draggable, so the rest of the card is clicked to open the Saved Filter.
-    savedFilterPanelList.addEventListener('pointerdown', event => {
-      const handle = event.target instanceof Element ? event.target.closest('[data-saved-filter-drag-handle]') : null;
-      if (handle) handle.closest('.saved-filter-row').draggable = true;
+  if (savedScoringPanelList && canReorderSavedScorings) {
+    // Only the tab makes its card draggable, so the rest of the card is clicked to open the Saved Scoring.
+    savedScoringPanelList.addEventListener('pointerdown', event => {
+      const handle = event.target instanceof Element ? event.target.closest('[data-saved-scoring-drag-handle]') : null;
+      if (handle) handle.closest('.saved-scoring-row').draggable = true;
     });
-    savedFilterPanelList.addEventListener('pointerup', () => {
-      if (draggedSavedFilterRow) return;
-      for (const row of savedFilterPanelList.querySelectorAll('.saved-filter-row[draggable="true"]')) row.draggable = false;
+    savedScoringPanelList.addEventListener('pointerup', () => {
+      if (draggedSavedScoringRow) return;
+      for (const row of savedScoringPanelList.querySelectorAll('.saved-scoring-row[draggable="true"]')) row.draggable = false;
     });
-    savedFilterPanelList.addEventListener('dragstart', event => {
-      const row = event.target instanceof Element ? event.target.closest('.saved-filter-row[draggable="true"]') : null;
+    savedScoringPanelList.addEventListener('dragstart', event => {
+      const row = event.target instanceof Element ? event.target.closest('.saved-scoring-row[draggable="true"]') : null;
       if (!row) return;
-      draggedSavedFilterRow = row;
+      draggedSavedScoringRow = row;
       row.classList.add('is-dragging');
       event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', row.dataset.savedFilterRow || '');
+      event.dataTransfer.setData('text/plain', row.dataset.savedScoringRow || '');
     });
     // While a card is dragged, a horizontal line shows where it will go; it moves there when it is dropped.
     const dropLine = document.createElement('div');
-    dropLine.className = 'saved-filter-drop-line';
+    dropLine.className = 'saved-scoring-drop-line';
     dropLine.setAttribute('aria-hidden', 'true');
     let dropBefore;
     const hideDropLine = () => {
       dropLine.remove();
       dropBefore = undefined;
     };
-    savedFilterPanelList.addEventListener('dragover', event => {
-      if (!draggedSavedFilterRow) return;
+    savedScoringPanelList.addEventListener('dragover', event => {
+      if (!draggedSavedScoringRow) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
-      const row = event.target instanceof Element ? event.target.closest('.saved-filter-row') : null;
+      const row = event.target instanceof Element ? event.target.closest('.saved-scoring-row') : null;
       if (!row) return;
       const box = row.getBoundingClientRect();
       // The card it would go before (none: the end of the list); the line itself is the last child of the list.
       const nextRow = element => (element.nextElementSibling === dropLine ? null : element.nextElementSibling);
       const target = event.clientY > box.top + box.height / 2 ? nextRow(row) : row;
       // Dropped next to itself, the card stays where it is: no line.
-      if (row === draggedSavedFilterRow || target === draggedSavedFilterRow || target === nextRow(draggedSavedFilterRow)) {
+      if (row === draggedSavedScoringRow || target === draggedSavedScoringRow || target === nextRow(draggedSavedScoringRow)) {
         hideDropLine();
         return;
       }
       if (target === dropBefore && dropLine.isConnected) return;
       dropBefore = target;
-      const rows = [...savedFilterPanelList.querySelectorAll('.saved-filter-row')];
-      const gap = parseFloat(getComputedStyle(savedFilterPanelList).rowGap) || 0;
-      const listBox = savedFilterPanelList.getBoundingClientRect();
+      const rows = [...savedScoringPanelList.querySelectorAll('.saved-scoring-row')];
+      const gap = parseFloat(getComputedStyle(savedScoringPanelList).rowGap) || 0;
+      const listBox = savedScoringPanelList.getBoundingClientRect();
       const edge = target
         ? target.getBoundingClientRect().top - gap / 2
         : rows[rows.length - 1].getBoundingClientRect().bottom + gap / 2;
-      dropLine.style.top = `${edge - listBox.top + savedFilterPanelList.scrollTop}px`;
-      if (!dropLine.isConnected) savedFilterPanelList.append(dropLine);
+      dropLine.style.top = `${edge - listBox.top + savedScoringPanelList.scrollTop}px`;
+      if (!dropLine.isConnected) savedScoringPanelList.append(dropLine);
     });
-    savedFilterPanelList.addEventListener('dragleave', event => {
-      if (draggedSavedFilterRow && !savedFilterPanelList.contains(event.relatedTarget)) hideDropLine();
+    savedScoringPanelList.addEventListener('dragleave', event => {
+      if (draggedSavedScoringRow && !savedScoringPanelList.contains(event.relatedTarget)) hideDropLine();
     });
-    savedFilterPanelList.addEventListener('drop', event => {
-      if (!draggedSavedFilterRow) return;
+    savedScoringPanelList.addEventListener('drop', event => {
+      if (!draggedSavedScoringRow) return;
       event.preventDefault();
-      if (dropLine.isConnected) savedFilterPanelList.insertBefore(draggedSavedFilterRow, dropBefore || dropLine);
+      if (dropLine.isConnected) savedScoringPanelList.insertBefore(draggedSavedScoringRow, dropBefore || dropLine);
       hideDropLine();
     });
-    savedFilterPanelList.addEventListener('dragend', () => {
+    savedScoringPanelList.addEventListener('dragend', () => {
       hideDropLine();
-      if (!draggedSavedFilterRow) return;
-      draggedSavedFilterRow.classList.remove('is-dragging');
-      draggedSavedFilterRow.draggable = false;
-      draggedSavedFilterRow = null;
-      const pending = savedFiltersRenderPending;
-      savedFiltersRenderPending = false;
-      saveSavedFilterOrder();
-      if (pending) renderSavedFilters();
+      if (!draggedSavedScoringRow) return;
+      draggedSavedScoringRow.classList.remove('is-dragging');
+      draggedSavedScoringRow.draggable = false;
+      draggedSavedScoringRow = null;
+      const pending = savedScoringsRenderPending;
+      savedScoringsRenderPending = false;
+      saveSavedScoringOrder();
+      if (pending) renderSavedScorings();
     });
   }
 
-  // The Saved Filters panel shows ten Saved Filters before it scrolls, and is only as tall as fewer ones.
-  function fitSavedFilterPanels() {
+  // The Saved Scorings panel shows ten Saved Scorings before it scrolls, and is only as tall as fewer ones.
+  function fitSavedScoringPanels() {
     const inView = 10;
-    for (const list of [savedFilterPanelList].filter(Boolean)) {
-      const items = list.querySelectorAll(':scope > .saved-filter-item');
+    for (const list of [savedScoringPanelList].filter(Boolean)) {
+      const items = list.querySelectorAll(':scope > .saved-scoring-item');
       if (items.length <= inView) {
         list.style.maxHeight = 'none';
         continue;
@@ -2488,85 +2490,85 @@
       list.style.maxHeight = `${Math.ceil(bottom) + 2}px`;
     }
   }
-  // The ten are measured whenever the Saved Filters are drawn again and, narrower or wider, change height.
+  // The ten are measured whenever the Saved Scorings are drawn again and, narrower or wider, change height.
   if (typeof MutationObserver === 'function') {
-    for (const list of [savedFilterPanelList].filter(Boolean)) new MutationObserver(fitSavedFilterPanels).observe(list, {childList: true});
+    for (const list of [savedScoringPanelList].filter(Boolean)) new MutationObserver(fitSavedScoringPanels).observe(list, {childList: true});
   }
-  let savedFilterPanelWidth = 0;
+  let savedScoringPanelWidth = 0;
   if (typeof ResizeObserver === 'function') {
     new ResizeObserver(entries => {
       const width = Math.round(entries[0]?.contentRect.width || 0);
-      if (width && width !== savedFilterPanelWidth) {
-        savedFilterPanelWidth = width;
-        fitSavedFilterPanels();
+      if (width && width !== savedScoringPanelWidth) {
+        savedScoringPanelWidth = width;
+        fitSavedScoringPanels();
       }
-    }).observe(savedFilterPanelList || savedFilterList);
+    }).observe(savedScoringPanelList || savedScoringList);
   }
 
-  function renderSavedFilters() {
+  function renderSavedScorings() {
     // A list being dragged is drawn again once it is dropped.
-    if (draggedSavedFilterRow) {
-      savedFiltersRenderPending = true;
+    if (draggedSavedScoringRow) {
+      savedScoringsRenderPending = true;
       return;
     }
-    const ordered = sortedSavedFilters(savedFilters);
-    // The lists hold the starred Saved Filters only; the one opened without a star shows in the selected card, where it
+    const ordered = sortedSavedScorings(savedScorings);
+    // The lists hold the starred Saved Scorings only; the one opened without a star shows in the selected card, where it
     // can be starred.
-    const starred = ordered.filter(savedFilter => savedFilter.pinned);
-    for (const countBadge of root.querySelectorAll('[data-saved-filter-count]')) {
+    const starred = ordered.filter(savedScoring => savedScoring.pinned);
+    for (const countBadge of root.querySelectorAll('[data-saved-scoring-count]')) {
       countBadge.textContent = `${starred.length} Favourite Scoring${starred.length === 1 ? '' : 's'}`;
     }
-    savedFilterList.replaceChildren();
-    selectedSavedFilterCard.textContent = ordered.length ? 'Select a Saved Filter' : 'No Saved Filters yet';
+    savedScoringList.replaceChildren();
+    selectedSavedScoringCard.textContent = ordered.length ? 'Select a Saved Scoring' : 'No Saved Scorings yet';
     let selectedCardShown = false;
     if (!starred.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
       empty.textContent = 'No Favourite Scorings yet: star (☆) a scoring to keep its filters here.';
-      savedFilterList.append(empty);
+      savedScoringList.append(empty);
     }
-    for (const savedFilter of ordered) {
-      const id = savedFilterIdOf(savedFilter);
-      const status = normalizeStatus(savedFilter);
+    for (const savedScoring of ordered) {
+      const id = savedScoringIdOf(savedScoring);
+      const status = normalizeStatus(savedScoring);
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'saved-filter-item';
-      button.dataset.savedFilterId = id;
-      button.setAttribute('aria-current', String(id === selectedSavedFilterId));
-      // The card folds and unfolds the details of the Saved Filter; Use Filter, on the right of its name, opens it.
+      button.className = 'saved-scoring-item';
+      button.dataset.savedScoringId = id;
+      button.setAttribute('aria-current', String(id === selectedSavedScoringId));
+      // The card folds and unfolds the details of the Saved Scoring; Use Filter, on the right of its name, opens it.
       button.setAttribute('aria-expanded', 'false');
-      button.title = 'Show or hide the details of this Saved Filter';
-      // The name given to the Saved Filter, above its filters (its ID when it has none), after the fold arrow.
+      button.title = 'Show or hide the details of this Saved Scoring';
+      // The name given to the Saved Scoring, above its filters (its ID when it has none), after the fold arrow.
       const head = document.createElement('span');
-      head.className = 'saved-filter-head';
+      head.className = 'saved-scoring-head';
       const chevron = document.createElement('span');
-      chevron.className = 'saved-filter-chevron';
+      chevron.className = 'saved-scoring-chevron';
       chevron.setAttribute('aria-hidden', 'true');
       const name = document.createElement('span');
-      name.className = savedFilter.name ? 'saved-filter-name' : 'saved-filter-name is-unnamed';
-      name.textContent = savedFilter.name || `Filter ID: ${id}`;
+      name.className = savedScoring.name ? 'saved-scoring-name' : 'saved-scoring-name is-unnamed';
+      name.textContent = savedScoring.name || `Filter ID: ${id}`;
       head.append(chevron, name);
       button.append(head);
       const top = document.createElement('span');
-      top.className = 'saved-filter-item-top';
+      top.className = 'saved-scoring-item-top';
       const title = document.createElement('strong');
-      const titleSegments = savedFilterCardTitleSegments(savedFilter);
+      const titleSegments = savedScoringCardTitleSegments(savedScoring);
       titleSegments.forEach((segment, index) => {
         if (index) {
           const separator = document.createElement('span');
-          separator.className = 'saved-filter-title-separator';
+          separator.className = 'saved-scoring-title-separator';
           separator.dataset.dimension = 'neutral';
           separator.textContent = ' ● ';
           title.append(separator);
         }
         const value = document.createElement('span');
-        value.className = `saved-filter-title-segment saved-filter-title-${segment.dimension}`;
+        value.className = `saved-scoring-title-segment saved-scoring-title-${segment.dimension}`;
         value.dataset.dimension = segment.dimension;
         value.textContent = segment.value;
         title.append(value);
       });
-      title.setAttribute('aria-label', savedFilterCardTitle(savedFilter));
-      title.title = savedFilterCardTitle(savedFilter);
+      title.setAttribute('aria-label', savedScoringCardTitle(savedScoring));
+      title.title = savedScoringCardTitle(savedScoring);
       const statusBadge = document.createElement('span');
       statusBadge.className = 'scoring-status';
       statusBadge.dataset.status = status;
@@ -2575,71 +2577,71 @@
       top.append(title, statusBadge);
       button.append(top);
       const aggregation = document.createElement('span');
-      aggregation.className = 'saved-filter-aggregation';
+      aggregation.className = 'saved-scoring-aggregation';
       const aggregationLabel = document.createElement('span');
       aggregationLabel.textContent = 'Break down by:';
       const aggregationLevels = document.createElement('strong');
-      aggregationLevels.textContent = savedFilterLevels(savedFilter);
+      aggregationLevels.textContent = savedScoringLevels(savedScoring);
       aggregation.append(aggregationLabel, aggregationLevels);
       const meta = document.createElement('span');
-      meta.className = 'saved-filter-meta';
-      const baseline = valueOf(savedFilter, ['baseline_operator'], 'EE');
+      meta.className = 'saved-scoring-meta';
+      const baseline = valueOf(savedScoring, ['baseline_operator'], 'EE');
       meta.textContent = 'GAP Reference: ';
       const referenceValue = document.createElement('strong');
-      referenceValue.className = 'saved-filter-reference';
+      referenceValue.className = 'saved-scoring-reference';
       referenceValue.textContent = baseline === '@same-operator-nsa' ? 'Same operator in NSA' : baseline;
       meta.append(referenceValue);
       // Its Geographical Areas & Scoring Trends, as in the panel: the Breakdown and Separate cities of both tabs, then the
       // campaigns and time split of the trends, each value in its own colour.
       const areaMeta = document.createElement('span');
-      areaMeta.className = 'saved-filter-meta';
+      areaMeta.className = 'saved-scoring-meta';
       areaMeta.textContent = 'Country Areas: ';
-      (savedFilter?.area_summary?.country_areas === false ? [['off', 'Included', 'Off']] : savedFilterAreaSummaryParts(savedFilter)).forEach(([kind, label, value], index) => {
+      (savedScoring?.area_summary?.country_areas === false ? [['off', 'Included', 'Off']] : savedScoringAreaSummaryParts(savedScoring)).forEach(([kind, label, value], index) => {
         const areaValue = document.createElement('strong');
-        areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;
+        areaValue.className = `saved-scoring-area-summary saved-scoring-area-summary-${kind}`;
         areaValue.textContent = value;
         areaMeta.append(`${index ? ' · ' : ''}${label}: `, areaValue);
       });
       const trendMeta = document.createElement('span');
-      trendMeta.className = 'saved-filter-meta';
+      trendMeta.className = 'saved-scoring-meta';
       const trendValue = document.createElement('strong');
-      trendValue.className = 'saved-filter-area-summary saved-filter-area-summary-campaigns';
-      trendValue.textContent = savedFilterTrendCampaigns(savedFilter);
+      trendValue.className = 'saved-scoring-area-summary saved-scoring-area-summary-campaigns';
+      trendValue.textContent = savedScoringTrendCampaigns(savedScoring);
       const timeValue = document.createElement('strong');
-      timeValue.className = 'saved-filter-area-summary saved-filter-area-summary-time';
-      timeValue.textContent = savedFilterTimeSplit(savedFilter);
-      if (savedFilter?.area_summary?.trends === false) {
+      timeValue.className = 'saved-scoring-area-summary saved-scoring-area-summary-time';
+      timeValue.textContent = savedScoringTimeSplit(savedScoring);
+      if (savedScoring?.area_summary?.trends === false) {
         trendValue.textContent = 'Off';
         trendMeta.append('Scoring Trends: ', trendValue);
       } else {
         trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);
         // Their own areas, when they are not those of Country Areas.
-        const trendSummary = savedFilter?.area_summary || {};
+        const trendSummary = savedScoring?.area_summary || {};
         if (Array.isArray(trendSummary.trend_cities)) {
           const areasValue = document.createElement('strong');
-          areasValue.className = 'saved-filter-area-summary saved-filter-area-summary-breakdown';
+          areasValue.className = 'saved-scoring-area-summary saved-scoring-area-summary-breakdown';
           areasValue.textContent = [trendSummary.trend_breakdown && trendSummary.trend_breakdown !== 'None' ? trendSummary.trend_breakdown : '',
             [...(trendSummary.trend_main_cities ? ['Main Cities'] : []), ...trendSummary.trend_cities].join(', ')].filter(Boolean).join(' + ') || 'None';
           trendMeta.append(' · Areas: ', areasValue);
         }
       }
-      const cdrNames = savedFilterCdrNames(savedFilter);
+      const cdrNames = savedScoringCdrNames(savedScoring);
       const cdrButton = document.createElement('button');
       cdrButton.type = 'button';
-      cdrButton.className = 'saved-filter-cdrs';
-      cdrButton.dataset.savedFilterCdrs = id;
-      const cdrCount = cdrNames.length || (savedFilter.dataset_ids || []).length;
+      cdrButton.className = 'saved-scoring-cdrs';
+      cdrButton.dataset.savedScoringCdrs = id;
+      const cdrCount = cdrNames.length || (savedScoring.dataset_ids || []).length;
       cdrButton.textContent = cdrCount ? `${cdrCount} CDR${cdrCount === 1 ? '' : 's'}` : 'Selected CDRs';
-      cdrButton.title = cdrNames.length ? cdrNames.join('\n') : savedFilterCdrSummary(savedFilter);
-      cdrButton.setAttribute('aria-label', `Show the CDRs of Saved Filter ${id}`);
-      const profileName = valueOf(savedFilter, ['scoring_profile_name', 'profile_name'], '');
+      cdrButton.title = cdrNames.length ? cdrNames.join('\n') : savedScoringCdrSummary(savedScoring);
+      cdrButton.setAttribute('aria-label', `Show the CDRs of Saved Scoring ${id}`);
+      const profileName = valueOf(savedScoring, ['scoring_profile_name', 'profile_name'], '');
       let profileMeta = null;
       if (profileName) {
         profileMeta = document.createElement('span');
-        profileMeta.className = 'saved-filter-meta';
+        profileMeta.className = 'saved-scoring-meta';
         profileMeta.textContent = 'Scoring Methodology: ';
         const profileValue = document.createElement('strong');
-        profileValue.className = 'saved-filter-profile';
+        profileValue.className = 'saved-scoring-profile';
         // By campaign (NetCheck 2026: 2026-Q1, 2026-Q2 · …): By campaign is the pill, followed by the methodologies,
         // with the campaigns of each one in their own colour.
         const byCampaign = /^By campaign \((.*)\)$/.exec(profileName);
@@ -2647,7 +2649,7 @@
         profileMeta.append(profileValue);
         if (byCampaign) {
           const detail = document.createElement('span');
-          detail.className = 'saved-filter-profile-detail';
+          detail.className = 'saved-scoring-profile-detail';
           detail.append(' (');
           byCampaign[1].split(' · ').forEach((part, index) => {
             if (index) detail.append(' · ');
@@ -2657,7 +2659,7 @@
               return;
             }
             const campaigns = document.createElement('span');
-            campaigns.className = 'saved-filter-profile-campaigns';
+            campaigns.className = 'saved-scoring-profile-campaigns';
             // Each campaign as the workspace Campaign Maps name it.
             campaigns.textContent = part.slice(split + 2).split(', ')
               .map(value => hierarchyDisplayValue({level: 'Campaign', value})).join(', ');
@@ -2669,156 +2671,156 @@
       }
       // The Split by, the GAP reference, the methodology, then the Geographical Areas and the Scoring Trends.
       button.append(...[aggregation, meta, profileMeta, areaMeta, trendMeta].filter(Boolean));
-      const duration = savedFilterDurationText(savedFilter);
+      const duration = savedScoringDurationText(savedScoring);
       if (duration) {
         // How long the calculation took, or has taken so far while it runs.
         const durationMeta = document.createElement('span');
-        durationMeta.className = 'saved-filter-meta';
-        durationMeta.textContent = isActive(savedFilter) ? 'Elapsed: ' : 'Calculation time: ';
+        durationMeta.className = 'saved-scoring-meta';
+        durationMeta.textContent = isActive(savedScoring) ? 'Elapsed: ' : 'Calculation time: ';
         const durationValue = document.createElement('strong');
-        durationValue.className = 'saved-filter-duration';
+        durationValue.className = 'saved-scoring-duration';
         durationValue.textContent = duration;
         durationMeta.append(durationValue);
         button.append(durationMeta);
       }
-      if (isActive(savedFilter)) {
+      if (isActive(savedScoring)) {
         const progress = document.createElement('span');
-        progress.className = 'saved-filter-progress';
-        progress.setAttribute('aria-label', `Calculation ${progressValue(savedFilter)} percent complete`);
+        progress.className = 'saved-scoring-progress';
+        progress.setAttribute('aria-label', `Calculation ${progressValue(savedScoring)} percent complete`);
         const bar = document.createElement('span');
-        bar.style.width = `${progressValue(savedFilter)}%`;
+        bar.style.width = `${progressValue(savedScoring)}%`;
         progress.append(bar);
         button.append(progress);
       }
       // How many times it has been used (calculated or opened) and calculated, on one line.
       const times = count => `${count} time${count === 1 ? '' : 's'}`;
-      const uses = Number(savedFilter.use_count || 1);
-      const calculations = Number(savedFilter.calculation_count || 0);
+      const uses = Number(savedScoring.use_count || 1);
+      const calculations = Number(savedScoring.calculation_count || 0);
       const useMeta = document.createElement('span');
-      useMeta.className = 'saved-filter-meta';
+      useMeta.className = 'saved-scoring-meta';
       const useValue = document.createElement('strong');
-      useValue.className = 'saved-filter-uses';
+      useValue.className = 'saved-scoring-uses';
       useValue.textContent = times(uses);
       const calculationValue = document.createElement('strong');
-      calculationValue.className = 'saved-filter-calculations';
+      calculationValue.className = 'saved-scoring-calculations';
       calculationValue.textContent = times(calculations);
       const calculationLabel = document.createElement('span');
       calculationLabel.textContent = ' · Calculated: ';
       useMeta.textContent = 'Used: ';
       useMeta.append(useValue, calculationLabel, calculationValue);
       button.append(useMeta);
-      const missing = Array.isArray(savedFilter.missing_cdrs) ? savedFilter.missing_cdrs.filter(Boolean) : [];
+      const missing = Array.isArray(savedScoring.missing_cdrs) ? savedScoring.missing_cdrs.filter(Boolean) : [];
       if (missing.length) {
         // Filters imported from another workspace wait until their CDRs are processed here.
         const waiting = document.createElement('span');
-        waiting.className = 'saved-filter-meta saved-filter-waiting';
+        waiting.className = 'saved-scoring-meta saved-scoring-waiting';
         waiting.textContent = `Waiting for its CDRs: ${missing.join(', ')}`;
         button.append(waiting);
       }
-      const newer = Array.isArray(savedFilter.newer_cdrs) ? savedFilter.newer_cdrs : [];
+      const newer = Array.isArray(savedScoring.newer_cdrs) ? savedScoring.newer_cdrs : [];
       if (newer.length) {
         // A Final CDR (or a newer cumulative one) replaces some of its CDRs.
         const notice = document.createElement('span');
-        notice.className = 'saved-filter-meta saved-filter-newer';
+        notice.className = 'saved-scoring-meta saved-scoring-newer';
         notice.textContent = `Newer CDRs available: ${newer.map(item => `${item.replaced_by_name} replaces ${item.name}`).join('; ')}`;
         button.append(notice);
       }
-      const error = valueOf(savedFilter, ['error', 'error_message', 'last_error'], '');
+      const error = valueOf(savedScoring, ['error', 'error_message', 'last_error'], '');
       if (status === 'failed' && error) {
         const detail = document.createElement('span');
-        detail.className = 'saved-filter-meta';
+        detail.className = 'saved-scoring-meta';
         detail.textContent = error;
         button.append(detail);
       }
       const row = document.createElement('div');
-      row.className = 'saved-filter-row';
+      row.className = 'saved-scoring-row';
       const actions = document.createElement('span');
-      actions.className = 'saved-filter-actions';
+      actions.className = 'saved-scoring-actions';
       if (newer.length) {
         const useNewer = document.createElement('button');
         useNewer.type = 'button';
-        useNewer.className = 'saved-filter-use-newer';
-        useNewer.dataset.savedFilterNewer = id;
+        useNewer.className = 'saved-scoring-use-newer';
+        useNewer.dataset.savedScoringNewer = id;
         useNewer.textContent = 'Use newer CDRs';
-        useNewer.title = 'Update this Saved Filter with the newer CDRs and calculate it again';
+        useNewer.title = 'Update this Saved Scoring with the newer CDRs and calculate it again';
         actions.append(useNewer);
       }
       const pin = document.createElement('button');
       pin.type = 'button';
-      pin.className = 'saved-filter-pin';
-      pin.dataset.savedFilterPin = id;
-      pin.textContent = savedFilter.pinned ? '★' : '☆';
-      pin.title = savedFilter.pinned ? 'Unstar this Saved Filter: it leaves the list and goes when another one is calculated or opened'
-        : 'Star this Saved Filter to keep it in the list of Saved Filters (first; drag it to move it)';
-      pin.setAttribute('aria-label', `${savedFilter.pinned ? 'Unpin' : 'Pin'} Saved Filter ${id}`);
-      pin.setAttribute('aria-pressed', String(Boolean(savedFilter.pinned)));
+      pin.className = 'saved-scoring-pin';
+      pin.dataset.savedScoringPin = id;
+      pin.textContent = savedScoring.pinned ? '★' : '☆';
+      pin.title = savedScoring.pinned ? 'Unstar this Saved Scoring: it leaves the list and goes when another one is calculated or opened'
+        : 'Star this Saved Scoring to keep it in the list of Saved Scorings (first; drag it to move it)';
+      pin.setAttribute('aria-label', `${savedScoring.pinned ? 'Unpin' : 'Pin'} Saved Scoring ${id}`);
+      pin.setAttribute('aria-pressed', String(Boolean(savedScoring.pinned)));
       // Only admins, super-admins and the user who starred it unstar it.
-      if (savedFilter.pinned && !(window.canDeleteShared?.(savedFilter.created_by) ?? true)) {
+      if (savedScoring.pinned && !(window.canDeleteShared?.(savedScoring.created_by) ?? true)) {
         pin.disabled = true;
-        pin.title = 'Only admins and super-admins, or the user who starred it, can unstar this Saved Filter';
+        pin.title = 'Only admins and super-admins, or the user who starred it, can unstar this Saved Scoring';
       }
-      // The identifier of the Saved Filter (as App Events name it), before its buttons.
+      // The identifier of the Saved Scoring (as App Events name it), before its buttons.
       const idBadge = document.createElement('span');
-      idBadge.className = 'saved-filter-id';
+      idBadge.className = 'saved-scoring-id';
       idBadge.textContent = `Filter ID: ${id}`;
-      idBadge.title = `Saved Filter ID ${id}`;
+      idBadge.title = `Saved Scoring ID ${id}`;
       const rename = document.createElement('button');
       rename.type = 'button';
-      rename.className = 'saved-filter-rename';
-      rename.dataset.savedFilterRename = id;
+      rename.className = 'saved-scoring-rename';
+      rename.dataset.savedScoringRename = id;
       rename.textContent = '✎';
-      rename.title = 'Edit this Saved Filter: its name or its filters';
-      rename.setAttribute('aria-label', `Edit Saved Filter ${id}`);
+      rename.title = 'Edit this Saved Scoring: its name or its filters';
+      rename.setAttribute('aria-label', `Edit Saved Scoring ${id}`);
       const duplicate = document.createElement('button');
       duplicate.type = 'button';
-      duplicate.className = 'saved-filter-duplicate';
-      duplicate.dataset.savedFilterDuplicate = id;
+      duplicate.className = 'saved-scoring-duplicate';
+      duplicate.dataset.savedScoringDuplicate = id;
       duplicate.textContent = '⧉';
-      duplicate.title = 'Duplicate this Saved Filter: change the filters of a copy and save it as a new Favourite Scoring';
-      duplicate.setAttribute('aria-label', `Duplicate Saved Filter ${id}`);
+      duplicate.title = 'Duplicate this Saved Scoring: change the filters of a copy and save it as a new Favourite Scoring';
+      duplicate.setAttribute('aria-label', `Duplicate Saved Scoring ${id}`);
       const remove = document.createElement('button');
       remove.type = 'button';
-      remove.className = 'saved-filter-delete';
-      remove.dataset.deleteSavedFilterId = id;
+      remove.className = 'saved-scoring-delete';
+      remove.dataset.deleteSavedScoringId = id;
       remove.textContent = '×';
-      remove.title = 'Delete this Saved Filter and its result';
-      remove.setAttribute('aria-label', `Delete Saved Filter ${id}`);
+      remove.title = 'Delete this Saved Scoring and its result';
+      remove.setAttribute('aria-label', `Delete Saved Scoring ${id}`);
       // Only admins, super-admins and the user who created it delete it.
-      const deletable = window.canDeleteShared?.(savedFilter.created_by) ?? true;
-      remove.disabled = deletingSavedFilterIds.has(id) || !deletable;
-      if (!deletable) remove.title = window.sharedDeleteRefusal('Saved Filter');
+      const deletable = window.canDeleteShared?.(savedScoring.created_by) ?? true;
+      remove.disabled = deletingSavedScoringIds.has(id) || !deletable;
+      if (!deletable) remove.title = window.sharedDeleteRefusal('Saved Scoring');
       actions.append(cdrButton, idBadge, rename, duplicate, pin, remove);
-      // Use Filter makes it the Saved Filter of the module and opens its Scoring; the one in use (selected at the top of
+      // Use Filter makes it the Saved Scoring of the module and opens its Scoring; the one in use (selected at the top of
       // the module, with its results shown) has the In Use label instead.
-      const inUse = id === selectedSavedFilterId && !selectionUnmatched;
+      const inUse = id === selectedSavedScoringId && !selectionUnmatched;
       const use = document.createElement(inUse ? 'span' : 'button');
       if (inUse) {
-        use.className = 'saved-filter-use saved-filter-in-use';
+        use.className = 'saved-scoring-use saved-scoring-in-use';
         use.textContent = 'In Use';
-        use.title = 'This Saved Filter is the one selected at the top of the module';
+        use.title = 'This Saved Scoring is the one selected at the top of the module';
       } else {
         use.type = 'button';
-        use.className = 'saved-filter-use';
-        use.dataset.savedFilterUse = id;
+        use.className = 'saved-scoring-use';
+        use.dataset.savedScoringUse = id;
         use.textContent = 'Use Filter';
-        use.title = 'Open the Scoring of this Saved Filter: it becomes the Saved Filter selected at the top of the module';
-        use.setAttribute('aria-label', `Use Saved Filter ${id}`);
+        use.title = 'Open the Scoring of this Saved Scoring: it becomes the Saved Scoring selected at the top of the module';
+        use.setAttribute('aria-label', `Use Saved Scoring ${id}`);
       }
       // On top of its card: the areas it filters (or Nationwide), then the operators or vendors, and its NR Mode.
       const tabs = document.createElement('span');
-      tabs.className = 'saved-filter-tabs';
-      for (const scope of savedFilterScopes(savedFilter)) {
+      tabs.className = 'saved-scoring-tabs';
+      for (const scope of savedScoringScopes(savedScoring)) {
         const scopeLabel = document.createElement('span');
-        scopeLabel.className = 'saved-filter-scope';
+        scopeLabel.className = 'saved-scoring-scope';
         scopeLabel.dataset.dimension = scope.dimension;
         scopeLabel.textContent = scope.text;
         scopeLabel.title = scope.title;
         tabs.append(scopeLabel);
       }
-      const nrMode = String(valueOf(savedFilter, ['nr_mode'], '') || '');
+      const nrMode = String(valueOf(savedScoring, ['nr_mode'], '') || '');
       if (nrMode) {
         const modeLabel = document.createElement('span');
-        modeLabel.className = 'saved-filter-mode';
+        modeLabel.className = 'saved-scoring-mode';
         modeLabel.dataset.nrMode = nrMode === 'NSA+SA' ? 'nsa-vs-sa' : nrMode.toLowerCase();
         modeLabel.title = `NR Mode: ${nrMode === 'NSA+SA' ? 'NSA vs SA' : nrMode}`;
         if (nrMode === 'NSA+SA') {
@@ -2836,43 +2838,43 @@
         row.append(tabs);
       }
       row.append(button, use, actions);
-      row.dataset.savedFilterRow = id;
-      if (savedFilter.pinned) savedFilterList.append(row);
-      if (id === selectedSavedFilterId) {
+      row.dataset.savedScoringRow = id;
+      if (savedScoring.pinned) savedScoringList.append(row);
+      if (id === selectedSavedScoringId) {
         // The selected card of the Scoring Results dropdown, with its CDRs, name and pin buttons (deleting is done in the
         // lists): its name without the fold arrow, and none when it has no name. Folded, it shows its name, the line of
         // its filters and its buttons; Details, before them, unfolds the rest without opening the dropdown.
         const selectedActions = document.createElement('span');
-        selectedActions.className = 'saved-filter-actions';
+        selectedActions.className = 'saved-scoring-actions';
         const details = document.createElement('button');
         details.type = 'button';
-        details.className = 'saved-filter-details';
-        details.dataset.savedFilterDetails = id;
+        details.className = 'saved-scoring-details';
+        details.dataset.savedScoringDetails = id;
         details.textContent = 'Details';
-        details.title = 'Show or hide the details of this Saved Filter';
-        details.setAttribute('aria-expanded', String(selectedSavedFilterUnfolded));
+        details.title = 'Show or hide the details of this Saved Scoring';
+        details.setAttribute('aria-expanded', String(selectedSavedScoringUnfolded));
         selectedActions.append(details, ...Array.from(actions.children, child => child.cloneNode(true))
-          .filter(child => !child.dataset?.deleteSavedFilterId));
+          .filter(child => !child.dataset?.deleteSavedScoringId));
         // Its label on top, as in the lists.
         const cardParts = [tabs.childElementCount ? tabs : null,
-          ...Array.from(button.children, child => (child === head ? (savedFilter.name ? name : null) : child))];
-        selectedSavedFilterCard.replaceChildren(...cardParts.filter(Boolean).map(child => child.cloneNode(true)), selectedActions);
+          ...Array.from(button.children, child => (child === head ? (savedScoring.name ? name : null) : child))];
+        selectedSavedScoringCard.replaceChildren(...cardParts.filter(Boolean).map(child => child.cloneNode(true)), selectedActions);
         selectedCardShown = true;
       }
     }
-    if (selectionUnmatched && !(typeof currentResultsSavedFilterId !== 'undefined' && currentResultsSavedFilterId)) {
-      selectedSavedFilterCard.replaceChildren(unmatchedSelectionNotice());
+    if (selectionUnmatched && !(typeof currentResultsSavedScoringId !== 'undefined' && currentResultsSavedScoringId)) {
+      selectedSavedScoringCard.replaceChildren(unmatchedSelectionNotice());
       selectedCardShown = false;
     }
-    selectedSavedFilterCard.classList.toggle('is-folded', selectedCardShown && !selectedSavedFilterUnfolded);
+    selectedSavedScoringCard.classList.toggle('is-folded', selectedCardShown && !selectedSavedScoringUnfolded);
     // The other selectors show the same card.
-    for (const card of selectedSavedFilterCards.slice(1)) {
-      card.replaceChildren(...Array.from(selectedSavedFilterCard.childNodes, node => node.cloneNode(true)));
-      card.classList.toggle('is-folded', selectedCardShown && !selectedSavedFilterUnfolded);
+    for (const card of selectedSavedScoringCards.slice(1)) {
+      card.replaceChildren(...Array.from(selectedSavedScoringCard.childNodes, node => node.cloneNode(true)));
+      card.classList.toggle('is-folded', selectedCardShown && !selectedSavedScoringUnfolded);
     }
-    syncSavedFilterLists();
+    syncSavedScoringLists();
     // An open Filter Navigator follows the Favourite Scorings (their status, a new one, one deleted).
-    if (navigatorDialog?.open) renderSavedFilterNavigator();
+    if (navigatorDialog?.open) renderSavedScoringNavigator();
     if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
   }
 
@@ -2974,7 +2976,7 @@
   function activeScoringConfiguration() {
     return effectiveScoring() === 'most_reliable'
       ? activeScoringPayload()?.configuration || {}
-      : selectedSavedFilter?.configuration || currentResults?.configuration || {};
+      : selectedSavedScoring?.configuration || currentResults?.configuration || {};
   }
 
   function syncResultScoring(payload) {
@@ -2985,8 +2987,8 @@
     scoringKindSelect.value = effectiveScoring(payload);
   }
 
-  function setExportLinks(savedFilterId, enabled) {
-    // The scoring shown is exported by its Saved Filter, also with changes not calculated yet (its results stay in
+  function setExportLinks(savedScoringId, enabled) {
+    // The scoring shown is exported by its Saved Scoring, also with changes not calculated yet (its results stay in
     // sight); not once it is closed.
     for (const [kind, link] of Object.entries(exportLinks).flatMap(([name, links]) => [links].flat().map(item => [name, item]))) {
       if (!link) continue;
@@ -2999,7 +3001,7 @@
       // CSV files carry the selected scoring; PowerPoint and Word carry both scorings.
       const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'
         && effectiveScoring() === 'most_reliable' ? '&scoring=most_reliable' : '';
-      link.href = enabled ? `${exportBase}/${encodeURIComponent(savedFilterId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';
+      link.href = enabled ? `${exportBase}/${encodeURIComponent(savedScoringId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';
     }
   }
 
@@ -3055,10 +3057,10 @@
       });
   }
 
-  // Export Selected Scoring Report (Results panel) exports the selected Saved Filter as it was calculated (its
+  // Export Selected Scoring Report (Results panel) exports the selected Saved Scoring as it was calculated (its
   // CDRs, Break down by levels and filters): it only asks for PowerPoint or Word.
   // The scorings and environments the export offers: Best Network and All Environments are ticked; Most Reliable only
-  // when the Saved Filter has it, and each environment of its results.
+  // when the Saved Scoring has it, and each environment of its results.
   function scoringExportChoices() {
     const mostReliable = currentResults ? Boolean(currentResults?.scorings?.most_reliable) : true;
     const environments = [...(environmentSelect?.options || [])]
@@ -3163,7 +3165,7 @@
 
   async function downloadScoringDocument(href, label, init = {}) {
     globalThis.showLoadingOverlay?.(`Preparing the ${label} document`,
-      `Preparing the Scoring & GAP Analysis ${label} of the selected Saved Filter with its tables and charts. The document downloads when it is ready.`);
+      `Preparing the Scoring & GAP Analysis ${label} of the selected Saved Scoring with its tables and charts. The document downloads when it is ready.`);
     try {
       const response = await fetch(href, {credentials: 'same-origin', ...init});
       if (!response.ok) {
@@ -3278,7 +3280,7 @@
   }
 
   function gapComparisonIdentity(table, kind) {
-    return JSON.stringify([selectedSavedFilterId || currentResultsSavedFilterId || '', kind, comparisonIdentity(table, kind)]);
+    return JSON.stringify([selectedSavedScoringId || currentResultsSavedScoringId || '', kind, comparisonIdentity(table, kind)]);
   }
 
   function comparisonLabel(table, kind) {
@@ -4974,7 +4976,7 @@
     if (!tables.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No scoring comparison tables are available for this Saved Filter.';
+      empty.textContent = 'No scoring comparison tables are available for this Saved Scoring.';
       pane.append(empty);
       return;
     }
@@ -5009,7 +5011,7 @@
     if (!tables.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No GAP comparison tables are available for this Saved Filter.';
+      empty.textContent = 'No GAP comparison tables are available for this Saved Scoring.';
       pane.append(empty);
       return;
     }
@@ -6019,7 +6021,7 @@
 
   // What a chart or a table shows, so that a copied one still tells it: its area (for example City: London), then
   // its operators and vendors. Each is the value of its context (the City, Cluster or Region, the most specific
-  // first), else the filters of the Saved Filter, else National, All Operators or All Vendors. A long list keeps its
+  // first), else the filters of the Saved Scoring, else National, All Operators or All Vendors. A long list keeps its
   // first two names and counts the others; the tooltip lists them all.
   // ``wholeCountry``: a view calculated without the City, Cluster and Region filters (the Geographical Areas), whose area
   // is never taken from them.
@@ -6143,7 +6145,7 @@
     if (!rows.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No chart rows are available for this Saved Filter.';
+      empty.textContent = 'No chart rows are available for this Saved Scoring.';
       pane.append(empty);
       return;
     }
@@ -8267,7 +8269,7 @@
         where.className = 'scoring-owner-where';
         where.append(insightParagraph('scoring-owner-where-title', 'Where its points are'));
         // Results calculated before the points of each owner were kept per City or route have none.
-        if (!card.settings) where.append(insightParagraph('scoring-insight-note', 'Recalculate the Saved Filter to see them.'));
+        if (!card.settings) where.append(insightParagraph('scoring-insight-note', 'Recalculate the Saved Scoring to see them.'));
         for (const [setting, value] of Object.entries(card.settings || {})) {
           const row = document.createElement('div');
           const bar = document.createElement('i');
@@ -8786,12 +8788,12 @@
   }
 
   // ---- Points Lost --------------------------------------------------------------------------------------------------
-  function renderPointsLost(pane, payload, environment, savedFilterId) {
+  function renderPointsLost(pane, payload, environment, savedScoringId) {
     pane.replaceChildren();
     if (!environment) return;
     renderPointsAtStake(pane, payload, environment);
     renderPointsPerKpi(pane, payload, environment);
-    renderPointsLossMaps(pane, payload, environment, savedFilterId);
+    renderPointsLossMaps(pane, payload, environment, savedScoringId);
     const pending = payload.points_loss_pending;
     renderServingLosses(pane, payload, environment, 'vendor_losses', 'Points lost per Vendor of the serving cell', 'Vendor', pending);
     renderServingLosses(pane, payload, environment, 'site_type_losses', 'Points lost per kind of serving site', 'Kind of site', pending);
@@ -9212,8 +9214,8 @@
       tests.append(svgElement(svg, 'circle', {cx: x, cy: y, r: 1.4, fill: '#d5dbe2'}));
     }
     // The map areas (ITL3 in the UK) as the land under the route, once loaded: they replace the other tests.
-    if (currentResultsSavedFilterId) {
-      renderLoads.push(lossBoundaries(currentResultsSavedFilterId, 'Area').then(({boundaries}) => {
+    if (currentResultsSavedScoringId) {
+      renderLoads.push(lossBoundaries(currentResultsSavedScoringId, 'Area').then(({boundaries}) => {
         let drawn = false;
         for (const rings of Object.values(boundaries || {})) {
           for (const ring of rings) {
@@ -9402,10 +9404,10 @@
       border: activeTheme?.surface || '#FFFFFF'};
   }
 
-  function lossBoundaries(savedFilterId, field) {
-    const key = `${savedFilterId}:${field}`;
+  function lossBoundaries(savedScoringId, field) {
+    const key = `${savedScoringId}:${field}`;
     if (!lossBoundaryCache.has(key)) {
-      lossBoundaryCache.set(key, requestJson(`${savedFiltersUrl}/${encodeURIComponent(savedFilterId)}/boundaries/${encodeURIComponent(field)}`)
+      lossBoundaryCache.set(key, requestJson(`${savedScoringsUrl}/${encodeURIComponent(savedScoringId)}/boundaries/${encodeURIComponent(field)}`)
         .then(body => ({boundaries: body?.boundaries || {}, outlines: body?.background || []}))
         // (A request that failed is made again the next time the map is drawn.)
         .catch(() => { lossBoundaryCache.delete(key); return {boundaries: {}, outlines: []}; }));
@@ -9498,8 +9500,8 @@
 
   // Points Lost Map: choose the location (for example London), the operators (their maps side by
   // side) and the analysis per City, Region or Cluster.
-  function renderPointsLossMaps(pane, payload, environment, savedFilterId) {
-    if (!environment || !savedFilterId) return;
+  function renderPointsLossMaps(pane, payload, environment, savedScoringId) {
+    if (!environment || !savedScoringId) return;
     if (payload.points_loss_pending) {
       // Calculated from the Scoring History: the map follows once the rows of the tests are read.
       const section = document.createElement('section');
@@ -9521,7 +9523,7 @@
     }
     const maps = insightItems(payload, 'points_loss_maps', environment);
     if (!maps.length && payload.points_loss_error) {
-      // Stopped by a user (drawn again once the application is idle) or failed (calculating the Saved Filter again
+      // Stopped by a user (drawn again once the application is idle) or failed (calculating the Saved Scoring again
       // draws it): the scores stay.
       const section = document.createElement('section');
       section.className = 'scoring-insight-section scoring-result-card scoring-loss-maps-card';
@@ -9532,7 +9534,7 @@
       notice.className = 'scoring-calculating-detail';
       notice.textContent = payload.points_loss_stopped
         ? 'The map was stopped by a user before it was drawn: it is drawn once nobody is using the application.'
-        : `The map was not drawn: ${payload.points_loss_error}. Calculate the Saved Filter again to draw it.`;
+        : `The map was not drawn: ${payload.points_loss_error}. Calculate the Saved Scoring again to draw it.`;
       section.append(heading, notice);
       pane.append(section);
       return;
@@ -9626,7 +9628,7 @@
     const grid = document.createElement('div');
     grid.className = `scoring-loss-map-grid${chosen.length > 1 ? ' is-multiple' : ''}`;
     const cards = candidates.filter(item => chosen.includes(item.ranking.operator))
-      .map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode, rank));
+      .map(entry => pointsLossMapCard(entry, payload, savedScoringId, chosen.length > 1, mode, rank));
     grid.append(...cards);
     modeSelect?.addEventListener('change', () => {
       insightSelections.set('points-loss-colour', modeSelect.value);
@@ -9643,7 +9645,7 @@
         + `${unmapped.length > 1 ? 'these countries' : 'this country'} in Workspace Config and calculate the scoring again to see ${unmapped.length > 1 ? 'their' : 'its'} areas.`;
       section.append(warning);
     }
-    // A Saved Filter that asks for Postal Codes in a country whose postal codes could not be downloaded.
+    // A Saved Scoring that asks for Postal Codes in a country whose postal codes could not be downloaded.
     const postalMissing = payload?.views?.insights?.postal_missing || [];
     if (postalMissing.length) {
       const warning = document.createElement('p');
@@ -9652,7 +9654,7 @@
         + 'the tests there: download or import them in Workspace Config → Map Areas and calculate the scoring again.';
       section.append(warning);
     }
-    // A Saved Filter whose map of the Postal Codes the workspace does not have in a country.
+    // A Saved Scoring whose map of the Postal Codes the workspace does not have in a country.
     for (const item of (payload?.views?.insights?.postal_maps || []).filter(map => map.replaces)) {
       const warning = document.createElement('p');
       warning.className = 'scoring-insight-note scoring-loss-unmapped';
@@ -9664,7 +9666,7 @@
   }
 
   // Every postal code of a map as a CSV file: the table lists the first ones. The browser writes it; App Events records it.
-  function downloadLossCsv(ranking, savedFilterId) {
+  function downloadLossCsv(ranking, savedScoringId) {
     const cell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
     const rows = ranking.areas.filter(area => area.name !== 'Not specified').map(area => [
       area.name, (area.environments || []).join(', '), Number(area.points).toFixed(4),
@@ -9682,13 +9684,13 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(address), 1000);
-    window.recordImageExport?.('/api/scoring/image-export', {saved_filter_id: Number(savedFilterId) || null, tab: 'Points Lost',
+    window.recordImageExport?.('/api/scoring/image-export', {saved_scoring_id: Number(savedScoringId) || null, tab: 'Points Lost',
       kind: 'table', title: `Points Lost per Postal Code — ${ranking.label}`, environment: String(ranking.environment || ''),
       file_name: fileName, format: 'csv'});
   }
 
   // One operator's map with the note and the ranking of the areas where it loses most points.
-  function pointsLossMapCard(entry, payload, savedFilterId, compact, mode = 'top', rank = 'points') {
+  function pointsLossMapCard(entry, payload, savedScoringId, compact, mode = 'top', rank = 'points') {
     const {ranking, layer} = entry;
     // Per 1,000 tests: the places with enough tests by the points they lose per 1,000 of their tests; ``points`` holds
     // that rate (the map and the bars follow it) and ``national`` their National points lost.
@@ -9795,7 +9797,7 @@
       download.className = 'secondary-button scoring-loss-map-download';
       const total = ranking.areas.filter(area => area.name !== 'Not specified').length;
       download.textContent = `Download all ${insightNumber(total, 0)} postal codes (CSV)`;
-      download.addEventListener('click', () => downloadLossCsv(ranking, savedFilterId));
+      download.addEventListener('click', () => downloadLossCsv(ranking, savedScoringId));
       // One block below the table: with several operators side by side, the cards line up their four parts.
       const footer = document.createElement('div');
       footer.append(hint, postalNote, download);
@@ -9808,7 +9810,7 @@
       row.dataset.area = bars[index]?.name || '';
       row.dataset.points = String(bars[index]?.points || 0);
     });
-    renderLoads.push((layer ? lossBoundaries(savedFilterId, layer.field) : Promise.resolve({boundaries: {}, outlines: []})).then(({boundaries, outlines}) => {
+    renderLoads.push((layer ? lossBoundaries(savedScoringId, layer.field) : Promise.resolve({boundaries: {}, outlines: []})).then(({boundaries, outlines}) => {
       // Each colouring: each city or route with its map areas (the share of its tests in each, or the points it
       // loses in each one) and the colour of every area.
       const colourings = {};
@@ -10035,7 +10037,7 @@
   // Floating buttons at the top right corner of the chart, map, table or panel of the results under the pointer (on
   // touch screens, of the one tapped) download it as a PNG image, as it is shown, or copy it to the clipboard as a
   // screenshot (image_buttons.js): those of the whole card and, when it holds several, those of the chart or table under
-  // the pointer; also in the larger view of a chart, map or table. App Events records each one with the Saved Filter.
+  // the pointer; also in the larger view of a chart, map or table. App Events records each one with the Saved Scoring.
   // (The tables beside the map of a route have no wrapper of their own, and its map is in a frame.)
   const IMAGE_TABLES = '.scoring-insight-table-wrap, .scoring-matrix-wrap, .scoring-table-wrap, .scoring-position, .scoring-route-side > .scoring-insight-table';
   const IMAGE_CHARTS = '.scoring-chart-card, .scoring-loss-map-card, .scoring-expandable-part, .scoring-route-map-frame';
@@ -10107,7 +10109,7 @@
       // (The name of the tab, without its icon of the tabs not filtered by area.)
       const tab = root.querySelector(`[data-result-tab="${activeResultTab}"] > span:not(.scoring-tab-scope)`)?.textContent.trim() || activeResultTab || '';
       return {
-        saved_filter_id: Number(currentResultsSavedFilterId) || null,
+        saved_scoring_id: Number(currentResultsSavedScoringId) || null,
         tab: target.matches('.scoring-expanded-holder') ? `${tab} (larger view)` : tab,
         environment: selectedEnvironment ? environmentLabel(selectedEnvironment) : '', theme: activeTheme?.id || '',
       };
@@ -10623,7 +10625,7 @@
     return values.length > 0 && values.every(cell => cell.complete === true);
   }
 
-  function scoringCoverageWarnings(payload, savedFilter, environment, {concise = false} = {}) {
+  function scoringCoverageWarnings(payload, savedScoring, environment, {concise = false} = {}) {
     const genericNotice = 'Incomplete KPI or environment coverage: partial points are shown without renormalizing weights; a complete benchmark score is unavailable.';
     const warnings = Array.isArray(payload?.warnings) ? payload.warnings : (payload?.warnings ? [payload.warnings] : []);
     const totals = scoringCoverageTotals(payload, environment);
@@ -10669,11 +10671,11 @@
       return low === high ? formatChartNumber(low) : `${formatChartNumber(low)}–${formatChartNumber(high)}`;
     };
     if (available.length && maximum.length) message += ` Available maximum points: ${range(available)} of ${range(maximum)}; these are scoring weights, not earned scores.`;
-    const cities = savedFilter?.context_filters?.City || [];
+    const cities = savedScoring?.context_filters?.City || [];
     if (missing.size && Array.isArray(cities) && cities.length) {
       message += ` The saved City filter is ${cities.join(', ')}. Only matching City names are included; road routes with different City names are excluded.`;
     }
-    if (environment === 'Combined' && (payload.aggregation_levels || savedFilter?.aggregation_levels || []).includes('City')) {
+    if (environment === 'Combined' && (payload.aggregation_levels || savedScoring?.aggregation_levels || []).includes('City')) {
       message += ' City is a Break down by level: cities and road routes are scored separately, and environment coverage is checked within each group.';
     }
     message += ' Available points keep their original weights; missing contributions are not scaled up to a complete benchmark.';
@@ -10750,15 +10752,15 @@
     lossLow = hexChannels(theme.loss_ramp[0]);
     lossHigh = hexChannels(theme.loss_ramp[1]);
     // The other tabs are drawn again, in the new theme, when they are opened.
-    if (currentResults) renderResult(currentResults, selectedSavedFilter);
-    if (currentResultsSavedFilterId) setExportLinks(currentResultsSavedFilterId, true);
+    if (currentResults) renderResult(currentResults, selectedSavedScoring);
+    if (currentResultsSavedScoringId) setExportLinks(currentResultsSavedScoringId, true);
     document.dispatchEvent(new CustomEvent('scoring-theme-change', {detail: {theme: theme.id}}));
     fetch('/api/scoring/theme', {
       method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({theme: theme.id}),
     }).catch(() => {});
   }
 
-  function renderResult(savedPayload, savedFilter, panesToRender = [activeResultTab]) {
+  function renderResult(savedPayload, savedScoring, panesToRender = [activeResultTab]) {
     if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
     const held = panesToRender.map(name => root.querySelector(`[data-result-pane="${name}"]`))
       .filter(pane => pane && pane.childElementCount && pane.offsetHeight).map(pane => [pane, pane.offsetHeight]);
@@ -10790,7 +10792,7 @@
     held.forEach(([pane, height]) => { pane.style.minHeight = `${height}px`; });
     renderLoads = [];
     try {
-      renderResultParts(savedPayload, savedFilter, panesToRender);
+      renderResultParts(savedPayload, savedScoring, panesToRender);
     } finally {
       if (held.length) {
         keepAnchor();
@@ -10807,15 +10809,15 @@
   // NSA vs SA: every tab shows the results of each NR Mode on its own, NSA then SA, as an NSA and an SA calculation
   // show them; How the measurements ran (both NR Modes) comes first in the Summary, and the GAP of Same operator in NSA
   // (SA minus NSA) stays one comparison of both. The page keeps the whole result (its warnings, exports and choices).
-  function renderResultParts(savedPayload, savedFilter, panesToRender) {
+  function renderResultParts(savedPayload, savedScoring, panesToRender) {
     const parts = Array.isArray(savedPayload?.nr_mode_parts) ? savedPayload.nr_mode_parts : [];
     if (nrLayoutControl) nrLayoutControl.hidden = parts.length < 2;
     if (nrChartsControl) nrChartsControl.hidden = parts.length < 2;
     if (parts.length < 2) {
-      renderResultContent(savedPayload, savedFilter, panesToRender);
+      renderResultContent(savedPayload, savedScoring, panesToRender);
       return;
     }
-    const sameOperator = String((savedFilter || savedPayload.saved_filter || {}).baseline_operator || '') === '@same-operator-nsa';
+    const sameOperator = String((savedScoring || savedPayload.saved_scoring || {}).baseline_operator || '') === '@same-operator-nsa';
     // NSA & SA in the same chart: the Scoring Charts of the whole result (each operator with its NSA and SA bars) and the
     // Scoring Trends with the NSA and SA lines on one axis of quarters.
     const together = selectedNrCharts === 'same';
@@ -10849,7 +10851,7 @@
     }
     for (const part of parts) {
       const partBodies = bodies.get(part.nr_mode);
-      renderResultContent({...part, nr_mode_part: part.nr_mode}, savedFilter, split, name => partBodies.get(name));
+      renderResultContent({...part, nr_mode_part: part.nr_mode}, savedScoring, split, name => partBodies.get(name));
     }
     if (selectedNrLayout !== 'grouped') {
       // Each panel of NSA then the same panel of SA, each tagged with its NR Mode, their filters once above them.
@@ -10877,9 +10879,9 @@
         pane.replaceChildren(...(scopeHost && name === 'summary' ? [scopeHost] : []), ...blocks);
       }
     }
-    if (merged.length) renderResultContent(nrModeTrendsPayload(savedPayload, parts), savedFilter, merged);
+    if (merged.length) renderResultContent(nrModeTrendsPayload(savedPayload, parts), savedScoring, merged);
     // Then the whole result: the measurements of both NR Modes, the GAP of Same operator in NSA, the warnings and exports.
-    renderResultContent(savedPayload, savedFilter, [...whole, ...(scopeHost ? ['summary-scope'] : [])],
+    renderResultContent(savedPayload, savedScoring, [...whole, ...(scopeHost ? ['summary-scope'] : [])],
       name => (name === 'summary-scope' ? scopeHost : root.querySelector(`[data-result-pane="${name}"]`)));
     for (const name of split) {
       const pane = root.querySelector(`[data-result-pane="${name}"]`);
@@ -11044,12 +11046,12 @@
     return bar;
   }
 
-  function renderResultContent(savedPayload, savedFilter, panesToRender,
+  function renderResultContent(savedPayload, savedScoring, panesToRender,
     paneOf = name => root.querySelector(`[data-result-pane="${name}"]`)) {
     currentResults = savedPayload;
-    currentResultsSavedFilterId = savedFilterIdOf(savedFilter || savedPayload.saved_filter || {}) || null;
+    currentResultsSavedScoringId = savedScoringIdOf(savedScoring || savedPayload.saved_scoring || {}) || null;
     resultOutOfScope = Array.isArray(savedPayload?.out_of_scope) ? savedPayload.out_of_scope : [];
-    const resultFilters = (savedFilter || savedPayload.saved_filter || {}).context_filters;
+    const resultFilters = (savedScoring || savedPayload.saved_scoring || {}).context_filters;
     resultScopeFilters = resultFilters && typeof resultFilters === 'object' ? resultFilters : {};
     syncResultScoring(savedPayload);
     const payload = activeScoringPayload(savedPayload);
@@ -11067,11 +11069,11 @@
     const allGapSummaryTables = normalizeRows(views.gap_summary_tables ?? payload.gap_summary_tables ?? payload.scoring_views?.gap_summary_tables ?? []);
     const allHierarchyScoreTables = normalizeRows(views.hierarchy_score_tables ?? []);
     const allHierarchyGapTables = normalizeRows(views.hierarchy_gap_tables ?? []);
-    const applyCoverageDefault = environmentDefaultSavedFilterId !== currentResultsSavedFilterId;
+    const applyCoverageDefault = environmentDefaultSavedScoringId !== currentResultsSavedScoringId;
     const environmentSelection = syncResultEnvironment([...allScoreTables, ...allHierarchyScoreTables], {
       payload, applyCoverageDefault,
     });
-    environmentDefaultSavedFilterId = currentResultsSavedFilterId;
+    environmentDefaultSavedScoringId = currentResultsSavedScoringId;
     const effectiveEnvironment = environmentSelection.effective;
     const scoreTables = allScoreTables.filter(table => environmentOf(table) === effectiveEnvironment);
     const gapTables = allGapTables.filter(table => environmentOf(table) === effectiveEnvironment);
@@ -11114,7 +11116,7 @@
         scoringPane.append(detailHeading, detailTable);
       } else {
         scoringPane.replaceChildren();
-        renderTable(scoringPane, detailRows, 'This Saved Filter has no scoring table rows.', {hideGapColumns: true});
+        renderTable(scoringPane, detailRows, 'This Saved Scoring has no scoring table rows.', {hideGapColumns: true});
       }
       renderCampaignComparisons(scoringPane, payload, effectiveEnvironment);
       if (tableExports.scoring && ownExports) scoringPane.prepend(tableExports.scoring);
@@ -11132,11 +11134,11 @@
     if (shouldRenderPane('trends')) renderTrends(paneOf('trends'), payload, effectiveEnvironment);
     if (shouldRenderPane('points')) {
       renderPointsLost(paneOf('points'), payload, effectiveEnvironment,
-        savedFilterIdOf(savedFilter || payload.saved_filter || {}));
+        savedScoringIdOf(savedScoring || payload.saved_scoring || {}));
     }
     if (shouldRenderPane('impact')) {
       window.ScoringImpact?.render(paneOf('impact'), {
-        savedFilterId: savedFilterIdOf(savedFilter || savedPayload.saved_filter || {}), environment: effectiveEnvironment,
+        savedScoringId: savedScoringIdOf(savedScoring || savedPayload.saved_scoring || {}), environment: effectiveEnvironment,
         scoring: effectiveScoring(savedPayload), theme: activeTheme, requestJson, safeHexColor, insightSection, insightControls,
         insightOperatorChips, download: downloadScoringDocument, enableMapZoom,
       });
@@ -11173,18 +11175,18 @@
       renderKpiGapProfiles(gapPane, payload, effectiveEnvironment);
       if (tableExports.gap && ownExports) gapPane.prepend(tableExports.gap);
     }
-    const warnings = payload.warnings ?? savedFilter?.warnings ?? [];
-    renderWarnings(scoringCoverageWarnings({...payload, warnings}, savedFilter, effectiveEnvironment));
+    const warnings = payload.warnings ?? savedScoring?.warnings ?? [];
+    renderWarnings(scoringCoverageWarnings({...payload, warnings}, savedScoring, effectiveEnvironment));
     // Scaling concerns the Combined scores, not the score of a single environment.
-    renderNotices(!effectiveEnvironment || ['all', 'Combined'].includes(effectiveEnvironment) ? payload.notices ?? savedFilter?.notices ?? [] : []);
-    setExportLinks(savedFilterIdOf(savedFilter || payload.saved_filter || {}), true);
+    renderNotices(!effectiveEnvironment || ['all', 'Combined'].includes(effectiveEnvironment) ? payload.notices ?? savedScoring?.notices ?? [] : []);
+    setExportLinks(savedScoringIdOf(savedScoring || payload.saved_scoring || {}), true);
   }
 
-  // While the selected Saved Filter calculates, the results show an animated progress bar. Each poll updates it in place,
+  // While the selected Saved Scoring calculates, the results show an animated progress bar. Each poll updates it in place,
   // so the stripes keep moving instead of starting again.
-  function renderCalculating(savedFilter) {
-    const progress = Math.round(progressValue(savedFilter));
-    const detail = String(valueOf(savedFilter, ['message'], '') || '').trim();
+  function renderCalculating(savedScoring) {
+    const progress = Math.round(progressValue(savedScoring));
+    const detail = String(valueOf(savedScoring, ['message'], '') || '').trim();
     const update = (element) => {
       element.querySelector('.scoring-calculating-fill').style.width = `${Math.max(6, progress)}%`;
       element.querySelector('.scoring-calculating-bar').setAttribute('aria-valuenow', String(progress));
@@ -11208,7 +11210,7 @@
     }
   }
 
-  // While the results of a saved Saved Filter load, the results show the same striped bar, moving across its whole width.
+  // While the results of a saved Saved Scoring load, the results show the same striped bar, moving across its whole width.
   function renderLoadingResults() {
     renderNoResult('');
     for (const pane of resultPanes) {
@@ -11241,21 +11243,21 @@
 
   let pointsLossTimer = 0;
 
-  async function loadSavedFilter(savedFilter, force = false, updateSavedFilterList = true) {
-    const id = savedFilterIdOf(savedFilter);
+  async function loadSavedScoring(savedScoring, force = false, updateSavedScoringList = true) {
+    const id = savedScoringIdOf(savedScoring);
     if (!id) return;
-    selectedSavedFilterId = id;
-    selectedSavedFilter = savedFilter;
-    if (updateSavedFilterList) renderSavedFilters();
-    if (!force && resultCache.has(id) && isComplete(savedFilter)) {
+    selectedSavedScoringId = id;
+    selectedSavedScoring = savedScoring;
+    if (updateSavedScoringList) renderSavedScorings();
+    if (!force && resultCache.has(id) && isComplete(savedScoring)) {
       const cached = resultCache.get(id);
-      if (currentResultsSavedFilterId !== id || currentResults !== cached) renderResult(cached, savedFilter);
+      if (currentResultsSavedScoringId !== id || currentResults !== cached) renderResult(cached, savedScoring);
       return;
     }
-    if (currentResultsSavedFilterId !== id) {
+    if (currentResultsSavedScoringId !== id) {
       currentResults = null;
-      currentResultsSavedFilterId = null;
-      if (isActive(savedFilter)) renderCalculating(savedFilter);
+      currentResultsSavedScoringId = null;
+      if (isActive(savedScoring)) renderCalculating(savedScoring);
       else renderLoadingResults();
     }
     if (!force && loadingResults.has(id)) return;
@@ -11264,22 +11266,22 @@
     try {
       let payload;
       try {
-        payload = await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`);
+        payload = await requestJson(`${savedScoringsUrl}/${encodeURIComponent(id)}`);
       } finally {
         loadingResults.delete(id);
-        // Opened: the selection is that Saved Filter, up to date (the strip then says nothing new).
+        // Opened: the selection is that Saved Scoring, up to date (the strip then says nothing new).
         if (selectionStatus.text === OPENING_MESSAGE) {
           selectionStatus = {...selectionStatus, text: UP_TO_DATE_MESSAGE, kind: ''};
           setMessage(selectionStatus.text, selectionStatus.kind);
         }
         if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
       }
-      if (deletedSavedFilterIds.has(id) || selectedSavedFilterId !== id) return;
-      const record = payload.saved_filter || payload;
-      selectedSavedFilter = record;
+      if (deletedSavedScoringIds.has(id) || selectedSavedScoringId !== id) return;
+      const record = payload.saved_scoring || payload;
+      selectedSavedScoring = record;
       const status = normalizeStatus(record);
-      if (isActive(record)) calculatingSavedFilters.set(id, {record, request: ++savedFilterRequests});
-      else calculatingSavedFilters.delete(id);
+      if (isActive(record)) calculatingSavedScorings.set(id, {record, request: ++savedScoringRequests});
+      else calculatingSavedScorings.delete(id);
       // A saved result whose CDRs or methodology are gone is shown as it was, saying why.
       if (record.unavailable) setMessage(`${record.unavailable} The saved result is shown.`, 'error');
       if (isComplete(record) || payload.scoring || payload.gap) {
@@ -11289,18 +11291,18 @@
         // A result from the Scoring History is reloaded once its Points Lost Map is ready.
         window.clearTimeout(pointsLossTimer);
         if (payload.points_loss_pending) {
-          // The list of Saved Filters (light) is checked until the map is saved; only then are the results loaded
+          // The list of Saved Scorings (light) is checked until the map is saved; only then are the results loaded
           // and drawn again.
           const loadedAt = record.updated_at;
           const checkPointsLoss = async () => {
-            if (selectedSavedFilterId !== id) return;
+            if (selectedSavedScoringId !== id) return;
             try {
-              const list = await requestJson(savedFiltersUrl);
-              const current = (list.saved_filters || []).find(item => savedFilterIdOf(item) === id);
-              if (selectedSavedFilterId !== id) return;
+              const list = await requestJson(savedScoringsUrl);
+              const current = (list.saved_scorings || []).find(item => savedScoringIdOf(item) === id);
+              if (selectedSavedScoringId !== id) return;
               if (!current || current.updated_at !== loadedAt) {
                 resultCache.delete(id);
-                loadSavedFilter(selectedSavedFilter, true, false);
+                loadSavedScoring(selectedSavedScoring, true, false);
                 return;
               }
             } catch (_error) {
@@ -11312,94 +11314,94 @@
         }
       } else if (status === 'failed') {
         currentResults = null;
-        currentResultsSavedFilterId = null;
-        const error = valueOf(record, ['error', 'error_message', 'last_error'], 'This Saved Filter failed without an error message.');
+        currentResultsSavedScoringId = null;
+        const error = valueOf(record, ['error', 'error_message', 'last_error'], 'This Saved Scoring failed without an error message.');
         renderNoResult(error);
       } else if (isActive(record)) {
         currentResults = null;
-        currentResultsSavedFilterId = null;
+        currentResultsSavedScoringId = null;
         renderCalculating(record);
         setExportLinks('', false);
         // Opening filters whose CDRs or methodology changed calculates them again: follow the calculation.
-        if (!timer) timer = window.setInterval(refreshSavedFilters, 3500);
+        if (!timer) timer = window.setInterval(refreshSavedScorings, 3500);
       } else {
         currentResults = null;
-        currentResultsSavedFilterId = null;
+        currentResultsSavedScoringId = null;
         renderNoResult('Scoring results will appear here when the calculation completes.');
         setExportLinks('', false);
       }
     } catch (error) {
-      if (deletedSavedFilterIds.has(id) || selectedSavedFilterId !== id) return;
+      if (deletedSavedScoringIds.has(id) || selectedSavedScoringId !== id) return;
       currentResults = null;
-      currentResultsSavedFilterId = null;
+      currentResultsSavedScoringId = null;
       renderNoResult(error.message || 'The selected filters could not be loaded.');
       setMessage(error.message || 'The selected filters could not be loaded.', 'error');
     }
   }
 
-  async function refreshSavedFilters() {
+  async function refreshSavedScorings() {
     if (refreshInFlight) return;
     refreshInFlight = true;
     try {
-      const request = ++savedFilterRequests;
-      const payload = await requestJson(savedFiltersUrl);
-      savedFilters = (Array.isArray(payload) ? payload : (Array.isArray(payload.saved_filters) ? payload.saved_filters : []))
-        .filter(savedFilter => !deletedSavedFilterIds.has(savedFilterIdOf(savedFilter)))
-        .map(savedFilter => {
-          const calculating = calculatingSavedFilters.get(savedFilterIdOf(savedFilter));
-          if (!calculating || isActive(savedFilter)) return savedFilter;
-          // Requested before the Saved Filter was queued again: it keeps calculating until a later list says it ended.
-          if (calculating.request > request) return {...savedFilter, ...calculating.record};
-          calculatingSavedFilters.delete(savedFilterIdOf(savedFilter));
-          return savedFilter;
+      const request = ++savedScoringRequests;
+      const payload = await requestJson(savedScoringsUrl);
+      savedScorings = (Array.isArray(payload) ? payload : (Array.isArray(payload.saved_scorings) ? payload.saved_scorings : []))
+        .filter(savedScoring => !deletedSavedScoringIds.has(savedScoringIdOf(savedScoring)))
+        .map(savedScoring => {
+          const calculating = calculatingSavedScorings.get(savedScoringIdOf(savedScoring));
+          if (!calculating || isActive(savedScoring)) return savedScoring;
+          // Requested before the Saved Scoring was queued again: it keeps calculating until a later list says it ended.
+          if (calculating.request > request) return {...savedScoring, ...calculating.record};
+          calculatingSavedScorings.delete(savedScoringIdOf(savedScoring));
+          return savedScoring;
         });
-      for (const savedFilter of savedFilters) {
-        const id = savedFilterIdOf(savedFilter);
+      for (const savedScoring of savedScorings) {
+        const id = savedScoringIdOf(savedScoring);
         const cached = resultCache.get(id);
-        if (cached && (isActive(savedFilter) || cached.saved_filter?.updated_at !== savedFilter.updated_at)) resultCache.delete(id);
+        if (cached && (isActive(savedScoring) || cached.saved_scoring?.updated_at !== savedScoring.updated_at)) resultCache.delete(id);
       }
-      const ordered = sortedSavedFilters(savedFilters);
-      const requested = requestedSavedFilterIdPending.value
-        ? ordered.find(savedFilter => savedFilterIdOf(savedFilter) === requestedSavedFilterIdPending.value) : null;
-      requestedSavedFilterIdPending.value = null;
-      const retained = !requested && userSelectedSavedFilter && selectedSavedFilterId
-        ? ordered.find(savedFilter => savedFilterIdOf(savedFilter) === selectedSavedFilterId) : null;
+      const ordered = sortedSavedScorings(savedScorings);
+      const requested = requestedSavedScoringIdPending.value
+        ? ordered.find(savedScoring => savedScoringIdOf(savedScoring) === requestedSavedScoringIdPending.value) : null;
+      requestedSavedScoringIdPending.value = null;
+      const retained = !requested && userSelectedSavedScoring && selectedSavedScoringId
+        ? ordered.find(savedScoring => savedScoringIdOf(savedScoring) === selectedSavedScoringId) : null;
       // A scoring is always open: the one asked for, the one in use, else the first one calculated.
-      selectedSavedFilter = requested || retained || ordered.find(isComplete) || ordered[0] || null;
-      selectedSavedFilterId = selectedSavedFilter ? savedFilterIdOf(selectedSavedFilter) : null;
-      userSelectedSavedFilter = Boolean(requested || retained);
-      renderSavedFilters();
-      if (selectedSavedFilter) {
-        const hasCached = resultCache.has(savedFilterIdOf(selectedSavedFilter)) && isComplete(selectedSavedFilter);
-        if (!hasCached || isActive(selectedSavedFilter)) await loadSavedFilter(selectedSavedFilter, isActive(selectedSavedFilter), false);
+      selectedSavedScoring = requested || retained || ordered.find(isComplete) || ordered[0] || null;
+      selectedSavedScoringId = selectedSavedScoring ? savedScoringIdOf(selectedSavedScoring) : null;
+      userSelectedSavedScoring = Boolean(requested || retained);
+      renderSavedScorings();
+      if (selectedSavedScoring) {
+        const hasCached = resultCache.has(savedScoringIdOf(selectedSavedScoring)) && isComplete(selectedSavedScoring);
+        if (!hasCached || isActive(selectedSavedScoring)) await loadSavedScoring(selectedSavedScoring, isActive(selectedSavedScoring), false);
         else {
-          const id = savedFilterIdOf(selectedSavedFilter);
+          const id = savedScoringIdOf(selectedSavedScoring);
           const cached = resultCache.get(id);
-          if (currentResultsSavedFilterId !== id || currentResults !== cached) renderResult(cached, selectedSavedFilter);
+          if (currentResultsSavedScoringId !== id || currentResults !== cached) renderResult(cached, selectedSavedScoring);
         }
       } else {
         currentResults = null;
-        currentResultsSavedFilterId = null;
-        renderNoResult('Calculate a scoring or choose Saved Filters to see their results.');
+        currentResultsSavedScoringId = null;
+        renderNoResult('Calculate a scoring or choose Saved Scorings to see their results.');
       }
       calculationMatchRefresh = true;
       updateSelection();
-      // The opened Saved Filter counts with its latest answer too: a list read before it was queued again must not stop
+      // The opened Saved Scoring counts with its latest answer too: a list read before it was queued again must not stop
       // following its calculation.
-      const anyActive = savedFilters.some(isActive) || Boolean(selectedSavedFilter && isActive(selectedSavedFilter));
-      if (anyActive && !timer) timer = window.setInterval(refreshSavedFilters, 3500);
+      const anyActive = savedScorings.some(isActive) || Boolean(selectedSavedScoring && isActive(selectedSavedScoring));
+      if (anyActive && !timer) timer = window.setInterval(refreshSavedScorings, 3500);
       if (!anyActive && timer) { window.clearInterval(timer); timer = null; }
     } catch (error) {
       // A refresh that fails (one of those that follow a calculation, say) keeps the list read before it.
-      if (!savedFilters.length) {
-        savedFilterList.innerHTML = '';
+      if (!savedScorings.length) {
+        savedScoringList.innerHTML = '';
         const empty = document.createElement('div');
         empty.className = 'scoring-empty';
-        empty.textContent = error.message || 'The Saved Filters could not be loaded.';
-        savedFilterList.append(empty);
-        syncSavedFilterLists();
+        empty.textContent = error.message || 'The Saved Scorings could not be loaded.';
+        savedScoringList.append(empty);
+        syncSavedScoringLists();
       }
-      setMessage(error.message || 'The Saved Filters could not be loaded.', 'error');
+      setMessage(error.message || 'The Saved Scorings could not be loaded.', 'error');
     } finally {
       refreshInFlight = false;
       if (scoringViewScrollRestorePending) restoreScoringViewScroll();
@@ -11407,47 +11409,47 @@
     }
   }
 
-  async function deleteSavedFilter(id) {
-    const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === id);
-    if (!savedFilter || deletingSavedFilterIds.has(id)) return;
-    const copy = `Delete this Saved Filter and its result?${isActive(savedFilter) ? ' Its pending result will be discarded.' : ''} The CDRs and the Scoring History stay.`;
+  async function deleteSavedScoring(id) {
+    const savedScoring = savedScorings.find(record => savedScoringIdOf(record) === id);
+    if (!savedScoring || deletingSavedScoringIds.has(id)) return;
+    const copy = `Delete this Saved Scoring and its result?${isActive(savedScoring) ? ' Its pending result will be discarded.' : ''} The CDRs and the Scoring History stay.`;
     const accepted = typeof showConfirmDialog === 'function'
-      ? await showConfirmDialog(copy, {title: 'Delete Saved Filter', confirmLabel: 'Delete'})
+      ? await showConfirmDialog(copy, {title: 'Delete Saved Scoring', confirmLabel: 'Delete'})
       : window.confirm(copy);
     if (!accepted) return;
-    deletingSavedFilterIds.add(id);
-    renderSavedFilters();
+    deletingSavedScoringIds.add(id);
+    renderSavedScorings();
     try {
-      await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`, {method: 'DELETE'});
-      deletedSavedFilterIds.add(id);
+      await requestJson(`${savedScoringsUrl}/${encodeURIComponent(id)}`, {method: 'DELETE'});
+      deletedSavedScoringIds.add(id);
       resultCache.delete(id);
-      savedFilters = savedFilters.filter(record => savedFilterIdOf(record) !== id);
+      savedScorings = savedScorings.filter(record => savedScoringIdOf(record) !== id);
       calculationMatchKey = '';
-      if (editingSavedFilter && savedFilterIdOf(editingSavedFilter) === id) stopSavedFilterEdit();
+      if (editingSavedScoring && savedScoringIdOf(editingSavedScoring) === id) stopSavedScoringEdit();
       updateSelection();
-      if (selectedSavedFilterId === id) {
-        selectedSavedFilterId = null;
-        selectedSavedFilter = null;
+      if (selectedSavedScoringId === id) {
+        selectedSavedScoringId = null;
+        selectedSavedScoring = null;
         currentResults = null;
-        currentResultsSavedFilterId = null;
-        userSelectedSavedFilter = false;
-        renderNoResult('Calculate a scoring or choose Saved Filters to see their results.');
+        currentResultsSavedScoringId = null;
+        userSelectedSavedScoring = false;
+        renderNoResult('Calculate a scoring or choose Saved Scorings to see their results.');
       }
-      renderSavedFilters();
-      setMessage('Saved Filter and its saved result deleted.', 'success');
-      await refreshSavedFilters();
+      renderSavedScorings();
+      setMessage('Saved Scoring and its saved result deleted.', 'success');
+      await refreshSavedScorings();
     } catch (error) {
-      setMessage(error.message || 'The Saved Filter could not be deleted.', 'error');
+      setMessage(error.message || 'The Saved Scoring could not be deleted.', 'error');
     } finally {
-      deletingSavedFilterIds.delete(id);
-      renderSavedFilters();
+      deletingSavedScoringIds.delete(id);
+      renderSavedScorings();
     }
   }
 
-  // ``url`` updates an existing Saved Filter instead (its Use newer CDRs button, or Save Changes when it is edited) or
+  // ``url`` updates an existing Saved Scoring instead (its Use newer CDRs button, or Save Changes when it is edited) or
   // saves a copy of one (Save as New Filter, with the name of the copy in ``extra``).
-  // Returns whether the Saved Filter was saved.
-  async function createSavedFilter(force, {url = savedFiltersUrl, extra = {}} = {}) {
+  // Returns whether the Saved Scoring was saved.
+  async function createSavedScoring(force, {url = savedScoringsUrl, extra = {}} = {}) {
     const datasetIds = selectedDatasetIds();
     if (!datasetIds.length) {
       setMessage('Select one or more CDR datasets first.', 'error');
@@ -11482,32 +11484,32 @@
     try {
       await persistCalculationSelection();
       const body = await requestJson(url, {method: 'POST', body: JSON.stringify(payload)});
-      const savedFilter = body.saved_filter || body;
-      const id = savedFilterIdOf(savedFilter);
-      if (!id) throw new Error('The scoring service did not return the Saved Filter.');
-      if (force) recalculatingSavedFilters.add(String(id)); else recalculatingSavedFilters.delete(String(id));
-      if (isActive(savedFilter)) {
+      const savedScoring = body.saved_scoring || body;
+      const id = savedScoringIdOf(savedScoring);
+      if (!id) throw new Error('The scoring service did not return the Saved Scoring.');
+      if (force) recalculatingSavedScorings.add(String(id)); else recalculatingSavedScorings.delete(String(id));
+      if (isActive(savedScoring)) {
         selectionStatus = {key: JSON.stringify(calculationPayload()), kind: 'busy',
           text: `${force ? 'Recalculating' : 'Calculating'} the scoring of the selected CDRs and filters…`};
       }
-      selectedSavedFilterId = id;
-      selectedSavedFilter = savedFilter;
-      userSelectedSavedFilter = true;
+      selectedSavedScoringId = id;
+      selectedSavedScoring = savedScoring;
+      userSelectedSavedScoring = true;
       showUnmatchedSelection(false);
       if (force) resultCache.delete(id);
       const cached = Boolean(body.cached);
       if (cached && (body.scoring || body.gap)) {
-        const result = {saved_filter: savedFilter, scoring: body.scoring || [], gap: body.gap || [], warnings: body.warnings || []};
+        const result = {saved_scoring: savedScoring, scoring: body.scoring || [], gap: body.gap || [], warnings: body.warnings || []};
         resultCache.set(id, result);
       }
-      if (body.changed === false) setMessage('The Saved Filter already had this selection: nothing changed.', 'success');
+      if (body.changed === false) setMessage('The Saved Scoring already had this selection: nothing changed.', 'success');
       else if (cached) setMessage('Loaded the previously calculated result.', 'success');
-      else if (isActive(savedFilter)) setMessage(selectionStatus.text, 'busy');
+      else if (isActive(savedScoring)) setMessage(selectionStatus.text, 'busy');
       else setMessage('Scoring calculation added to the background queue.', 'success');
-      await refreshSavedFilters();
-      if (isActive(selectedSavedFilter)) {
-        renderSavedFilters();
-        if (!timer) timer = window.setInterval(refreshSavedFilters, 3500);
+      await refreshSavedScorings();
+      if (isActive(selectedSavedScoring)) {
+        renderSavedScorings();
+        if (!timer) timer = window.setInterval(refreshSavedScorings, 3500);
       }
       return true;
     } catch (error) {
@@ -11560,8 +11562,8 @@
     if (!changed) return;
     persistScoringViewState();
     if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
-    if (currentResults) renderResult(currentResults, selectedSavedFilter);
-    if (currentResultsSavedFilterId) setExportLinks(currentResultsSavedFilterId, true);
+    if (currentResults) renderResult(currentResults, selectedSavedScoring);
+    if (currentResultsSavedScoringId) setExportLinks(currentResultsSavedScoringId, true);
   }
   gapKpiOrderSetting?.addEventListener('change', () => setGapKpiOrder(gapKpiOrderSetting.value));
   root.addEventListener('change', event => {
@@ -11613,11 +11615,11 @@
     }
     if (event.target === environmentSelect && currentResults) {
       selectedEnvironment = environmentSelect.value;
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     if ((event.target === nrLayoutSelect || event.target === nrChartsSelect) && currentResults) {
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     if (event.target.matches?.('[data-insight-select]') && currentResults) {
@@ -11629,25 +11631,25 @@
         } catch (_error) { /* not a scope */ }
       }
       persistScoringViewState();
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     if (event.target === scoringKindSelect && currentResults) {
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     if (event.target === showGapValuesToggle) {
       syncGapValueControls();
-      if (currentResults) renderResult(currentResults, selectedSavedFilter, ['scoring']);
+      if (currentResults) renderResult(currentResults, selectedSavedScoring, ['scoring']);
       return;
     }
     if (event.target === showKpiValuesToggle && currentResults) {
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     if (event.target === gapLayoutSelect && currentResults) {
-      renderResult(currentResults, selectedSavedFilter);
-      setExportLinks(currentResultsSavedFilterId, true);
+      renderResult(currentResults, selectedSavedScoring);
+      setExportLinks(currentResultsSavedScoringId, true);
       return;
     }
     if (event.target.matches?.('[data-gap-kpi-order]')) {
@@ -11664,7 +11666,7 @@
         insightSelections.set('gap-insight-follows-comparison', 'true');
       }
       persistScoringViewState();
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     const hierarchyGapOperator = event.target.closest('[data-hierarchy-gap-operator]');
@@ -11677,7 +11679,7 @@
         insightSelections.set('gap-insight-follows-comparison', 'true');
       }
       persistScoringViewState();
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     const select = event.target.closest('[data-comparison-context]');
@@ -11686,7 +11688,7 @@
     if (select.dataset.contextSource === 'chart') {
       const identity = select.selectedOptions[0]?.dataset.contextIdentity;
       if (identity) contextSelections.set(kind, identity);
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     const activeResults = activeScoringPayload(currentResults);
@@ -11700,41 +11702,41 @@
     const selected = Array.isArray(tables) ? tables[Number(select.value)] : null;
     if (!selected) return;
     contextSelections.set(kind, comparisonIdentity(selected, kind));
-    renderResult(currentResults, selectedSavedFilter);
+    renderResult(currentResults, selectedSavedScoring);
   });
   baselineInput.addEventListener('input', updateSelection);
-  calculateButton.addEventListener('click', () => createSavedFilter(false));
-  recalculateButton.addEventListener('click', () => createSavedFilter(true));
+  calculateButton.addEventListener('click', () => createSavedScoring(false));
+  recalculateButton.addEventListener('click', () => createSavedScoring(true));
   document.addEventListener('click', event => {
-    for (const selector of savedFilterSelectors) if (!selector.contains(event.target)) selector.open = false;
+    for (const selector of savedScoringSelectors) if (!selector.contains(event.target)) selector.open = false;
   });
-  for (const selector of savedFilterSelectors) selector.addEventListener('keydown', event => {
+  for (const selector of savedScoringSelectors) selector.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     selector.open = false;
     selector.querySelector('summary').focus();
   });
-  // Editing a Saved Filter: the Calculation panel, in a dialog, shows its selection with the CDRs of its NR Mode and
+  // Editing a Saved Scoring: the Calculation panel, in a dialog, shows its selection with the CDRs of its NR Mode and
   // Campaign until Save Changes gives it the selection of the panel (calculated again) or Cancel Editing (or Escape)
   // gives the panel back its selection before the editing.
-  function syncSavedFilterEditing() {
-    const editing = Boolean(editingSavedFilter);
+  function syncSavedScoringEditing() {
+    const editing = Boolean(editingSavedScoring);
     const duplicating = editing && duplicateName !== null;
     if (editBanner) editBanner.hidden = !editing;
     if (editTitle && editing) {
-      const id = savedFilterIdOf(editingSavedFilter);
-      const named = `${editingSavedFilter.name ? `“${editingSavedFilter.name}” · ` : ''}Filter ID ${id}`;
-      editTitle.textContent = duplicating ? `Duplicating Saved Filter ${named}` : `Editing Saved Filter ${named}`;
+      const id = savedScoringIdOf(editingSavedScoring);
+      const named = `${editingSavedScoring.name ? `“${editingSavedScoring.name}” · ` : ''}Filter ID ${id}`;
+      editTitle.textContent = duplicating ? `Duplicating Saved Scoring ${named}` : `Editing Saved Scoring ${named}`;
     }
     if (editText && editing) {
       editText.textContent = duplicating
         ? 'Change the NR Mode, Campaign, filters, Break down by, GAP reference, Scoring Trends or methodology of the copy: its CDRs '
           + `follow the NR Mode and Campaign. Save as New Filter calculates it as a new Favourite Scoring${duplicateName.trim() ? ` named “${duplicateName.trim()}”` : ''}; `
-          + 'the Saved Filter copied stays as it was. Cancel Editing (or Escape) leaves without a copy.'
+          + 'the Saved Scoring copied stays as it was. Cancel Editing (or Escape) leaves without a copy.'
         : editTextDefault;
     }
     if (editSaveLabel) editSaveLabel.textContent = duplicating ? 'Save as New Filter' : 'Save Changes';
     if (editSaveButton && !duplicating) editSaveButton.disabled = false;
-    calculationPanel?.classList.toggle('is-editing-saved-filter', editing);
+    calculationPanel?.classList.toggle('is-editing-saved-scoring', editing);
     calculateButton.hidden = editing;
     recalculateButton.hidden = editing;
     if (editSaveButton) editSaveButton.hidden = !editing;
@@ -11742,20 +11744,20 @@
   }
 
   let calculationPanelWasClosed = false;
-  // Editing a Saved Filter needs the panel: it stays open.
+  // Editing a Saved Scoring needs the panel: it stays open.
   calculationPanel?.querySelector(':scope > summary')?.addEventListener('click', (event) => {
-    if (editingSavedFilter) event.preventDefault();
+    if (editingSavedScoring) event.preventDefault();
   });
 
-  // ``duplicateName`` edits a copy of the Saved Filter instead, saved as a new one with that name.
-  function startSavedFilterEdit(savedFilter, {duplicateName: copyName = null} = {}) {
-    if (!editingSavedFilter) selectionBeforeEdit = {selection: calculationSelectionFromControls(), pinned: pinnedCdrs};
-    editingSavedFilter = savedFilter;
+  // ``duplicateName`` edits a copy of the Saved Scoring instead, saved as a new one with that name.
+  function startSavedScoringEdit(savedScoring, {duplicateName: copyName = null} = {}) {
+    if (!editingSavedScoring) selectionBeforeEdit = {selection: calculationSelectionFromControls(), pinned: pinnedCdrs};
+    editingSavedScoring = savedScoring;
     duplicateName = copyName;
-    for (const selector of savedFilterSelectors) selector.open = false;
+    for (const selector of savedScoringSelectors) selector.open = false;
     calculationMatchKey = '';
-    restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs: true});
-    syncSavedFilterEditing();
+    restoreCalculationSelectionFromSavedScoring(savedScoring, {automaticCdrs: true});
+    syncSavedScoringEditing();
     if (editDialog && calculationPanel && !editDialog.open) {
       // The page keeps the height of the panel while it is in the dialog, where it is open, and it goes back as it was.
       editPanelPlaceholder = document.createElement('div');
@@ -11771,9 +11773,9 @@
     }
   }
 
-  function stopSavedFilterEdit({restore = false} = {}) {
+  function stopSavedScoringEdit({restore = false} = {}) {
     const before = selectionBeforeEdit;
-    editingSavedFilter = null;
+    editingSavedScoring = null;
     duplicateName = null;
     selectionBeforeEdit = null;
     calculationMatchKey = '';
@@ -11788,7 +11790,7 @@
       const stripActions = messageHome.querySelector(':scope > .scoring-strip-actions');
       if (stripActions) stripActions.before(message); else messageHome.append(message);
     }
-    syncSavedFilterEditing();
+    syncSavedScoringEditing();
     if (restore && before) {
       pinnedCdrs = before.pinned;
       keepRestoredContextValues(before.selection?.context_filters);
@@ -11801,15 +11803,15 @@
   }
 
   editSaveButton?.addEventListener('click', async () => {
-    const savedFilter = editingSavedFilter;
-    if (!savedFilter) return;
-    const id = encodeURIComponent(savedFilterIdOf(savedFilter));
+    const savedScoring = editingSavedScoring;
+    if (!savedScoring) return;
+    const id = encodeURIComponent(savedScoringIdOf(savedScoring));
     const saved = duplicateName !== null
-      ? await createSavedFilter(false, {url: `${savedFiltersUrl}/${id}/duplicate`, extra: {name: duplicateName}})
-      : await createSavedFilter(false, {url: `${savedFiltersUrl}/${id}/edit`});
-    if (saved && editingSavedFilter === savedFilter) stopSavedFilterEdit();
+      ? await createSavedScoring(false, {url: `${savedScoringsUrl}/${id}/duplicate`, extra: {name: duplicateName}})
+      : await createSavedScoring(false, {url: `${savedScoringsUrl}/${id}/edit`});
+    if (saved && editingSavedScoring === savedScoring) stopSavedScoringEdit();
   });
-  editCancelButton?.addEventListener('click', () => stopSavedFilterEdit({restore: true}));
+  editCancelButton?.addEventListener('click', () => stopSavedScoringEdit({restore: true}));
   // Escape closes an open menu of the dialog first, and then cancels the editing.
   let escapeClosedMenu = false;
   document.addEventListener('keydown', event => {
@@ -11825,64 +11827,64 @@
       editDialog.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       return;
     }
-    stopSavedFilterEdit({restore: true});
+    stopSavedScoringEdit({restore: true});
   });
 
-  // The filters of the Saved Filter stay in sight while it is named: a copy of its card, without its name badge.
-  function savedFilterCardReference(event, id) {
-    const card = event.target.closest('.saved-filter-row')?.querySelector('.saved-filter-item')
-      || root.querySelector(`.saved-filter-item[data-saved-filter-id="${CSS.escape(id)}"]`);
+  // The filters of the Saved Scoring stay in sight while it is named: a copy of its card, without its name badge.
+  function savedScoringCardReference(event, id) {
+    const card = event.target.closest('.saved-scoring-row')?.querySelector('.saved-scoring-item')
+      || root.querySelector(`.saved-scoring-item[data-saved-scoring-id="${CSS.escape(id)}"]`);
     if (!card) return null;
     const reference = document.createElement('div');
-    reference.className = 'saved-filter-item saved-filter-reference';
+    reference.className = 'saved-scoring-item saved-scoring-reference';
     reference.append(...Array.from(card.children, child => child.cloneNode(true))
-      .filter(child => !child.classList?.contains('saved-filter-head') && !child.classList?.contains('saved-filter-name')));
+      .filter(child => !child.classList?.contains('saved-scoring-head') && !child.classList?.contains('saved-scoring-name')));
     return reference;
   }
 
-  // The name, pin, duplicate and Use newer CDRs buttons of a Saved Filter, in the lists and in the selected card of
+  // The name, pin, duplicate and Use newer CDRs buttons of a Saved Scoring, in the lists and in the selected card of
   // the Scoring Results dropdown. Returns whether the click was one of them.
-  async function savedFilterAction(event) {
-    const pin = event.target.closest('[data-saved-filter-pin]');
-    const rename = event.target.closest('[data-saved-filter-rename]');
-    const useNewer = event.target.closest('[data-saved-filter-newer]');
-    const duplicate = event.target.closest('[data-saved-filter-duplicate]');
+  async function savedScoringAction(event) {
+    const pin = event.target.closest('[data-saved-scoring-pin]');
+    const rename = event.target.closest('[data-saved-scoring-rename]');
+    const useNewer = event.target.closest('[data-saved-scoring-newer]');
+    const duplicate = event.target.closest('[data-saved-scoring-duplicate]');
     if (pin || rename || useNewer || duplicate) {
       event.preventDefault();
-      const id = pin?.dataset.savedFilterPin || rename?.dataset.savedFilterRename || useNewer?.dataset.savedFilterNewer
-        || duplicate?.dataset.savedFilterDuplicate;
-      const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === id);
-      if (!savedFilter) return true;
+      const id = pin?.dataset.savedScoringPin || rename?.dataset.savedScoringRename || useNewer?.dataset.savedScoringNewer
+        || duplicate?.dataset.savedScoringDuplicate;
+      const savedScoring = savedScorings.find(record => savedScoringIdOf(record) === id);
+      if (!savedScoring) return true;
       if (duplicate) {
-        // A copy of its selection opens in the edit dialog, to change it and save it as a new Saved Filter.
+        // A copy of its selection opens in the edit dialog, to change it and save it as a new Saved Scoring.
         const name = await showTextInputDialog('Name of the copy', {
-          reference: savedFilterCardReference(event, id),
-          eyebrow: 'Saved Filter', title: 'Duplicate Saved Filter', value: savedFilter.name ? `${savedFilter.name} (copy)` : '',
+          reference: savedScoringCardReference(event, id),
+          eyebrow: 'Saved Scoring', title: 'Duplicate Saved Scoring', value: savedScoring.name ? `${savedScoring.name} (copy)` : '',
           placeholder: 'For example 2026-Q3 London', maxLength: 120, confirmLabel: 'Edit Filters of the Copy',
-          note: 'The copy opens with the filters of this Saved Filter in a dialog: change them (for example its Campaign) and '
+          note: 'The copy opens with the filters of this Saved Scoring in a dialog: change them (for example its Campaign) and '
             + 'Save as New Filter saves it as a new Favourite Scoring, right after this one, which stays as it is.',
         });
         if (name === null || name === undefined) return true;
-        startSavedFilterEdit(savedFilter, {duplicateName: String(name)});
+        startSavedScoringEdit(savedScoring, {duplicateName: String(name)});
         return true;
       }
       if (useNewer) {
-        // The same Saved Filter, updated with the CDRs that replace the older ones and calculated again.
-        const replacements = new Map((savedFilter.newer_cdrs || []).map(item => [String(item.id), String(item.replaced_by)]));
-        restoreCalculationSelectionFromSavedFilter({
-          ...savedFilter,
-          dataset_ids: [...new Set((savedFilter.dataset_ids || []).map(value => replacements.get(String(value)) || String(value)))],
+        // The same Saved Scoring, updated with the CDRs that replace the older ones and calculated again.
+        const replacements = new Map((savedScoring.newer_cdrs || []).map(item => [String(item.id), String(item.replaced_by)]));
+        restoreCalculationSelectionFromSavedScoring({
+          ...savedScoring,
+          dataset_ids: [...new Set((savedScoring.dataset_ids || []).map(value => replacements.get(String(value)) || String(value)))],
         });
-        for (const selector of savedFilterSelectors) selector.open = false;
-        await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(id)}/use-newer-cdrs`});
+        for (const selector of savedScoringSelectors) selector.open = false;
+        await createSavedScoring(false, {url: `${savedScoringsUrl}/${encodeURIComponent(id)}/use-newer-cdrs`});
         return true;
       }
       // Edit Filters opens its selection in a dialog to change it (a changed name is saved first).
       let edit = false;
-      const changes = pin ? {pinned: !savedFilter.pinned} : await (async () => {
+      const changes = pin ? {pinned: !savedScoring.pinned} : await (async () => {
         const answer = await showTextInputDialog('Name', {
-          reference: savedFilterCardReference(event, id),
-          eyebrow: 'Saved Filter', title: 'Edit Saved Filter', value: savedFilter.name || '',
+          reference: savedScoringCardReference(event, id),
+          eyebrow: 'Saved Scoring', title: 'Edit Saved Scoring', value: savedScoring.name || '',
           placeholder: 'For example 2026-Q3 London', maxLength: 120, confirmLabel: 'Save Name',
           secondaryLabel: 'Edit Filters',
           note: 'The name is shown as a badge on top of its card (empty: its filters only). Edit Filters changes its NR '
@@ -11890,71 +11892,71 @@
         });
         if (!answer) return null;
         edit = answer.choice === 'secondary';
-        const unchanged = answer.value.trim().replace(/\s+/g, ' ') === (savedFilter.name || '');
+        const unchanged = answer.value.trim().replace(/\s+/g, ' ') === (savedScoring.name || '');
         return edit && unchanged ? null : {name: answer.value};
       })();
       if (changes) {
         try {
-          await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`, {method: 'PATCH', body: JSON.stringify(changes)});
-          await refreshSavedFilters();
+          await requestJson(`${savedScoringsUrl}/${encodeURIComponent(id)}`, {method: 'PATCH', body: JSON.stringify(changes)});
+          await refreshSavedScorings();
         } catch (error) {
-          setMessage(error.message || 'The Saved Filter could not be updated.', 'error');
+          setMessage(error.message || 'The Saved Scoring could not be updated.', 'error');
           return true;
         }
       }
-      if (edit) startSavedFilterEdit(savedFilters.find(record => savedFilterIdOf(record) === id) || savedFilter);
+      if (edit) startSavedScoringEdit(savedScorings.find(record => savedScoringIdOf(record) === id) || savedScoring);
       return true;
     }
     return false;
   }
 
-  for (const list of savedFilterLists) list.addEventListener('click', async event => {
-    if (await savedFilterAction(event)) return;
-    const remove = event.target.closest('[data-delete-saved-filter-id]');
+  for (const list of savedScoringLists) list.addEventListener('click', async event => {
+    if (await savedScoringAction(event)) return;
+    const remove = event.target.closest('[data-delete-saved-scoring-id]');
     if (remove) {
-      deleteSavedFilter(remove.dataset.deleteSavedFilterId);
+      deleteSavedScoring(remove.dataset.deleteSavedScoringId);
       return;
     }
-    const card = event.target.closest('[data-saved-filter-id]');
+    const card = event.target.closest('[data-saved-scoring-id]');
     if (card) {
       // A click on the card folds or unfolds the rest of its details.
-      const row = card.closest('.saved-filter-row');
-      const unfolded = unfoldedSavedFilterIds(list);
-      const open = !unfolded.has(card.dataset.savedFilterId);
-      if (open) unfolded.add(card.dataset.savedFilterId);
-      else unfolded.delete(card.dataset.savedFilterId);
+      const row = card.closest('.saved-scoring-row');
+      const unfolded = unfoldedSavedScoringIds(list);
+      const open = !unfolded.has(card.dataset.savedScoringId);
+      if (open) unfolded.add(card.dataset.savedScoringId);
+      else unfolded.delete(card.dataset.savedScoringId);
       row?.classList.toggle('is-expanded', open);
       card.setAttribute('aria-expanded', String(open));
       return;
     }
-    const button = event.target.closest('[data-saved-filter-use]');
+    const button = event.target.closest('[data-saved-scoring-use]');
     if (!button) return;
-    const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === button.dataset.savedFilterUse);
-    if (!savedFilter) return;
-    await useSavedFilter(savedFilter, {fromDropdown: savedFilterSelectors.find(selector => selector.contains(button))});
+    const savedScoring = savedScorings.find(record => savedScoringIdOf(record) === button.dataset.savedScoringUse);
+    if (!savedScoring) return;
+    await useSavedScoring(savedScoring, {fromDropdown: savedScoringSelectors.find(selector => selector.contains(button))});
   });
 
-  // Use Filter: the Saved Filter becomes the one of the module, its selection goes to the Calculation panel and its result
+  // Use Filter: the Saved Scoring becomes the one of the module, its selection goes to the Calculation panel and its result
   // is loaded. Used from a selector (``fromDropdown``) the page stays there; otherwise it goes to its results. ``source``
   // tells App Events where it was chosen (navigator: the Filter Navigator).
-  async function useSavedFilter(savedFilter, {fromDropdown = null, source = '', quiet = false} = {}) {
-    if (editingSavedFilter) stopSavedFilterEdit();
-    userSelectedSavedFilter = true;
-    selectedSavedFilterId = savedFilterIdOf(savedFilter);
-    selectedSavedFilter = savedFilter;
+  async function useSavedScoring(savedScoring, {fromDropdown = null, source = '', quiet = false} = {}) {
+    if (editingSavedScoring) stopSavedScoringEdit();
+    userSelectedSavedScoring = true;
+    selectedSavedScoringId = savedScoringIdOf(savedScoring);
+    selectedSavedScoring = savedScoring;
     if (typeof shownSelection !== 'undefined') {
       shownSelection = null;
       selectionMatchesShown = true;
     }
-    restoreCalculationSelectionFromSavedFilter(savedFilter);
+    restoreCalculationSelectionFromSavedScoring(savedScoring);
     showUnmatchedSelection(false);
     // Opening it with Use Filter counts as a use.
-    requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/use${source ? `?source=${encodeURIComponent(source)}` : ''}`,
+    requestJson(`${savedScoringsUrl}/${encodeURIComponent(selectedSavedScoringId)}/use${source ? `?source=${encodeURIComponent(source)}` : ''}`,
       {method: 'POST'})
-      .then(() => refreshSavedFilters())
+      .then(() => refreshSavedScorings())
       .catch(() => { /* The count is not essential to open it. */ });
-    for (const selector of savedFilterSelectors) selector.open = false;
-    // A Saved Filter opened from the Saved Filters panel takes the page to its results at once, and again once they are
+    for (const selector of savedScoringSelectors) selector.open = false;
+    // A Saved Scoring opened from the Saved Scorings panel takes the page to its results at once, and again once they are
     // drawn (they change the height of the page).
     const showResults = () => {
       const resultsPanel = root.querySelector('.scoring-results-panel');
@@ -11965,37 +11967,37 @@
     if (fromDropdown) fromDropdown.querySelector('summary').focus();
     else if (!quiet) showResults();
     persistScoringViewState();
-    await loadSavedFilter(savedFilter, true);
-    if (!fromDropdown && !quiet && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();
+    await loadSavedScoring(savedScoring, true);
+    if (!fromDropdown && !quiet && selectedSavedScoringId === savedScoringIdOf(savedScoring)) showResults();
   }
 
   // The words of a text as the search of the Filter Navigator compares them: in lower case, without accents, split at
   // anything but letters and digits.
-  function savedFilterNavigatorWords(text) {
+  function savedScoringNavigatorWords(text) {
     return String(text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase()
       .split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   }
 
-  // Whether a word typed finds a word of a Saved Filter: the start of it, but a number of one or two digits is the whole
+  // Whether a word typed finds a word of a Saved Scoring: the start of it, but a number of one or two digits is the whole
   // word (2 finds Latest 2 campaigns, not 2026-Q3).
-  function savedFilterNavigatorWordMatches(word, typed) {
+  function savedScoringNavigatorWordMatches(word, typed) {
     return /^\p{N}{1,2}$/u.test(typed) ? word === typed : word.startsWith(typed);
   }
 
-  // Whether the words of a Saved Filter hold every word typed, in any order.
-  function savedFilterNavigatorMatches(words, query) {
-    return savedFilterNavigatorWords(query).every(typed => words.some(word => savedFilterNavigatorWordMatches(word, typed)));
+  // Whether the words of a Saved Scoring hold every word typed, in any order.
+  function savedScoringNavigatorMatches(words, query) {
+    return savedScoringNavigatorWords(query).every(typed => words.some(word => savedScoringNavigatorWordMatches(word, typed)));
   }
 
   // The Favourite Scorings the search finds: those with every word typed, where two words typed one after the other stay
   // together when some of them hold them one after the other in one of their texts (latest camp finds Latest campaign,
   // not Latest 2 campaigns); words that no Favourite Scoring holds together are found anywhere.
-  function savedFilterNavigatorFound(entries, query) {
-    const typed = savedFilterNavigatorWords(query);
-    let found = entries.filter(entry => savedFilterNavigatorMatches(entry.words, query));
+  function savedScoringNavigatorFound(entries, query) {
+    const typed = savedScoringNavigatorWords(query);
+    let found = entries.filter(entry => savedScoringNavigatorMatches(entry.words, query));
     for (let index = 0; index + 1 < typed.length; index += 1) {
       const together = entry => entry.phrases.some(words => words.some((word, at) => at + 1 < words.length
-        && savedFilterNavigatorWordMatches(word, typed[index]) && savedFilterNavigatorWordMatches(words[at + 1], typed[index + 1])));
+        && savedScoringNavigatorWordMatches(word, typed[index]) && savedScoringNavigatorWordMatches(words[at + 1], typed[index + 1])));
       if (found.some(together)) found = found.filter(together);
     }
     return found;
@@ -12005,42 +12007,42 @@
   // it filters, or Nationwide, then its NR Mode), its leaf (its Campaign: the automatic choice with the campaigns it stood
   // for last time, or its campaigns), the Operator and Vendor it filters, and its other fields, which tell it apart from
   // another one on the same leaf. Its words are those the search looks in.
-  function savedFilterNavigatorEntry(savedFilter) {
-    const id = savedFilterIdOf(savedFilter);
-    const scopes = savedFilterScopes(savedFilter);
+  function savedScoringNavigatorEntry(savedScoring) {
+    const id = savedScoringIdOf(savedScoring);
+    const scopes = savedScoringScopes(savedScoring);
     const areas = scopes.filter(scope => ['all', 'region', 'cluster', 'city'].includes(scope.dimension));
     const filtered = scopes.filter(scope => !areas.includes(scope));
-    const mode = String(valueOf(savedFilter, ['nr_mode'], '') || '');
+    const mode = String(valueOf(savedScoring, ['nr_mode'], '') || '');
     const modeLabel = mode === 'NSA+SA' ? 'NSA vs SA' : (mode || 'All NR Modes');
     const display = values => [...new Set(values.map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
       .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right));
-    const campaignFilter = savedSavedFilterValues(savedFilter, 'Campaign');
+    const campaignFilter = savedSavedScoringValues(savedScoring, 'Campaign');
     const choice = campaignFilter.find(isCampaignPreset);
-    const campaigns = choice ? display(Array.isArray(savedFilter?.resolved_campaigns) ? savedFilter.resolved_campaigns : [])
-      : display(campaignFilter.length ? campaignFilter : savedFilterCampaigns(savedFilter).filter(value => value !== 'Unspecified'));
+    const campaigns = choice ? display(Array.isArray(savedScoring?.resolved_campaigns) ? savedScoring.resolved_campaigns : [])
+      : display(campaignFilter.length ? campaignFilter : savedScoringCampaigns(savedScoring).filter(value => value !== 'Unspecified'));
     const campaign = choice ? campaignPresetLabels[choice] : (campaigns.join(', ') || 'All Campaigns');
     const filteredValue = dimension => filtered.find(scope => scope.dimension === dimension)?.text;
-    const baseline = valueOf(savedFilter, ['baseline_operator'], 'EE');
+    const baseline = valueOf(savedScoring, ['baseline_operator'], 'EE');
     const reference = baseline === '@same-operator-nsa' ? 'Same operator in NSA' : baseline;
-    const methodology = valueOf(savedFilter, ['scoring_profile_name', 'profile_name'], '') || 'Default';
+    const methodology = valueOf(savedScoring, ['scoring_profile_name', 'profile_name'], '') || 'Default';
     const details = [
       ['operator', 'Operator', filteredValue('operator') || 'All Operators'],
       ['vendor', 'Vendor', filteredValue('vendor') || 'All Vendors'],
-      ['', 'Break down by', savedFilterLevels(savedFilter)],
+      ['', 'Break down by', savedScoringLevels(savedScoring)],
       ['', 'GAP Reference', reference],
       ['', 'Scoring Methodology', methodology],
-      ['', 'Country Areas', savedFilter?.area_summary?.country_areas === false ? 'Off'
-        : savedFilterAreaSummaryParts(savedFilter).map(([, label, value]) => `${label}: ${value}`).join(' · ')],
-      ['', 'Scoring Trends', savedFilter?.area_summary?.trends === false ? 'Off'
-        : `${savedFilterTrendCampaigns(savedFilter)} · Time split: ${savedFilterTimeSplit(savedFilter)}`],
-      ['', 'CDRs', savedFilterCdrNames(savedFilter).join(', ') || savedFilterCdrSummary(savedFilter)],
+      ['', 'Country Areas', savedScoring?.area_summary?.country_areas === false ? 'Off'
+        : savedScoringAreaSummaryParts(savedScoring).map(([, label, value]) => `${label}: ${value}`).join(' · ')],
+      ['', 'Scoring Trends', savedScoring?.area_summary?.trends === false ? 'Off'
+        : `${savedScoringTrendCampaigns(savedScoring)} · Time split: ${savedScoringTimeSplit(savedScoring)}`],
+      ['', 'CDRs', savedScoringCdrNames(savedScoring).join(', ') || savedScoringCdrSummary(savedScoring)],
     ];
     const areaKey = areas.map(scope => `${scope.dimension}:${scope.text}`).join('|');
     // Each text apart, to find words typed together; all their words, to find words typed anywhere.
-    const phrases = [savedFilter.name, ...areas.map(scope => scope.text), ...filtered.map(scope => scope.text), modeLabel,
-      campaign, campaigns.join(' '), reference, methodology, `Filter ID ${id}`].map(savedFilterNavigatorWords);
+    const phrases = [savedScoring.name, ...areas.map(scope => scope.text), ...filtered.map(scope => scope.text), modeLabel,
+      campaign, campaigns.join(' '), reference, methodology, `Filter ID ${id}`].map(savedScoringNavigatorWords);
     return {
-      id, name: savedFilter.name || '', status: normalizeStatus(savedFilter), areas, areaKey, mode, modeLabel,
+      id, name: savedScoring.name || '', status: normalizeStatus(savedScoring), areas, areaKey, mode, modeLabel,
       modeKey: `${areaKey}#${mode}`, campaign, campaigns: choice ? campaigns : [], filtered, details, distinct: [],
       phrases, words: phrases.flat(),
     };
@@ -12049,7 +12051,7 @@
   // The tree of the Filter Navigator from its entries (in the order of the list): each area in the order of its first
   // Favourite Scoring, its NR Modes (NSA, SA, NSA vs SA) and their Favourite Scorings. Those that would read alike on a
   // leaf get, in ``distinct``, the fields that tell them apart (their Filter ID when nothing does).
-  function savedFilterNavigatorTree(entries) {
+  function savedScoringNavigatorTree(entries) {
     const modeOrder = mode => (index => (index < 0 ? 3 : index))(['NSA', 'SA', 'NSA+SA'].indexOf(mode));
     const areas = [];
     for (const entry of entries) {
@@ -12081,15 +12083,15 @@
   }
 
   // A text with the starts of its words that the search found marked.
-  function savedFilterNavigatorHighlight(text, query) {
+  function savedScoringNavigatorHighlight(text, query) {
     const value = String(text ?? '');
-    const typed = savedFilterNavigatorWords(query);
+    const typed = savedScoringNavigatorWords(query);
     if (!typed.length) return [value];
     const nodes = [];
     let last = 0;
     for (const match of value.matchAll(/[\p{L}\p{N}]+/gu)) {
-      const word = savedFilterNavigatorWords(match[0])[0] || '';
-      const length = Math.max(0, ...typed.filter(token => savedFilterNavigatorWordMatches(word, token)).map(token => token.length));
+      const word = savedScoringNavigatorWords(match[0])[0] || '';
+      const length = Math.max(0, ...typed.filter(token => savedScoringNavigatorWordMatches(word, token)).map(token => token.length));
       if (!length) continue;
       const mark = document.createElement('mark');
       mark.textContent = value.slice(match.index, match.index + length);
@@ -12101,28 +12103,28 @@
   }
 
   // A branch of the tree (an area or an NR Mode), with the number of its Favourite Scorings, and the group of its children.
-  function savedFilterNavigatorBranch(key, level, content, count, open) {
+  function savedScoringNavigatorBranch(key, level, content, count, open) {
     const item = document.createElement('div');
     item.setAttribute('role', 'treeitem');
     item.setAttribute('aria-level', String(level));
     item.setAttribute('aria-expanded', String(open));
     item.tabIndex = -1;
-    item.className = `saved-filter-navigator-branch is-level-${level}`;
+    item.className = `saved-scoring-navigator-branch is-level-${level}`;
     item.dataset.navigatorKey = key;
     const label = document.createElement('div');
-    label.className = 'saved-filter-navigator-label';
+    label.className = 'saved-scoring-navigator-label';
     const chevron = document.createElement('span');
-    chevron.className = 'saved-filter-navigator-chevron';
+    chevron.className = 'saved-scoring-navigator-chevron';
     chevron.setAttribute('aria-hidden', 'true');
     chevron.textContent = '▶';
     const badge = document.createElement('span');
-    badge.className = 'saved-filter-navigator-count';
+    badge.className = 'saved-scoring-navigator-count';
     badge.textContent = String(count);
     badge.title = `${count} Favourite Scoring${count === 1 ? '' : 's'}`;
     label.append(chevron, ...content, badge);
     const group = document.createElement('div');
     group.setAttribute('role', 'group');
-    group.className = 'saved-filter-navigator-group';
+    group.className = 'saved-scoring-navigator-group';
     group.hidden = !open;
     item.append(label, group);
     return {item, group};
@@ -12130,30 +12132,30 @@
 
   // A Favourite Scoring on its leaf: its Campaign, the campaigns it stands for, what it filters and what tells it apart,
   // its status when it is not calculated, In Use for the one in use, and its name below.
-  function savedFilterNavigatorLeaf(entry, query, inUse) {
+  function savedScoringNavigatorLeaf(entry, query, inUse) {
     const item = document.createElement('div');
     item.setAttribute('role', 'treeitem');
     item.setAttribute('aria-level', '3');
     item.setAttribute('aria-selected', String(inUse));
     item.tabIndex = -1;
-    item.className = 'saved-filter-navigator-leaf';
+    item.className = 'saved-scoring-navigator-leaf';
     item.dataset.navigatorKey = `filter:${entry.id}`;
-    item.dataset.savedFilterNavigatorUse = entry.id;
-    item.title = inUse ? 'This Saved Filter is the one in use' : `Use this Saved Filter: ${entry.name || `Filter ID: ${entry.id}`}`;
+    item.dataset.savedScoringNavigatorUse = entry.id;
+    item.title = inUse ? 'This Saved Scoring is the one in use' : `Use this Saved Scoring: ${entry.name || `Filter ID: ${entry.id}`}`;
     const label = document.createElement('div');
-    label.className = 'saved-filter-navigator-label';
+    label.className = 'saved-scoring-navigator-label';
     const text = document.createElement('span');
-    text.className = 'saved-filter-navigator-leaf-text';
+    text.className = 'saved-scoring-navigator-leaf-text';
     const main = document.createElement('span');
-    main.className = 'saved-filter-navigator-leaf-main';
+    main.className = 'saved-scoring-navigator-leaf-main';
     const campaign = document.createElement('span');
-    campaign.className = 'saved-filter-navigator-campaign';
-    campaign.append(...savedFilterNavigatorHighlight(entry.campaign, query));
+    campaign.className = 'saved-scoring-navigator-campaign';
+    campaign.append(...savedScoringNavigatorHighlight(entry.campaign, query));
     main.append(campaign);
     if (entry.campaigns.length) {
       const campaigns = document.createElement('span');
-      campaigns.className = 'saved-filter-navigator-campaigns';
-      campaigns.append(...savedFilterNavigatorHighlight(entry.campaigns.join(' · '), query));
+      campaigns.className = 'saved-scoring-navigator-campaigns';
+      campaigns.append(...savedScoringNavigatorHighlight(entry.campaigns.join(' · '), query));
       main.append(campaigns);
     }
     const chips = [...entry.filtered.map(scope => [scope.dimension, scope.title, scope.text]),
@@ -12161,10 +12163,10 @@
         .map(([dimension, name, value]) => [dimension, `${name}: ${value}`, dimension ? value : `${name}: ${value}`])];
     for (const [dimension, title, value] of chips) {
       const chip = document.createElement('span');
-      chip.className = 'saved-filter-navigator-chip';
+      chip.className = 'saved-scoring-navigator-chip';
       if (dimension) chip.dataset.dimension = dimension;
       chip.title = title;
-      chip.append(...savedFilterNavigatorHighlight(value, query));
+      chip.append(...savedScoringNavigatorHighlight(value, query));
       main.append(chip);
     }
     if (entry.status !== 'completed') {
@@ -12176,15 +12178,15 @@
     }
     if (inUse) {
       const badge = document.createElement('span');
-      badge.className = 'saved-filter-navigator-in-use';
+      badge.className = 'saved-scoring-navigator-in-use';
       badge.textContent = 'In Use';
       main.append(badge);
     }
     text.append(main);
     if (entry.name) {
       const name = document.createElement('span');
-      name.className = 'saved-filter-navigator-name';
-      name.append(...savedFilterNavigatorHighlight(entry.name, query));
+      name.className = 'saved-scoring-navigator-name';
+      name.append(...savedScoringNavigatorHighlight(entry.name, query));
       text.append(name);
     }
     label.append(text);
@@ -12192,15 +12194,15 @@
     return item;
   }
 
-  function renderSavedFilterNavigator() {
+  function renderSavedScoringNavigator() {
     if (!navigatorTree) return;
     const query = navigatorSearch?.value || '';
-    const searching = savedFilterNavigatorWords(query).length > 0;
-    const entries = sortedSavedFilters(savedFilters).filter(savedFilter => savedFilter.pinned).map(savedFilterNavigatorEntry);
+    const searching = savedScoringNavigatorWords(query).length > 0;
+    const entries = sortedSavedScorings(savedScorings).filter(savedScoring => savedScoring.pinned).map(savedScoringNavigatorEntry);
     // What tells two Favourite Scorings apart is found among all of them, so it does not change while searching.
-    const tree = savedFilterNavigatorTree(entries);
-    const found = new Set(savedFilterNavigatorFound(entries, query).map(entry => entry.id));
-    const inUseId = selectedSavedFilterId && !selectionUnmatched ? selectedSavedFilterId : '';
+    const tree = savedScoringNavigatorTree(entries);
+    const found = new Set(savedScoringNavigatorFound(entries, query).map(entry => entry.id));
+    const inUseId = selectedSavedScoringId && !selectionUnmatched ? selectedSavedScoringId : '';
     const focusedKey = navigatorTree.contains(document.activeElement) ? document.activeElement.dataset?.navigatorKey : '';
     const isOpen = key => (searching ? !navigatorSearchCollapsed.has(key) : navigatorExpanded.has(key));
     const items = [];
@@ -12209,37 +12211,37 @@
       if (!areaCount) continue;
       const areaLabels = area.areas.map(scope => {
         const label = document.createElement('span');
-        label.className = 'saved-filter-navigator-area';
+        label.className = 'saved-scoring-navigator-area';
         label.dataset.dimension = scope.dimension;
         label.title = scope.title;
-        label.append(...savedFilterNavigatorHighlight(scope.text, query));
+        label.append(...savedScoringNavigatorHighlight(scope.text, query));
         return label;
       });
-      const areaBranch = savedFilterNavigatorBranch(area.key, 1, areaLabels, areaCount, isOpen(area.key));
+      const areaBranch = savedScoringNavigatorBranch(area.key, 1, areaLabels, areaCount, isOpen(area.key));
       for (const mode of area.modes) {
         const shown = mode.entries.filter(entry => found.has(entry.id));
         if (!shown.length) continue;
         const modeLabel = document.createElement('span');
-        modeLabel.className = 'saved-filter-navigator-mode';
+        modeLabel.className = 'saved-scoring-navigator-mode';
         modeLabel.dataset.nrMode = mode.mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.mode.toLowerCase();
         modeLabel.title = `NR Mode: ${mode.label}`;
         if (mode.mode === 'NSA+SA') {
           for (const [part, kind] of [['NSA', 'nsa'], [' vs ', ''], ['SA', 'sa']]) {
             const piece = document.createElement('span');
             if (kind) piece.dataset.nrMode = kind;
-            piece.append(...savedFilterNavigatorHighlight(part, query));
+            piece.append(...savedScoringNavigatorHighlight(part, query));
             modeLabel.append(piece);
           }
-        } else modeLabel.append(...savedFilterNavigatorHighlight(mode.label, query));
-        const modeBranch = savedFilterNavigatorBranch(mode.key, 2, [modeLabel], shown.length, isOpen(mode.key));
-        modeBranch.group.append(...shown.map(entry => savedFilterNavigatorLeaf(entry, query, entry.id === inUseId)));
+        } else modeLabel.append(...savedScoringNavigatorHighlight(mode.label, query));
+        const modeBranch = savedScoringNavigatorBranch(mode.key, 2, [modeLabel], shown.length, isOpen(mode.key));
+        modeBranch.group.append(...shown.map(entry => savedScoringNavigatorLeaf(entry, query, entry.id === inUseId)));
         areaBranch.group.append(modeBranch.item);
       }
       items.push(areaBranch.item);
     }
     if (!items.length) {
       const empty = document.createElement('div');
-      empty.className = 'saved-filter-navigator-empty';
+      empty.className = 'saved-scoring-navigator-empty';
       empty.textContent = entries.length ? 'No Favourite Scoring has every word typed.'
         : 'No Favourite Scorings yet: star (☆) a scoring to keep its filters here.';
       items.push(empty);
@@ -12268,7 +12270,7 @@
     for (const other of navigatorTree.querySelectorAll('[role="treeitem"]')) other.tabIndex = -1;
     item.tabIndex = 0;
     item.focus();
-    item.querySelector('.saved-filter-navigator-label')?.scrollIntoView({block: 'nearest'});
+    item.querySelector('.saved-scoring-navigator-label')?.scrollIntoView({block: 'nearest'});
   }
 
   function toggleNavigatorBranch(item, open) {
@@ -12276,59 +12278,59 @@
     item.setAttribute('aria-expanded', String(open));
     const group = item.querySelector(':scope > [role="group"]');
     if (group) group.hidden = !open;
-    if (savedFilterNavigatorWords(navigatorSearch?.value).length) {
+    if (savedScoringNavigatorWords(navigatorSearch?.value).length) {
       if (open) navigatorSearchCollapsed.delete(key);
       else navigatorSearchCollapsed.add(key);
     } else if (open) navigatorExpanded.add(key);
     else navigatorExpanded.delete(key);
   }
 
-  function openSavedFilterNavigator(origin = null) {
+  function openSavedScoringNavigator(origin = null) {
     if (!navigatorDialog || navigatorDialog.open) return;
     navigatorOrigin = origin;
-    for (const selector of savedFilterSelectors) selector.open = false;
+    for (const selector of savedScoringSelectors) selector.open = false;
     if (navigatorSearch) navigatorSearch.value = '';
     navigatorSearchCollapsed.clear();
-    // The branches of the Saved Filter in use open with it.
-    const inUse = savedFilters.find(record => record.pinned && savedFilterIdOf(record) === selectedSavedFilterId);
+    // The branches of the Saved Scoring in use open with it.
+    const inUse = savedScorings.find(record => record.pinned && savedScoringIdOf(record) === selectedSavedScoringId);
     if (inUse) {
-      const entry = savedFilterNavigatorEntry(inUse);
+      const entry = savedScoringNavigatorEntry(inUse);
       navigatorExpanded.add(entry.areaKey);
       navigatorExpanded.add(entry.modeKey);
     }
-    renderSavedFilterNavigator();
+    renderSavedScoringNavigator();
     // With a mouse the search is ready to type in; on a touch screen its keyboard would cover the tree, so the dialog
     // takes the focus (the search is out of reach while it opens, or the dialog would give it the focus).
     const typing = Boolean(window.matchMedia?.('(pointer: fine)').matches);
     if (navigatorSearch && !typing) navigatorSearch.disabled = true;
     navigatorDialog.showModal();
     if (navigatorSearch) navigatorSearch.disabled = false;
-    navigatorTree.querySelector('[aria-selected="true"] > .saved-filter-navigator-label')?.scrollIntoView({block: 'center'});
+    navigatorTree.querySelector('[aria-selected="true"] > .saved-scoring-navigator-label')?.scrollIntoView({block: 'center'});
     if (typing) navigatorSearch?.focus();
     else navigatorDialog.focus();
   }
 
   // Choosing a Favourite Scoring in the Filter Navigator uses it, as Use Filter on its card (the one in use only closes it).
   function useNavigatorFilter(id) {
-    const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === String(id));
-    if (!savedFilter) return;
+    const savedScoring = savedScorings.find(record => savedScoringIdOf(record) === String(id));
+    if (!savedScoring) return;
     const origin = navigatorOrigin;
     navigatorDialog.close();
-    if (String(id) === selectedSavedFilterId && !selectionUnmatched && (typeof selectionMatchesShown === 'undefined' || selectionMatchesShown)) return;
-    useSavedFilter(savedFilter, {fromDropdown: origin, source: 'navigator'});
+    if (String(id) === selectedSavedScoringId && !selectionUnmatched && (typeof selectionMatchesShown === 'undefined' || selectionMatchesShown)) return;
+    useSavedScoring(savedScoring, {fromDropdown: origin, source: 'navigator'});
   }
 
   root.addEventListener('click', event => {
-    const opener = event.target.closest('[data-saved-filter-navigator-open]');
+    const opener = event.target.closest('[data-saved-scoring-navigator-open]');
     if (!opener) return;
     // Inside the selector, the button does not open its list.
     event.preventDefault();
-    openSavedFilterNavigator(savedFilterSelectors.find(selector => selector.contains(opener)) || null);
+    openSavedScoringNavigator(savedScoringSelectors.find(selector => selector.contains(opener)) || null);
   });
-  navigatorDialog?.querySelector('[data-saved-filter-navigator-close]')?.addEventListener('click', () => navigatorDialog.close());
+  navigatorDialog?.querySelector('[data-saved-scoring-navigator-close]')?.addEventListener('click', () => navigatorDialog.close());
   navigatorSearch?.addEventListener('input', () => {
     navigatorSearchCollapsed.clear();
-    renderSavedFilterNavigator();
+    renderSavedScoringNavigator();
   });
   navigatorSearch?.addEventListener('keydown', event => {
     if (event.key === 'ArrowDown') {
@@ -12339,23 +12341,23 @@
     } else if (event.key === 'Enter') {
       // Enter uses the Favourite Scoring found when the words typed find only one.
       event.preventDefault();
-      const leaves = [...navigatorTree.querySelectorAll('[data-saved-filter-navigator-use]')];
-      if (leaves.length === 1) useNavigatorFilter(leaves[0].dataset.savedFilterNavigatorUse);
+      const leaves = [...navigatorTree.querySelectorAll('[data-saved-scoring-navigator-use]')];
+      if (leaves.length === 1) useNavigatorFilter(leaves[0].dataset.savedScoringNavigatorUse);
     } else if (event.key === 'Escape' && navigatorSearch.value) {
       // Escape clears the search first; with nothing typed it closes the Filter Navigator.
       event.preventDefault();
       navigatorSearch.value = '';
       navigatorSearchCollapsed.clear();
-      renderSavedFilterNavigator();
+      renderSavedScoringNavigator();
     }
   });
   navigatorTree?.addEventListener('click', event => {
-    const leaf = event.target.closest('[data-saved-filter-navigator-use]');
+    const leaf = event.target.closest('[data-saved-scoring-navigator-use]');
     if (leaf) {
-      useNavigatorFilter(leaf.dataset.savedFilterNavigatorUse);
+      useNavigatorFilter(leaf.dataset.savedScoringNavigatorUse);
       return;
     }
-    const item = event.target.closest('.saved-filter-navigator-label')?.parentElement;
+    const item = event.target.closest('.saved-scoring-navigator-label')?.parentElement;
     if (!item?.hasAttribute('aria-expanded')) return;
     toggleNavigatorBranch(item, item.getAttribute('aria-expanded') !== 'true');
     focusNavigatorItem(item);
@@ -12388,7 +12390,7 @@
       else next = item.parentElement?.closest('[role="treeitem"]');
     } else if (event.key === 'Enter' || event.key === ' ') {
       if (branch) toggleNavigatorBranch(item, !open);
-      else useNavigatorFilter(item.dataset.savedFilterNavigatorUse);
+      else useNavigatorFilter(item.dataset.savedScoringNavigatorUse);
     } else return;
     event.preventDefault();
     if (next) focusNavigatorItem(next);
@@ -12396,34 +12398,34 @@
 
   root.addEventListener('click', event => {
     // Details folds or unfolds the selected card of every selector, without opening the dropdown.
-    const details = event.target.closest('[data-saved-filter-details]');
+    const details = event.target.closest('[data-saved-scoring-details]');
     if (details) {
       event.preventDefault();
-      selectedSavedFilterUnfolded = !selectedSavedFilterUnfolded;
-      for (const card of selectedSavedFilterCards) {
-        card.classList.toggle('is-folded', !selectedSavedFilterUnfolded);
-        card.querySelector('[data-saved-filter-details]')?.setAttribute('aria-expanded', String(selectedSavedFilterUnfolded));
+      selectedSavedScoringUnfolded = !selectedSavedScoringUnfolded;
+      for (const card of selectedSavedScoringCards) {
+        card.classList.toggle('is-folded', !selectedSavedScoringUnfolded);
+        card.querySelector('[data-saved-scoring-details]')?.setAttribute('aria-expanded', String(selectedSavedScoringUnfolded));
       }
       return;
     }
     // In the selected card of the dropdown, the buttons do not open it.
-    if (event.target.closest('summary') && event.target.closest('[data-saved-filter-pin], [data-saved-filter-rename], [data-saved-filter-duplicate], [data-saved-filter-newer]')) {
-      savedFilterAction(event);
+    if (event.target.closest('summary') && event.target.closest('[data-saved-scoring-pin], [data-saved-scoring-rename], [data-saved-scoring-duplicate], [data-saved-scoring-newer]')) {
+      savedScoringAction(event);
       return;
     }
-    const cdrButton = event.target.closest('[data-saved-filter-cdrs]');
+    const cdrButton = event.target.closest('[data-saved-scoring-cdrs]');
     if (cdrButton) {
       event.preventDefault();
-      const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === cdrButton.dataset.savedFilterCdrs);
-      if (!savedFilter) return;
+      const savedScoring = savedScorings.find(record => savedScoringIdOf(record) === cdrButton.dataset.savedScoringCdrs);
+      if (!savedScoring) return;
       const copy = document.getElementById('info-copy');
       const overlay = document.getElementById('info-overlay');
       const previousWhiteSpace = copy?.style.whiteSpace || '';
       if (copy) copy.style.whiteSpace = 'pre-line';
       // A wider panel: each CDR on one line.
       overlay?.classList.add('info-cdr-list');
-      showInfoDialog(savedFilterCdrNames(savedFilter).join('\n') || savedFilterCdrSummary(savedFilter), {
-        title: `Saved Filter ${savedFilterIdOf(savedFilter)} — CDRs`,
+      showInfoDialog(savedScoringCdrNames(savedScoring).join('\n') || savedScoringCdrSummary(savedScoring), {
+        title: `Saved Scoring ${savedScoringIdOf(savedScoring)} — CDRs`,
         onClose: () => {
           if (copy) copy.style.whiteSpace = previousWhiteSpace;
           overlay?.classList.remove('info-cdr-list');
@@ -12454,7 +12456,7 @@
         persistScoringViewState();
       }
       // The KPI GAP Profile (GAP Analysis) and the Points Lost Map (Points Lost) share the choice.
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     if (event.target.closest('[data-generate-report]')) {
@@ -12476,7 +12478,7 @@
     if (pick && currentResults) {
       insightSelections.set(pick.dataset.insightPick, pick.dataset.insightPickOperator);
       persistScoringViewState();
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     const chip = event.target.closest('[data-insight-chip]');
@@ -12492,7 +12494,7 @@
         .map(item => item.dataset.insightChip);
       setOperatorChoices(Object.fromEntries(offered.map(name => [name, chosen.includes(name)])));
       persistScoringViewState();
-      renderResult(currentResults, selectedSavedFilter);
+      renderResult(currentResults, selectedSavedScoring);
       return;
     }
     const tab = event.target.closest('[data-result-tab]');
@@ -12515,7 +12517,7 @@
       if (start < top) window.scrollBy({top: start - top, behavior: 'auto'});
     }
     persistScoringViewState();
-    if (currentResults) renderResult(currentResults, selectedSavedFilter, [name]);
+    if (currentResults) renderResult(currentResults, selectedSavedScoring, [name]);
   });
   expandedChartClose?.addEventListener('click', closeExpandedChart);
   // The Scoring Results entries of the Scoring tab menu (#scoring-results-summary, -charts, -tables, -geographical-areas,
@@ -12598,7 +12600,7 @@
 
   // Scoring & GAP Analysis: the strip of the configuration and the dialog of each block. The blocks (Scoring Setup,
   // Context Filters, Split by, Country Areas, Scoring Trends) live in the hidden host of the page; one opens in the
-  // dialog with the values of the scoring shown (the controls follow the Saved Filter opened), marking the values that
+  // dialog with the values of the scoring shown (the controls follow the Saved Scoring opened), marking the values that
   // differ from it. Apply keeps the changes for a later Calculate Scoring; Apply & Calculate calculates them at once;
   // Cancel (or Escape) gives the block back the values it had when it opened.
   const configHost = root.querySelector('[data-scoring-config-host]');
@@ -12670,15 +12672,15 @@
     return value[key];
   }
 
-  // The Saved Filter whose results are shown, or calculated to be shown (none while the scoring is closed).
-  function shownSavedFilterId() {
-    if (currentResultsSavedFilterId) return String(currentResultsSavedFilterId);
-    return selectedSavedFilter && isActive(selectedSavedFilter) ? String(selectedSavedFilterId || '') : '';
+  // The Saved Scoring whose results are shown, or calculated to be shown (none while the scoring is closed).
+  function shownSavedScoringId() {
+    if (currentResultsSavedScoringId) return String(currentResultsSavedScoringId);
+    return selectedSavedScoring && isActive(selectedSavedScoring) ? String(selectedSavedScoringId || '') : '';
   }
 
   // Whether the blocks differ from the scoring shown (their changes are not calculated yet).
   function configChangedBlocks() {
-    if (!shownSavedFilterId() || editingSavedFilter || selectionMatchesShown) return new Set();
+    if (!shownSavedScoringId() || editingSavedScoring || selectionMatchesShown) return new Set();
     if (!shownSelection) return new Set(['?']);
     const now = configBlockValues(calculationSelectionFromControls());
     const shown = configBlockValues(shownSelection);
@@ -12786,10 +12788,10 @@
     }
     calculateButton?.classList.toggle('is-pending', pending);
     // Calculate Scoring (or Open Scoring) with changes to calculate, Recalculate for the scoring shown: never both.
-    if (!editingSavedFilter && calculateButton && recalculateButton) {
-      const recalc = Boolean(shownSavedFilterId()) && !pending && selectionMatchesShown;
-      // While a Saved Filter opens, neither: the card says it is opening.
-      const opening = !shownSavedFilterId() && Boolean(selectedSavedFilterId) && loadingResults.has(String(selectedSavedFilterId));
+    if (!editingSavedScoring && calculateButton && recalculateButton) {
+      const recalc = Boolean(shownSavedScoringId()) && !pending && selectionMatchesShown;
+      // While a Saved Scoring opens, neither: the card says it is opening.
+      const opening = !shownSavedScoringId() && Boolean(selectedSavedScoringId) && loadingResults.has(String(selectedSavedScoringId));
       recalculateButton.hidden = !recalc || opening;
       calculateButton.hidden = recalc || opening;
     }
@@ -12804,7 +12806,7 @@
       if (cardSwitch && input) cardSwitch.checked = input.checked;
     }
     // The tabs of Country Areas and of the Scoring Trends hide when the scoring shown has them switched off.
-    const shownSummary = shownSavedFilterId() && selectedSavedFilter?.area_summary ? selectedSavedFilter.area_summary : {};
+    const shownSummary = shownSavedScoringId() && selectedSavedScoring?.area_summary ? selectedSavedScoring.area_summary : {};
     for (const [tab, part] of [['geographical-areas', 'country_areas'], ['trends', 'trends']]) {
       const button = root.querySelector(`[data-result-tab="${tab}"]`);
       if (!button) continue;
@@ -12815,14 +12817,14 @@
       if (hide && button.getAttribute('aria-selected') === 'true') root.querySelector('[data-result-tab="summary"]')?.click();
     }
     // The scoring shown is the configuration and its result is up to date: Open Scoring and its message say nothing new.
-    const inSync = Boolean(shownSavedFilterId()) && selectionMatchesShown && !pending && !editingSavedFilter;
+    const inSync = Boolean(shownSavedScoringId()) && selectionMatchesShown && !pending && !editingSavedScoring;
     calculateButton?.classList.toggle('is-redundant', inSync && calculateButton.dataset.action === 'open');
     configStrip.classList.toggle('is-in-sync', inSync && !['error', 'warning', 'busy'].includes(message?.dataset.kind || ''));
     // Where to start, while no scoring is shown: a Favourite Scoring when there are some, else the Context Filters.
-    const starred = savedFilters.filter(savedFilter => savedFilter.pinned).length;
+    const starred = savedScorings.filter(savedScoring => savedScoring.pinned).length;
     if (favouritesCount) favouritesCount.textContent = String(starred);
-    // Nothing is shown: no scoring open, or a selection that is no Saved Filter without results to show.
-    const nothingShown = !shownSavedFilterId() && (selectionUnmatched || !selectedSavedFilterId);
+    // Nothing is shown: no scoring open, or a selection that is no Saved Scoring without results to show.
+    const nothingShown = !shownSavedScoringId() && (selectionUnmatched || !selectedSavedScoringId);
     if (configStartGuide) {
       configStartGuide.hidden = !nothingShown;
       if (configStartGuideFavourites) configStartGuideFavourites.hidden = !starred;
@@ -12852,30 +12854,30 @@
   const saveFavouriteButton = root.querySelector('[data-scoring-save-favourite]');
   const canEditFavourites = document.body.dataset.authenticatedRole !== 'user-viewer';
 
-  // The name of a Saved Filter: the one given, else what it filters (area, NR Mode and campaigns), as the Navigator.
-  function savedFilterDisplayName(savedFilter) {
-    if (savedFilter?.name) return savedFilter.name;
+  // The name of a Saved Scoring: the one given, else what it filters (area, NR Mode and campaigns), as the Navigator.
+  function savedScoringDisplayName(savedScoring) {
+    if (savedScoring?.name) return savedScoring.name;
     try {
-      const entry = savedFilterNavigatorEntry(savedFilter);
+      const entry = savedScoringNavigatorEntry(savedScoring);
       const area = entry.areas.map(scope => scope.text).join(', ') || 'Nationwide';
       return [area, entry.modeLabel, entry.campaign].filter(Boolean).join(' · ');
     } catch {
-      return `Filter ID ${savedFilterIdOf(savedFilter)}`;
+      return `Filter ID ${savedScoringIdOf(savedScoring)}`;
     }
   }
 
   function renderShowing(pending) {
-    const shown = shownSavedFilterId() ? selectedSavedFilter : null;
-    // The Saved Filter chosen, while its result loads.
-    const opening = !shown && selectedSavedFilter && loadingResults.has(String(selectedSavedFilterId)) ? selectedSavedFilter : null;
+    const shown = shownSavedScoringId() ? selectedSavedScoring : null;
+    // The Saved Scoring chosen, while its result loads.
+    const opening = !shown && selectedSavedScoring && loadingResults.has(String(selectedSavedScoringId)) ? selectedSavedScoring : null;
     const starred = Boolean(shown?.pinned);
     // The Favourite Scoring a scoring without a star was calculated from: Update Favourite gives it the configuration.
-    if (starred) favouriteBaseId = String(savedFilterIdOf(shown));
+    if (starred) favouriteBaseId = String(savedScoringIdOf(shown));
     const base = !shown || starred || !favouriteBaseId ? null
-      : savedFilters.find(record => record.pinned && String(savedFilterIdOf(record)) === favouriteBaseId) || null;
+      : savedScorings.find(record => record.pinned && String(savedScoringIdOf(record)) === favouriteBaseId) || null;
     if (showingBase) {
       showingBase.hidden = !base;
-      showingBase.textContent = base ? `from ★ ${savedFilterDisplayName(base)}` : '';
+      showingBase.textContent = base ? `from ★ ${savedScoringDisplayName(base)}` : '';
     }
     if (showingStar) {
       showingStar.hidden = !shown;
@@ -12885,8 +12887,8 @@
       showingStar.title = starred ? 'A Favourite Scoring: click to take it out of the Favourite Scorings'
         : 'Keep it as a Favourite Scoring';
     }
-    if (showingName) showingName.textContent = shown ? savedFilterDisplayName(shown)
-      : opening ? savedFilterDisplayName(opening) : 'No scoring is shown';
+    if (showingName) showingName.textContent = shown ? savedScoringDisplayName(shown)
+      : opening ? savedScoringDisplayName(opening) : 'No scoring is shown';
     if (showingStatus) {
       let text = '';
       let kind = '';
@@ -12918,7 +12920,7 @@
     if (updateFavouriteButton) {
       updateFavouriteButton.hidden = !canEditFavourites || (!starred && !base);
       updateFavouriteButton.disabled = (starred && !pending) || submittingCalculation || isActive(shown);
-      updateFavouriteButton.title = base ? `Give this configuration to “${savedFilterDisplayName(base)}” (same name, star and place) and calculate it again`
+      updateFavouriteButton.title = base ? `Give this configuration to “${savedScoringDisplayName(base)}” (same name, star and place) and calculate it again`
         : 'Give the changes to the Favourite Scoring shown (same name, star and place) and calculate it again';
     }
     if (saveFavouriteButton) {
@@ -12933,33 +12935,33 @@
     showingDetails.setAttribute('aria-expanded', String(open));
   });
   showingStar?.addEventListener('click', async () => {
-    const shown = shownSavedFilterId() ? selectedSavedFilter : null;
+    const shown = shownSavedScoringId() ? selectedSavedScoring : null;
     if (!shown) return;
     try {
-      await requestJson(`${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}`,
+      await requestJson(`${savedScoringsUrl}/${encodeURIComponent(savedScoringIdOf(shown))}`,
         {method: 'PATCH', body: JSON.stringify({pinned: !shown.pinned})});
-      await refreshSavedFilters();
+      await refreshSavedScorings();
     } catch (error) {
       setMessage(error.message || 'The Favourite Scoring could not be updated.', 'error');
     }
   });
   updateFavouriteButton?.addEventListener('click', async () => {
-    const shownRecord = shownSavedFilterId() ? selectedSavedFilter : null;
+    const shownRecord = shownSavedScoringId() ? selectedSavedScoring : null;
     // The Favourite Scoring shown, or the one the scoring shown was calculated from.
     const shown = shownRecord?.pinned ? shownRecord
-      : savedFilters.find(record => record.pinned && String(savedFilterIdOf(record)) === favouriteBaseId) || null;
+      : savedScorings.find(record => record.pinned && String(savedScoringIdOf(record)) === favouriteBaseId) || null;
     if (!shown) return;
-    const name = savedFilterDisplayName(shown);
+    const name = savedScoringDisplayName(shown);
     const message = `“${name}” takes the configuration of the strip and is calculated again, with the same name, star and `
       + 'place. Its configuration changes for every user of the workspace.';
     const confirmed = typeof showConfirmDialog === 'function'
       ? await showConfirmDialog(message, {title: 'Update Favourite Scoring', confirmLabel: 'Update Favourite', cancelLabel: 'Cancel'})
       : window.confirm(message);
     if (confirmed !== true && confirmed !== 'confirm') return;
-    await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}/edit`});
+    await createSavedScoring(false, {url: `${savedScoringsUrl}/${encodeURIComponent(savedScoringIdOf(shown))}/edit`});
   });
   saveFavouriteButton?.addEventListener('click', async () => {
-    const shown = shownSavedFilterId() ? selectedSavedFilter : null;
+    const shown = shownSavedScoringId() ? selectedSavedScoring : null;
     if (!shown) return;
     const pending = configChangedBlocks().size > 0;
     const name = await showTextInputDialog('Name of the new Favourite Scoring', {
@@ -12972,15 +12974,15 @@
     if (!pending && !shown.pinned) {
       // The scoring shown, calculated and without a star, becomes the new Favourite Scoring with that name.
       try {
-        await requestJson(`${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}`,
+        await requestJson(`${savedScoringsUrl}/${encodeURIComponent(savedScoringIdOf(shown))}`,
           {method: 'PATCH', body: JSON.stringify({pinned: true, name: String(name)})});
-        await refreshSavedFilters();
+        await refreshSavedScorings();
       } catch (error) {
         setMessage(error.message || 'The Favourite Scoring could not be saved.', 'error');
       }
       return;
     }
-    await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}/duplicate`,
+    await createSavedScoring(false, {url: `${savedScoringsUrl}/${encodeURIComponent(savedScoringIdOf(shown))}/duplicate`,
       extra: {name: String(name)}});
   });
 
@@ -12994,27 +12996,27 @@
       // (A hidden box, such as the switch the card holds, is not counted.)
       if (field.closest('[hidden]')) continue;
       const key = field.dataset.scoringConfigKey;
-      const changed = Boolean(shownSelection) && shownSavedFilterId() !== ''
+      const changed = Boolean(shownSelection) && shownSavedScoringId() !== ''
         && JSON.stringify(configFieldValue(now, key)) !== JSON.stringify(configFieldValue(shownSelection, key));
       field.classList.toggle('is-config-changed', changed);
       if (changed) differing += 1;
     }
     const edited = JSON.stringify(calculationPayload()) !== configBefore?.payload;
     if (configApplyButton) configApplyButton.disabled = !edited;
-    if (configCalculateButton) configCalculateButton.disabled = !edited && !configChangedBlocks().size && Boolean(shownSavedFilterId());
+    if (configCalculateButton) configCalculateButton.disabled = !edited && !configChangedBlocks().size && Boolean(shownSavedScoringId());
     if (configDialogHint) {
       configDialogHint.textContent = differing
         ? `${differing} value${differing === 1 ? '' : 's'} differ${differing === 1 ? 's' : ''} from the scoring shown (marked).`
-        : (shownSavedFilterId() ? 'The values of the scoring shown.' : 'No scoring is shown: these values are used when you Calculate Scoring.');
+        : (shownSavedScoringId() ? 'The values of the scoring shown.' : 'No scoring is shown: these values are used when you Calculate Scoring.');
     }
   }
 
   function openConfigBlock(key) {
     const section = configSections.get(key);
     const block = CONFIG_BLOCKS[key];
-    if (!section || !block || !configDialog || !configDialogBody || editingSavedFilter) return;
+    if (!section || !block || !configDialog || !configDialogBody || editingSavedScoring) return;
     if (configDialog.open) closeConfigBlock('cancel');
-    for (const selector of savedFilterSelectors) selector.open = false;
+    for (const selector of savedScoringSelectors) selector.open = false;
     calculateWhenReady = false;
     configOpenBlock = key;
     configBefore = {selection: calculationSelectionFromControls(), pinned: pinnedCdrs, payload: JSON.stringify(calculationPayload())};
@@ -13027,9 +13029,9 @@
     configDialog.dataset.block = key;
     if (configDialogScope) configDialogScope.hidden = !block.scope;
     if (configDialogSource) {
-      const shown = shownSavedFilterId() && selectedSavedFilter;
+      const shown = shownSavedScoringId() && selectedSavedScoring;
       configDialogSource.textContent = shown
-        ? `Values of the scoring shown: ${selectedSavedFilter.name ? `“${selectedSavedFilter.name}” · ` : ''}Filter ID ${savedFilterIdOf(selectedSavedFilter)}${configChangedBlocks().size ? ' (with the changes not calculated yet, marked)' : ''}`
+        ? `Values of the scoring shown: ${selectedSavedScoring.name ? `“${selectedSavedScoring.name}” · ` : ''}Filter ID ${savedScoringIdOf(selectedSavedScoring)}${configChangedBlocks().size ? ' (with the changes not calculated yet, marked)' : ''}`
         : 'No scoring is shown: set the values and Calculate Scoring.';
     }
     markConfigDialog();
@@ -13063,7 +13065,7 @@
   }
 
   // Apply & Calculate: once the CDRs of the selection have been chosen and the selection checked (at most a minute),
-  // the scoring is calculated, or the Saved Filter that already has this selection opens. (It never waits on a
+  // the scoring is calculated, or the Saved Scoring that already has this selection opens. (It never waits on a
   // button: on a large workspace those checks can take a while.)
   let calculateWaiting = false;
   async function calculateConfigWhenReady() {
@@ -13080,7 +13082,7 @@
       if (!calculateWhenReady) return;
       calculateWhenReady = false;
       if (calculateButton.dataset.action === 'open' && !calculateButton.disabled) calculateButton.click();
-      else await createSavedFilter(false);
+      else await createSavedScoring(false);
     } finally {
       calculateWaiting = false;
     }
@@ -13096,16 +13098,16 @@
     if (event.target.closest('[data-scoring-config-discard]')) {
       event.preventDefault();
       calculateWhenReady = false;
-      const shown = savedFilters.find(record => savedFilterIdOf(record) === shownSavedFilterId()) || selectedSavedFilter;
-      if (shown) restoreCalculationSelectionFromSavedFilter(shown);
+      const shown = savedScorings.find(record => savedScoringIdOf(record) === shownSavedScoringId()) || selectedSavedScoring;
+      if (shown) restoreCalculationSelectionFromSavedScoring(shown);
       return;
     }
-    const manage = event.target.closest('[data-saved-filter-navigator-manage]');
+    const manage = event.target.closest('[data-saved-scoring-navigator-manage]');
     if (manage) {
       // The Favourite Scorings panel, below the results, opens and comes into sight.
       event.preventDefault();
       navigatorDialog?.close();
-      const panel = root.querySelector('[data-saved-filters-panel]');
+      const panel = root.querySelector('[data-saved-scorings-panel]');
       if (!panel) return;
       panel.open = true;
       if (typeof showSectionAtTop === 'function') showSectionAtTop(panel);
@@ -13234,13 +13236,13 @@
     }
     closeConfigBlock('cancel');
   });
-  // The selected card shows the Saved Filter shown: a click on it opens the Filter Navigator (its buttons keep their
+  // The selected card shows the Saved Scoring shown: a click on it opens the Filter Navigator (its buttons keep their
   // own action), where the Favourite Scorings are chosen.
-  for (const selector of savedFilterSelectors) {
+  for (const selector of savedScoringSelectors) {
     selector.querySelector(':scope > summary')?.addEventListener('click', event => {
       if (event.target.closest('button, a, input, select, label')) return;
       event.preventDefault();
-      openSavedFilterNavigator(selector);
+      openSavedScoringNavigator(selector);
     });
   }
   // The report menu closes once a report is chosen, or with a click elsewhere.
@@ -13264,7 +13266,7 @@
   syncResultTableControls();
   applyNrFilter(false);
   // Closed before the page was reloaded: it stays closed.
-  // The maps of the Postal Codes: a Saved Filter can only choose an Own file the workspace has.
+  // The maps of the Postal Codes: a Saved Scoring can only choose an Own file the workspace has.
   async function loadPostalMaps() {
     if (!areaSummaryPostalMap) return;
     const {maps} = await requestJson('/api/scoring/postal-maps');
@@ -13278,5 +13280,5 @@
     }
   }
   loadPostalMaps().catch(() => {});
-  Promise.all([loadCalculationSelection(), refreshSavedFilters()]).catch(() => {});
+  Promise.all([loadCalculationSelection(), refreshSavedScorings()]).catch(() => {});
 })();

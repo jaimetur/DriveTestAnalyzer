@@ -1,4 +1,4 @@
-"""Saved scoring savedFilter cards select the results shown in the embedded dropdown."""
+"""Saved scoring savedScoring cards select the results shown in the embedded dropdown."""
 import re
 
 import pytest
@@ -14,22 +14,22 @@ def test_job_dropdown_is_inside_results_header_and_constrained_to_button_column(
         '<div class="scoring-result-tabs"', 1,
     )[0]
     # One selector, in the strip of Scoring & GAP Analysis (Showing), plus the list of the Favourite Scorings panel.
-    assert template.count('data-saved-filter-list') == 2
-    assert template.count('data-saved-filter-selector>') == 1
+    assert template.count('data-saved-scoring-list') == 2
+    assert template.count('data-saved-scoring-selector>') == 1
     strip = header.split('data-scoring-config-strip', 1)[1].split('data-scoring-config-pills', 1)[0]
-    assert 'Showing' in strip and 'data-saved-filter-selector' in strip
-    assert 'data-selected-saved-filter-card' in strip and 'data-saved-filter-list' in strip
-    assert '.saved-filter-picker .saved-filter-list { max-height: min(28rem,55vh); overscroll-behavior: contain; }' in template
-    assert template.index('class="panel scoring-results-panel"') < template.index('class="panel collapsible-panel saved-filters-panel"')
+    assert 'Showing' in strip and 'data-saved-scoring-selector' in strip
+    assert 'data-selected-saved-scoring-card' in strip and 'data-saved-scoring-list' in strip
+    assert '.saved-scoring-picker .saved-scoring-list { max-height: min(28rem,55vh); overscroll-behavior: contain; }' in template
+    assert template.index('class="panel scoring-results-panel"') < template.index('class="panel collapsible-panel saved-scorings-panel"')
     # The two main buttons come first, the strip next and the view and reports after it.
-    assert header.index('data-scoring-main-favourites') < header.index('data-saved-filter-selector') < header.index('class="scoring-results-tools"')
-    assert '<summary class="saved-filter-item"' in header
-    assert re.search(r'\.saved-filter-selector\s*\{[^}]*grid-column: 2;[^}]*grid-row: 2;'
+    assert header.index('data-scoring-main-favourites') < header.index('data-saved-scoring-selector') < header.index('class="scoring-results-tools"')
+    assert '<summary class="saved-scoring-item"' in header
+    assert re.search(r'\.saved-scoring-selector\s*\{[^}]*grid-column: 2;[^}]*grid-row: 2;'
                      r'[^}]*justify-self: end;[^}]*width: 100%;[^}]*min-width: 0;'
                      r'[^}]*contain: inline-size;', template)
-    assert '.scoring-strip-top .saved-filter-selector { grid-column: auto; grid-row: auto; justify-self: auto; flex: 1 1 26rem; width: auto; }' in template
+    assert '.scoring-strip-top .saved-scoring-selector { grid-column: auto; grid-row: auto; justify-self: auto; flex: 1 1 26rem; width: auto; }' in template
     assert '.scoring-results-panel { position: relative; z-index: 2; overflow: visible; }' in template
-    assert '.saved-filter-item-top strong { flex: 1 1 auto; min-width: 0; font-size: .83rem; white-space: normal; overflow-wrap: anywhere; }' in template
+    assert '.saved-scoring-item-top strong { flex: 1 1 auto; min-width: 0; font-size: .83rem; white-space: normal; overflow-wrap: anywhere; }' in template
 
 
 def test_job_dropdown_selected_card_tracks_selection_and_retains_job_actions():
@@ -69,113 +69,113 @@ class Element {
   }
 }
 const document = {createElement: tag => new Element(tag)};
-// Without app.js every user deletes the Saved Filters (the server still checks it).
+// Without app.js every user deletes the Saved Scorings (the server still checks it).
 const window = {};
 const countBadge = new Element('span');
 const historyCountBadge = new Element('span');
 const root = {querySelectorAll: () => [countBadge, historyCountBadge]};
-const savedFilterList = new Element('div'), historyList = new Element('div'), selectedSavedFilterCard = new Element('span');
+const savedScoringList = new Element('div'), historyList = new Element('div'), selectedSavedScoringCard = new Element('span');
 // The selected card of the selector of the Calculation panel, a copy of the first one.
 const otherSelectedCard = new Element('span');
-const selectedSavedFilterCards = [selectedSavedFilterCard, otherSelectedCard];
-const savedFilterLists = [savedFilterList, historyList];
-const savedFilters = [
-  {id: '20', status: 'completed', label: 'Latest savedFilter', baseline_operator: 'EE', scoring_profile_name: 'Profile A', pinned: true, position: 1,
+const selectedSavedScoringCards = [selectedSavedScoringCard, otherSelectedCard];
+const savedScoringLists = [savedScoringList, historyList];
+const savedScorings = [
+  {id: '20', status: 'completed', label: 'Latest savedScoring', baseline_operator: 'EE', scoring_profile_name: 'Profile A', pinned: true, position: 1,
     scope: {dimension: 'city', text: 'London', title: 'City: London'}},
-  {id: '15', status: 'processing', label: 'Earlier savedFilter', baseline_operator: 'O2', scoring_profile_name: 'Profile B', pinned: true, position: 2,
+  {id: '15', status: 'processing', label: 'Earlier savedScoring', baseline_operator: 'O2', scoring_profile_name: 'Profile B', pinned: true, position: 2,
     nr_mode: 'NSA+SA'},
 ];
-let draggedSavedFilterRow = null, savedFiltersRenderPending = false;
-const savedFilterPanelList = null, canReorderSavedFilters = false;
-let selectedSavedFilterId = '20';
-const sortedSavedFilters = savedFilters => savedFilters;
-const savedFilterIdOf = savedFilter => savedFilter.id;
-const normalizeStatus = savedFilter => savedFilter.status;
-const savedFilterCardTitleSegments = savedFilter => [{dimension: 'neutral', value: savedFilter.label}];
-const savedFilterCardTitle = savedFilter => savedFilter.label;
-const savedFilterScopes = savedFilter => (savedFilter.scope ? [savedFilter.scope] : []);
-const valueOf = (savedFilter, keys, fallback) => keys.map(key => savedFilter[key]).find(value => value !== undefined) ?? fallback;
-const savedFilterLevels = () => 'Operator';
-const savedFilterCdrNames = () => ['Example CDR.xlsx'];
-const savedFilterCdrSummary = () => 'Example CDR.xlsx';
-const isActive = savedFilter => savedFilter.status === 'processing';
+let draggedSavedScoringRow = null, savedScoringsRenderPending = false;
+const savedScoringPanelList = null, canReorderSavedScorings = false;
+let selectedSavedScoringId = '20';
+const sortedSavedScorings = savedScorings => savedScorings;
+const savedScoringIdOf = savedScoring => savedScoring.id;
+const normalizeStatus = savedScoring => savedScoring.status;
+const savedScoringCardTitleSegments = savedScoring => [{dimension: 'neutral', value: savedScoring.label}];
+const savedScoringCardTitle = savedScoring => savedScoring.label;
+const savedScoringScopes = savedScoring => (savedScoring.scope ? [savedScoring.scope] : []);
+const valueOf = (savedScoring, keys, fallback) => keys.map(key => savedScoring[key]).find(value => value !== undefined) ?? fallback;
+const savedScoringLevels = () => 'Operator';
+const savedScoringCdrNames = () => ['Example CDR.xlsx'];
+const savedScoringCdrSummary = () => 'Example CDR.xlsx';
+const isActive = savedScoring => savedScoring.status === 'processing';
 const progressValue = () => 40;
-const deletingSavedFilterIds = new Set();
-const syncSavedFiltersBulk = () => {};
+const deletingSavedScoringIds = new Set();
+const syncSavedScoringsBulk = () => {};
 let selectionUnmatched = false;
 // No Filter Navigator is open.
 const navigatorDialog = null;
-const unfoldedSavedFilters = new Map();
-let selectedSavedFilterUnfolded = false;
-''' + _function_source(script, 'unfoldedSavedFilterIds') + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + _function_source(script, 'unmatchedSelectionNotice') + r'''
-renderSavedFilters();
-const latest = selectedSavedFilterCard.textContent;
+const unfoldedSavedScorings = new Map();
+let selectedSavedScoringUnfolded = false;
+''' + _function_source(script, 'unfoldedSavedScoringIds') + _function_source(script, 'savedScoringTrendCampaigns') + _function_source(script, 'savedScoringAreaSummaryParts') + _function_source(script, 'savedScoringTimeSplit') + _function_source(script, 'savedScoringDurationText') + _function_source(script, 'syncSavedScoringLists') + _function_source(script, 'renderSavedScorings') + _function_source(script, 'unmatchedSelectionNotice') + r'''
+renderSavedScorings();
+const latest = selectedSavedScoringCard.textContent;
 const copied = [otherSelectedCard.textContent === latest, otherSelectedCard.classList.contains('is-folded'),
-  otherSelectedCard.children[0] !== selectedSavedFilterCard.children[0]];
-const cardOf = row => row.children.find(child => child.dataset.savedFilterId);
-const useOf = row => row.children.find(child => child.className.split(' ').includes('saved-filter-use'));
-const deleteOf = row => row.children.find(child => child.className === 'saved-filter-actions').children.at(-1);
-const tabsOf = row => row.children.find(child => child.className === 'saved-filter-tabs');
-const scopeOf = row => tabsOf(row)?.children.find(child => child.className === 'saved-filter-scope');
-const modeOf = row => tabsOf(row)?.children.find(child => child.className === 'saved-filter-mode');
+  otherSelectedCard.children[0] !== selectedSavedScoringCard.children[0]];
+const cardOf = row => row.children.find(child => child.dataset.savedScoringId);
+const useOf = row => row.children.find(child => child.className.split(' ').includes('saved-scoring-use'));
+const deleteOf = row => row.children.find(child => child.className === 'saved-scoring-actions').children.at(-1);
+const tabsOf = row => row.children.find(child => child.className === 'saved-scoring-tabs');
+const scopeOf = row => tabsOf(row)?.children.find(child => child.className === 'saved-scoring-scope');
+const modeOf = row => tabsOf(row)?.children.find(child => child.className === 'saved-scoring-mode');
 // Each card is folded, with its name (its ID without one) and Use Filter on its right (In Use on the one in use), and the
 // label of the only field it filters on top of it, before the card.
-const cards = savedFilterList.children.map(row => ({id: cardOf(row).dataset.savedFilterId,
+const cards = savedScoringList.children.map(row => ({id: cardOf(row).dataset.savedScoringId,
   selected: cardOf(row).attributes['aria-current'], expanded: cardOf(row).attributes['aria-expanded'],
-  name: cardOf(row).children[0].textContent, use: useOf(row).dataset.savedFilterUse ?? null, useLabel: useOf(row).textContent,
-  deleteId: deleteOf(row).dataset.deleteSavedFilterId,
+  name: cardOf(row).children[0].textContent, use: useOf(row).dataset.savedScoringUse ?? null, useLabel: useOf(row).textContent,
+  deleteId: deleteOf(row).dataset.deleteSavedScoringId,
   scope: scopeOf(row) ? [scopeOf(row).dataset.dimension, scopeOf(row).textContent, scopeOf(row).title, row.children.indexOf(tabsOf(row)),
     row.classList.contains('has-scope')] : null,
   mode: modeOf(row) ? [modeOf(row).dataset.nrMode, modeOf(row).textContent, modeOf(row).title] : null}));
-const separateCopy = selectedSavedFilterCard.children[0] !== cardOf(savedFilterList.children[0]).children[0];
-// The selected card has no fold arrow, and no name when the Saved Filter has none.
-const selectedHasHead = selectedSavedFilterCard.children.some(child => child.className === 'saved-filter-head');
-const selectedScope = selectedSavedFilterCard.children.some(child => child.className === 'saved-filter-tabs');
+const separateCopy = selectedSavedScoringCard.children[0] !== cardOf(savedScoringList.children[0]).children[0];
+// The selected card has no fold arrow, and no name when the Saved Scoring has none.
+const selectedHasHead = selectedSavedScoringCard.children.some(child => child.className === 'saved-scoring-head');
+const selectedScope = selectedSavedScoringCard.children.some(child => child.className === 'saved-scoring-tabs');
 // The selected card is folded, with Details first among its buttons.
-const selectedFolded = [selectedSavedFilterCard.classList.contains('is-folded'),
-  selectedSavedFilterCard.children.at(-1).children[0].dataset.savedFilterDetails,
-  selectedSavedFilterCard.children.at(-1).children[0].attributes['aria-expanded']];
+const selectedFolded = [selectedSavedScoringCard.classList.contains('is-folded'),
+  selectedSavedScoringCard.children.at(-1).children[0].dataset.savedScoringDetails,
+  selectedSavedScoringCard.children.at(-1).children[0].attributes['aria-expanded']];
 const historyMatches = historyList.children.every((row, index) => {
-  const original = savedFilterList.children[index];
+  const original = savedScoringList.children[index];
   return row.textContent === original.textContent
-    && cardOf(row).dataset.savedFilterId === cardOf(original).dataset.savedFilterId
+    && cardOf(row).dataset.savedScoringId === cardOf(original).dataset.savedScoringId
     && cardOf(row).attributes['aria-current'] === cardOf(original).attributes['aria-current']
-    && useOf(row).dataset.savedFilterUse === useOf(original).dataset.savedFilterUse
-    && deleteOf(row).dataset.deleteSavedFilterId === deleteOf(original).dataset.deleteSavedFilterId
+    && useOf(row).dataset.savedScoringUse === useOf(original).dataset.savedScoringUse
+    && deleteOf(row).dataset.deleteSavedScoringId === deleteOf(original).dataset.deleteSavedScoringId
     && scopeOf(row)?.textContent === scopeOf(original)?.textContent;
 });
 // A card unfolded in one list stays unfolded there when the lists are drawn again, and folded in the other.
-unfoldedSavedFilterIds(historyList).add('15');
-renderSavedFilters();
-const unfolded = [savedFilterList, historyList].map(list => list.children.map(row => [
+unfoldedSavedScoringIds(historyList).add('15');
+renderSavedScorings();
+const unfolded = [savedScoringList, historyList].map(list => list.children.map(row => [
   row.classList.contains('is-expanded'), cardOf(row).attributes['aria-expanded']]));
-unfoldedSavedFilterIds(historyList).clear();
+unfoldedSavedScoringIds(historyList).clear();
 const historyCounts = [countBadge.textContent, historyCountBadge.textContent];
-selectedSavedFilterId = '15';
-renderSavedFilters();
-const earlier = selectedSavedFilterCard.textContent;
-// In Use follows the Saved Filter in use.
-const earlierUse = savedFilterList.children.map(row => useOf(row).textContent);
-// Unstarred, the opened Saved Filter leaves the lists but stays in the selected card.
-savedFilters[1].pinned = false;
-renderSavedFilters();
-const unstarred = {listed: savedFilterList.children.map(row => cardOf(row).dataset.savedFilterId),
-  card: selectedSavedFilterCard.textContent, counts: [countBadge.textContent, historyCountBadge.textContent]};
-// A selection that is no Saved Filter: the card asks to choose a Favourite Scoring or to calculate it.
+selectedSavedScoringId = '15';
+renderSavedScorings();
+const earlier = selectedSavedScoringCard.textContent;
+// In Use follows the Saved Scoring in use.
+const earlierUse = savedScoringList.children.map(row => useOf(row).textContent);
+// Unstarred, the opened Saved Scoring leaves the lists but stays in the selected card.
+savedScorings[1].pinned = false;
+renderSavedScorings();
+const unstarred = {listed: savedScoringList.children.map(row => cardOf(row).dataset.savedScoringId),
+  card: selectedSavedScoringCard.textContent, counts: [countBadge.textContent, historyCountBadge.textContent]};
+// A selection that is no Saved Scoring: the card asks to choose a Favourite Scoring or to calculate it.
 selectionUnmatched = true;
-renderSavedFilters();
-const unmatchedCard = selectedSavedFilterCard.textContent;
-const unmatchedFolded = selectedSavedFilterCard.classList.contains('is-folded');
+renderSavedScorings();
+const unmatchedCard = selectedSavedScoringCard.textContent;
+const unmatchedFolded = selectedSavedScoringCard.classList.contains('is-folded');
 selectionUnmatched = false;
-savedFilters.length = 0;
-renderSavedFilters();
+savedScorings.length = 0;
+renderSavedScorings();
 process.stdout.write(JSON.stringify({latest, copied, earlier, earlierUse, cards, separateCopy, selectedHasHead, selectedScope, selectedFolded, historyMatches, unfolded, historyCounts,
-  unstarred, unmatchedCard, unmatchedFolded, emptyHistory: historyList.textContent, empty: selectedSavedFilterCard.textContent}));
+  unstarred, unmatchedCard, unmatchedFolded, emptyHistory: historyList.textContent, empty: selectedSavedScoringCard.textContent}));
 '''
     result = _run_node_json(program, {})
-    assert 'Latest savedFilter' in result['latest'] and 'Profile A' in result['latest']
+    assert 'Latest savedScoring' in result['latest'] and 'Profile A' in result['latest']
     assert result['copied'] == [True, True, True]
-    assert 'Earlier savedFilter' in result['earlier'] and 'Profile B' in result['earlier']
+    assert 'Earlier savedScoring' in result['earlier'] and 'Profile B' in result['earlier']
     assert 'processing' in result['earlier']
     assert 'Example CDR.xlsx' not in result['earlier']
     assert '1 CDR' in result['earlier']
@@ -193,23 +193,23 @@ process.stdout.write(JSON.stringify({latest, copied, earlier, earlierUse, cards,
     assert 'Filter ID: 20Latest' not in result['latest']
     assert result['unfolded'] == [[[False, 'false'], [False, 'false']], [[False, 'false'], [True, 'true']]]
     assert result['historyCounts'] == ['2 Favourite Scorings', '2 Favourite Scorings']
-    assert result['unstarred']['listed'] == ['20'] and 'Earlier savedFilter' in result['unstarred']['card']
+    assert result['unstarred']['listed'] == ['20'] and 'Earlier savedScoring' in result['unstarred']['card']
     assert result['unstarred']['counts'] == ['1 Favourite Scoring', '1 Favourite Scoring']
-    assert 'No Saved Filter matches the configuration' in result['unmatchedCard']
-    assert 'Calculate Scoring' in result['unmatchedCard'] and 'Earlier savedFilter' not in result['unmatchedCard']
+    assert 'No Saved Scoring matches the configuration' in result['unmatchedCard']
+    assert 'Calculate Scoring' in result['unmatchedCard'] and 'Earlier savedScoring' not in result['unmatchedCard']
     assert 'No Favourite Scorings yet' in result['emptyHistory']
-    assert result['empty'] == 'No Saved Filters yet'
+    assert result['empty'] == 'No Saved Scorings yet'
 
 
-def test_card_label_names_the_only_field_a_saved_filter_filters():
+def test_card_label_names_the_only_field_a_saved_scoring_filters():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     snippets = [
         _constant_source(script, 'valueOf'),
         _function_source(script, 'uniqueCatalogueValues'),
         _function_source(script, 'scoringVendorName'),
         _function_source(script, 'firstValue'),
-        _function_source(script, 'savedSavedFilterValues'),
-        _function_source(script, 'savedFilterScopes'),
+        _function_source(script, 'savedSavedScoringValues'),
+        _function_source(script, 'savedScoringScopes'),
     ]
     program = r"""
 const vm = require('node:vm');
@@ -220,16 +220,16 @@ vm.createContext(context);
 vm.runInContext(payload.snippets.join('\n') + `
   const empty = {Region: [], Cluster: [], City: [], Operator: [], Vendor: [], Campaign: ['@latest-campaign']};
   globalThis.scopes = [
-    savedFilterScopes({context_filters: empty}),
-    savedFilterScopes({context_filters: {...empty, City: ['London']}}),
-    savedFilterScopes({context_filters: {...empty, Region: ['Vendor A']}}),
-    savedFilterScopes({context_filters: {...empty, City: ['Leeds', 'London']}}),
-    savedFilterScopes({context_filters: {...empty, Region: ['Vendor A'], City: ['London']}}),
+    savedScoringScopes({context_filters: empty}),
+    savedScoringScopes({context_filters: {...empty, City: ['London']}}),
+    savedScoringScopes({context_filters: {...empty, Region: ['Vendor A']}}),
+    savedScoringScopes({context_filters: {...empty, City: ['Leeds', 'London']}}),
+    savedScoringScopes({context_filters: {...empty, Region: ['Vendor A'], City: ['London']}}),
     // Every Region of its CDRs is no filter.
-    savedFilterScopes({dataset_ids: [1], context_filters: {...empty, Region: ['Vendor A', 'Vendor B']}}),
+    savedScoringScopes({dataset_ids: [1], context_filters: {...empty, Region: ['Vendor A', 'Vendor B']}}),
     // The operators or vendors after the areas (Nationwide without them).
-    savedFilterScopes({context_filters: {...empty, Operator: ['-Three']}}),
-    savedFilterScopes({context_filters: {...empty, Operator: ['-Three'], City: ['London']}}),
+    savedScoringScopes({context_filters: {...empty, Operator: ['-Three']}}),
+    savedScoringScopes({context_filters: {...empty, Operator: ['-Three'], City: ['London']}}),
   ];`, context);
 process.stdout.write(JSON.stringify(context.scopes));
 """
@@ -242,59 +242,59 @@ process.stdout.write(JSON.stringify(context.scopes));
     assert scopes[2][0]['title'] == 'Region: Vendor A'
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     for dimension in ('all', 'region', 'cluster', 'city', 'operator', 'vendor'):
-        assert f'.saved-filter-scope[data-dimension="{dimension}"]' in template
+        assert f'.saved-scoring-scope[data-dimension="{dimension}"]' in template
     # The selected card folds and unfolds with Details, without opening the dropdown.
-    assert "const details = event.target.closest('[data-saved-filter-details]');" in script
-    assert '.selected-saved-filter.is-folded > :not(.saved-filter-tabs):not(.saved-filter-name):not(.saved-filter-item-top):not(.saved-filter-actions)' in template
-    # Beside it, the NR Mode of the Saved Filter as an outlined tab.
-    assert '.saved-filter-mode[data-nr-mode="sa"] { border-color: #be185d; color: #be185d; }' in template
+    assert "const details = event.target.closest('[data-saved-scoring-details]');" in script
+    assert '.selected-saved-scoring.is-folded > :not(.saved-scoring-tabs):not(.saved-scoring-name):not(.saved-scoring-item-top):not(.saved-scoring-actions)' in template
+    # Beside it, the NR Mode of the Saved Scoring as an outlined tab.
+    assert '.saved-scoring-mode[data-nr-mode="sa"] { border-color: #be185d; color: #be185d; }' in template
 
 
 @pytest.mark.parametrize('list_index', [0, 1])
 def test_choosing_job_from_either_list_loads_selected_results(list_index):
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    start = script.index("  async function savedFilterAction(event) {")
+    start = script.index("  async function savedScoringAction(event) {")
     end = script.index("\n  root.addEventListener('click',", start)
     program = r'''
 let loaded, persisted = false, focused = false, deleted, restored;
 const handlers = [];
-const savedFilterLists = [0, 1].map(() => ({addEventListener: (_name, callback) => {handlers.push(callback);}}));
-const savedFilters = [{id: '20'}, {id: '15'}];
-const savedFilterIdOf = savedFilter => savedFilter.id;
-let userSelectedSavedFilter = false, selectedSavedFilterId = '20', selectedSavedFilter = savedFilters[0];
+const savedScoringLists = [0, 1].map(() => ({addEventListener: (_name, callback) => {handlers.push(callback);}}));
+const savedScorings = [{id: '20'}, {id: '15'}];
+const savedScoringIdOf = savedScoring => savedScoring.id;
+let userSelectedSavedScoring = false, selectedSavedScoringId = '20', selectedSavedScoring = savedScorings[0];
 const root = {querySelector: () => ({scrollIntoView: () => {focused = true;}})};
-const savedFilterSelector = {open: true, contains: () => LIST_INDEX === 0, querySelector: () => ({focus: () => {focused = true;}})};
-const savedFilterSelectors = [{open: true, contains: () => false}, savedFilterSelector];
+const savedScoringSelector = {open: true, contains: () => LIST_INDEX === 0, querySelector: () => ({focus: () => {focused = true;}})};
+const savedScoringSelectors = [{open: true, contains: () => false}, savedScoringSelector];
 const persistScoringViewState = () => {persisted = true;};
-const restoreCalculationSelectionFromSavedFilter = savedFilter => {restored = savedFilter.id;};
+const restoreCalculationSelectionFromSavedScoring = savedScoring => {restored = savedScoring.id;};
 let unmatched = true;
 const showUnmatchedSelection = value => {unmatched = value;};
-let editingSavedFilter = null;
-const stopSavedFilterEdit = () => { editingSavedFilter = null; };
-const loadSavedFilter = async (savedFilter, force) => {loaded = {id: savedFilter.id, force};};
-const deleteSavedFilter = id => {deleted = id;};
-const savedFiltersUrl = '/api/scoring/saved-filters';
+let editingSavedScoring = null;
+const stopSavedScoringEdit = () => { editingSavedScoring = null; };
+const loadSavedScoring = async (savedScoring, force) => {loaded = {id: savedScoring.id, force};};
+const deleteSavedScoring = id => {deleted = id;};
+const savedScoringsUrl = '/api/scoring/saved-scorings';
 const used = [];
 const requestJson = (url, options) => { used.push([url, options.method]); return Promise.resolve({}); };
 let refreshed = 0;
-const refreshSavedFilters = async () => { refreshed += 1; };
-const unfoldedSavedFilters = new Map();
-''' + _function_source(script, 'unfoldedSavedFilterIds') + f'\nconst LIST_INDEX = {list_index};\n' + script[start:end] + f'\nconst handler = handlers[{list_index}];\n' + r'''
+const refreshSavedScorings = async () => { refreshed += 1; };
+const unfoldedSavedScorings = new Map();
+''' + _function_source(script, 'unfoldedSavedScoringIds') + f'\nconst LIST_INDEX = {list_index};\n' + script[start:end] + f'\nconst handler = handlers[{list_index}];\n' + r'''
 (async () => {
   // A click on the card folds or unfolds it, without opening it.
   const row = {classes: new Set(), classList: {toggle(name, force) { if (force) row.classes.add(name); else row.classes.delete(name); }}};
-  const card = {dataset: {savedFilterId: '15'}, attributes: {}, closest: () => row, setAttribute(key, value) { card.attributes[key] = value; }};
-  const cardClick = {target: {closest: selector => (selector === '[data-saved-filter-id]' ? card : null)}};
+  const card = {dataset: {savedScoringId: '15'}, attributes: {}, closest: () => row, setAttribute(key, value) { card.attributes[key] = value; }};
+  const cardClick = {target: {closest: selector => (selector === '[data-saved-scoring-id]' ? card : null)}};
   await handler(cardClick);
   const unfoldedOnce = [row.classes.has('is-expanded'), card.attributes['aria-expanded'], loaded === undefined];
   await handler(cardClick);
   const foldedAgain = [row.classes.has('is-expanded'), card.attributes['aria-expanded']];
   // Use Filter opens it.
-  await handler({target: {closest: selector => selector === '[data-saved-filter-use]' ? {dataset: {savedFilterUse: '15'}} : null}});
-  const selection = {loaded, persisted, focused, open: savedFilterSelectors.some(selector => selector.open), selectedSavedFilterId, userSelectedSavedFilter, restored,
+  await handler({target: {closest: selector => selector === '[data-saved-scoring-use]' ? {dataset: {savedScoringUse: '15'}} : null}});
+  const selection = {loaded, persisted, focused, open: savedScoringSelectors.some(selector => selector.open), selectedSavedScoringId, userSelectedSavedScoring, restored,
     unmatched};
   loaded = null;
-  await handler({target: {closest: selector => selector === '[data-delete-saved-filter-id]' ? {dataset: {deleteSavedFilterId: '20'}} : null}});
+  await handler({target: {closest: selector => selector === '[data-delete-saved-scoring-id]' ? {dataset: {deleteSavedScoringId: '20'}} : null}});
   await new Promise(resolve => setTimeout(resolve));
   process.stdout.write(JSON.stringify({unfoldedOnce, foldedAgain, selection, deleted, loaded, used, refreshed}));
 })();
@@ -303,13 +303,13 @@ const unfoldedSavedFilters = new Map();
     assert result['unfoldedOnce'] == [True, 'true', True] and result['foldedAgain'] == [False, 'false']
     assert result['selection'] == {
         'loaded': {'id': '15', 'force': True}, 'persisted': True, 'focused': True,
-        'open': False, 'selectedSavedFilterId': '15', 'userSelectedSavedFilter': True, 'restored': '15',
-        # Opened, its selection is a Saved Filter again: its card and results show.
+        'open': False, 'selectedSavedScoringId': '15', 'userSelectedSavedScoring': True, 'restored': '15',
+        # Opened, its selection is a Saved Scoring again: its card and results show.
         'unmatched': False,
     }
     assert result['deleted'] == '20' and result['loaded'] is None
     # Opening it with Use Filter counts as a use.
-    assert result['used'] == [['/api/scoring/saved-filters/15/use', 'POST']] and result['refreshed'] == 1
+    assert result['used'] == [['/api/scoring/saved-scorings/15/use', 'POST']] and result['refreshed'] == 1
 
 
 def test_export_actions_remain_visible_and_disabled_until_results_are_available():
@@ -323,7 +323,7 @@ const links = ['scoring', 'gap', 'ppt'].map(() => ({hidden: true, attributes: {}
   setAttribute(key, value) {this.attributes[key] = value;}}));
 // The CSV links sit above their tables; Export Report (PPT/Word) is in both toolbars.
 const exportLinks = {scoring: links[0], gap: links[1], ppt: [links[2]]};
-const exportBase = '/scoring/saved-filters';
+const exportBase = '/scoring/saved-scorings';
 const selectedTableMode = () => 'expanded';
 const selectedGapLayout = () => 'end';
 const selectedEnvironment = 'all';
@@ -347,7 +347,7 @@ process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched}))
     assert all(link == {'hidden': False, 'disabled': 'true', 'tabIndex': -1, 'href': '#'}
                for link in result['unavailable'])
     assert all(link['hidden'] is False and link['disabled'] == 'false' and link['tabIndex'] == 0
-               and link['href'].startswith('/scoring/saved-filters/21/export/') for link in result['available'])
+               and link['href'].startswith('/scoring/saved-scorings/21/export/') for link in result['available'])
     # Only the PowerPoint and Word take the KPI order of the GAP tables and the KPI GAP Profile.
     assert ['gap_kpi_order=all' in link['href'] for link in result['available']] == [False, False, True]
     assert result['reset'] == ['true', 'true', 'true']
@@ -418,32 +418,32 @@ def test_cdrs_used_show_four_cdrs_of_each_type_before_they_scroll():
     assert 'new MutationObserver(fitAutoCdrLists).observe(autoCdrGroups, {childList: true, subtree: true});' in script
 
 
-def test_move_up_and_down_move_the_checked_favourites_filters_one_place():
+def test_move_up_and_down_move_the_checked_favourite_scorings_one_place():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
-    bulk = template.split('data-saved-filters-bulk', 1)[1].split('</div>', 1)[0]
+    bulk = template.split('data-saved-scorings-bulk', 1)[1].split('</div>', 1)[0]
     # Move Up and Move Down come before Use newer CDRs.
-    assert bulk.index('data-saved-filters-move="up"') < bulk.index('data-saved-filters-move="down"') \
-        < bulk.index('data-saved-filters-use-newer')
+    assert bulk.index('data-saved-scorings-move="up"') < bulk.index('data-saved-scorings-move="down"') \
+        < bulk.index('data-saved-scorings-use-newer')
     # The bar stays at the top while the panel is scrolled, and the moved cards light up where they land.
-    assert '.saved-filters-bulk { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px));' in template
-    assert '.saved-filters-panel .saved-filter-row.is-moved .saved-filter-item { animation: saved-filter-moved' in template
+    assert '.saved-scorings-bulk { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px));' in template
+    assert '.saved-scorings-panel .saved-scoring-row.is-moved .saved-scoring-item { animation: saved-scoring-moved' in template
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    assert "root.querySelector('[data-saved-filters-bulk]')].filter(Boolean);" in script
+    assert "root.querySelector('[data-saved-scorings-bulk]')].filter(Boolean);" in script
     assert "rows.forEach(row => row.classList.add('is-moved'));" in script
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-const context = {checkedSavedFilterIds: new Set()};
+const context = {checkedSavedScoringIds: new Set()};
 vm.createContext(context);
 vm.runInContext(payload.snippets.join('\n') + `
   const order = ['1', '2', '3', '4', '5'];
-  const move = (checked, step) => { checkedSavedFilterIds.clear(); checked.forEach(id => checkedSavedFilterIds.add(id)); return movedSavedFilterOrder(order, step); };
+  const move = (checked, step) => { checkedSavedScoringIds.clear(); checked.forEach(id => checkedSavedScoringIds.add(id)); return movedSavedScoringOrder(order, step); };
   globalThis.orders = [
     move(['3'], -1), move(['3'], 1), move(['2', '3'], -1), move(['1', '3'], -1), move(['5'], 1), move(['2', '4'], 1),
   ];`, context);
 process.stdout.write(JSON.stringify(context.orders));
 """
-    orders = _run_node_json(program, {'snippets': [_function_source(script, 'movedSavedFilterOrder')]})
+    orders = _run_node_json(program, {'snippets': [_function_source(script, 'movedSavedScoringOrder')]})
     assert orders == [
         ['1', '3', '2', '4', '5'], ['1', '2', '4', '3', '5'], ['2', '3', '1', '4', '5'],
         # The first one cannot go up and the last one cannot go down; the others still move.
@@ -454,25 +454,25 @@ process.stdout.write(JSON.stringify(context.orders));
 def test_filter_navigator_opens_from_the_favourites_panel_and_both_selectors():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     # The tree button of the selector sits in its summary, beside the selected card; the panel has it beside its title.
-    for selector in template.split('<details class="saved-filter-selector" data-saved-filter-selector>')[1:]:
+    for selector in template.split('<details class="saved-scoring-selector" data-saved-scoring-selector>')[1:]:
         summary = selector.split('</summary>', 1)[0]
-        assert 'data-selected-saved-filter-card' in summary and 'data-saved-filter-navigator-open' in summary
-    panel = template.split('<details class="panel collapsible-panel saved-filters-panel" data-panel-state-key="scoring:favourites-filters" data-saved-filters-panel>', 1)[1].split('data-saved-filters-bulk', 1)[0]
-    assert 'data-saved-filter-navigator-open' in panel and 'Filter Navigator' in panel
+        assert 'data-selected-saved-scoring-card' in summary and 'data-saved-scoring-navigator-open' in summary
+    panel = template.split('<details class="panel collapsible-panel saved-scorings-panel" data-panel-state-key="scoring:favourite-scorings" data-saved-scorings-panel>', 1)[1].split('data-saved-scorings-bulk', 1)[0]
+    assert 'data-saved-scoring-navigator-open' in panel and 'Filter Navigator' in panel
     # The selector, the panel, the Favourite Scorings main button, the step of the start guide and the name of the
     # scoring shown.
-    assert template.count('data-saved-filter-navigator-open') == 5
-    dialog = template.split('<dialog class="saved-filter-navigator"', 1)[1].split('</dialog>', 1)[0]
-    for marker in ('data-saved-filter-navigator-search', 'role="tree"', 'data-saved-filter-navigator-tree',
-                   'data-saved-filter-navigator-count', 'data-saved-filter-navigator-close', 'data-saved-filter-navigator-manage'):
+    assert template.count('data-saved-scoring-navigator-open') == 5
+    dialog = template.split('<dialog class="saved-scoring-navigator"', 1)[1].split('</dialog>', 1)[0]
+    for marker in ('data-saved-scoring-navigator-search', 'role="tree"', 'data-saved-scoring-navigator-tree',
+                   'data-saved-scoring-navigator-count', 'data-saved-scoring-navigator-close', 'data-saved-scoring-navigator-manage'):
         assert marker in dialog
-    assert '.saved-filter-selector > summary { display: grid; grid-template-columns: minmax(0,1fr) auto auto;' in template
+    assert '.saved-scoring-selector > summary { display: grid; grid-template-columns: minmax(0,1fr) auto auto;' in template
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     # Choosing a Favourite Scoring uses it as Use Filter on its card does, and App Events say where it was chosen.
-    assert "useSavedFilter(savedFilter, {fromDropdown: origin, source: 'navigator'});" in script
-    assert "await useSavedFilter(savedFilter, {fromDropdown: savedFilterSelectors.find(selector => selector.contains(button))});" in script
+    assert "useSavedScoring(savedScoring, {fromDropdown: origin, source: 'navigator'});" in script
+    assert "await useSavedScoring(savedScoring, {fromDropdown: savedScoringSelectors.find(selector => selector.contains(button))});" in script
     # A click on the selected card opens the Filter Navigator, not the dropdown.
-    assert 'openSavedFilterNavigator(selector);' in script
+    assert 'openSavedScoringNavigator(selector);' in script
 
 
 def test_filter_navigator_search_finds_every_word_and_keeps_words_typed_together():
@@ -483,7 +483,7 @@ const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
 const context = {};
 vm.createContext(context);
 vm.runInContext(payload.snippets.join('\n') + `
-  const entry = (id, texts) => { const phrases = texts.map(savedFilterNavigatorWords); return {id, phrases, words: phrases.flat()}; };
+  const entry = (id, texts) => { const phrases = texts.map(savedScoringNavigatorWords); return {id, phrases, words: phrases.flat()}; };
   const entries = [
     entry('1', ['Latest Campaign - London', 'London', 'NSA', 'Latest campaign', '2026-Q3']),
     entry('2', ['Latest 2 Campaigns - SA - London', 'London', 'SA', 'Latest 2 campaigns', '2026-Q2 2026-Q3']),
@@ -491,17 +491,17 @@ vm.runInContext(payload.snippets.join('\n') + `
     entry('4', ['Latest 2 Campaigns - NSA vs SA - Manchester', 'Manchester', 'NSA vs SA', 'Latest 2 campaigns', '2026-Q2']),
     entry('5', ['Prévisión São Paulo', 'Nationwide', 'NSA', 'Previous campaign', '2026-Q2']),
   ];
-  const find = query => savedFilterNavigatorFound(entries, query).map(item => item.id);
+  const find = query => savedScoringNavigatorFound(entries, query).map(item => item.id);
   globalThis.results = {
-    words: savedFilterNavigatorWords('Latest 2 Campaigns - NSA vs SA (São Paulo)'),
+    words: savedScoringNavigatorWords('Latest 2 Campaigns - NSA vs SA (São Paulo)'),
     latestCamp: find('latest camp'), latestCam: find('latest cam'), latest: find('LATEST'), latest2: find('latest 2'),
     scattered: find('man sa lat 2'), reversed: find('camp latest'), sa: find('sa'), nsa: find('nsa'),
     year: find('2026'), number: find('20'), accents: find('sao prevision'), none: find('glasgow'), empty: find(''),
   };`, context);
 process.stdout.write(JSON.stringify(context.results));
 """
-    names = ('savedFilterNavigatorWords', 'savedFilterNavigatorWordMatches', 'savedFilterNavigatorMatches',
-             'savedFilterNavigatorFound')
+    names = ('savedScoringNavigatorWords', 'savedScoringNavigatorWordMatches', 'savedScoringNavigatorMatches',
+             'savedScoringNavigatorFound')
     results = _run_node_json(program, {'snippets': [_function_source(script, name) for name in names]})
     assert results['words'] == ['latest', '2', 'campaigns', 'nsa', 'vs', 'sa', 'sao', 'paulo']
     # Words typed together stay together when a Favourite Scoring has them together; otherwise they are found anywhere.
@@ -539,7 +539,7 @@ vm.runInContext(payload.snippets.join('\n') + `
     entry('8', 'London', 'NSA', 'Latest campaign', ['2026-Q2']),
     entry('9', 'Nationwide', 'NSA', 'Latest campaign', ['2026-Q3']),
   ];
-  const tree = savedFilterNavigatorTree(entries);
+  const tree = savedScoringNavigatorTree(entries);
   globalThis.results = {
     areas: tree.map(area => area.key),
     modes: tree.map(area => area.modes.map(mode => mode.mode + ':' + mode.entries.map(item => item.id).join(','))),
@@ -547,7 +547,7 @@ vm.runInContext(payload.snippets.join('\n') + `
   };`, context);
 process.stdout.write(JSON.stringify(context.results));
 """
-    results = _run_node_json(program, {'snippets': [_function_source(script, 'savedFilterNavigatorTree')]})
+    results = _run_node_json(program, {'snippets': [_function_source(script, 'savedScoringNavigatorTree')]})
     # Areas in the order of the list, NR Modes NSA, SA, NSA vs SA, Favourite Scorings in the order of the list.
     assert results['areas'] == ['London', 'Nationwide']
     assert results['modes'] == [['NSA:4,5,6,7,8', 'SA:1', 'NSA+SA:3'], ['NSA:2,9']]

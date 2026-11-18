@@ -1,4 +1,4 @@
-// Who deletes what the users of a workspace share (PPT Designer and Templates, Scoring Saved Filters, Methodologies and
+// Who deletes what the users of a workspace share (PPT Designer and Templates, Scoring Saved Scorings, Methodologies and
 // report configurations, Reporting Jobs and Bundle Report Template favourites): admins and super-admins everything, the
 // other roles only what they created. The pages lock Delete for the others; the server refuses it too.
 window.canDeleteShared = (createdBy) => {
@@ -4920,7 +4920,7 @@ function setupWorkspaceUserPickers() {
 const workspaceElementExportTargets = new Set([
   'designs', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
   'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-  'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
+  'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates',
   'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
 ]);
 
@@ -7233,7 +7233,7 @@ function importPackageContents(payload) {
     'auto-calculated-fields': 'Auto-calculated Fields',
     'query-builder-queries': 'Query Builder Queries', 'network-insights-favourites': 'Network Insights Favourites',
     'assistant-glossary': 'AI Assistant Glossary',
-    'bundle-report-template-favourites': 'Report Definitions', 'scoring-favourites-filters': 'Scoring & GAP Favourite Scorings',
+    'bundle-report-template-favourites': 'Report Definitions', 'scoring-favourite-scorings': 'Scoring & GAP Favourite Scorings',
     'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels',
     'scoring-excluded-calls': 'Scoring Excluded Calls',
     'reporting-jobs': 'Report Schedules',
@@ -8563,8 +8563,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         assistant_glossary: 'AI Assistant Glossary',
         'bundle-report-template-favourites': 'Report Definitions',
         bundle_report_template_favourites: 'Report Definitions',
-        'scoring-favourites-filters': 'Scoring & GAP Favourite Scorings',
-        scoring_favourites_filters: 'Scoring & GAP Favourite Scorings',
+        'scoring-favourite-scorings': 'Scoring & GAP Favourite Scorings',
+        scoring_favourite_scorings: 'Scoring & GAP Favourite Scorings',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
         scoring_report_templates: 'Scoring & GAP Report Templates',
         'scoring-export-panels': 'Scoring Export Panels',
@@ -9051,7 +9051,7 @@ async function showTextInputDialog(message, options = {}) {
   if (options.placeholder) input.placeholder = options.placeholder;
   if (options.maxLength) input.maxLength = options.maxLength;
   if (options.reference instanceof Node) {
-    // What the text is about (for example the filters of a Saved Filter being named), shown above the field.
+    // What the text is about (for example the filters of a Saved Scoring being named), shown above the field.
     const reference = document.createElement('div');
     reference.className = 'confirm-text-reference';
     reference.append(options.reference);
@@ -11113,7 +11113,7 @@ document.addEventListener('click', (event) => {
   if (!overlay) return;
   const close = () => { overlay.hidden = true; };
   document.querySelectorAll('[data-about-open]').forEach((button) => button.addEventListener('click', (event) => {
-    // (The version badge of the header is a link to the Changelog where there is no About.)
+    // (The title of the header is a link to the Changelog where there is no About.)
     event.preventDefault();
     overlay.hidden = false;
     overlay.querySelector('[data-about-close]')?.focus();

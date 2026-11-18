@@ -6,11 +6,12 @@
 ## Release: v0.12.7
 ### Release Date: 2026-11-18
 #### ⚠️ Breaking Changes:
+- **Scoring & GAP Analysis:** the Saved Filters are named **Saved Scorings** and the Favourites Filters **Favourite Scorings**, in the interface, the Help and internally (table `saved_scorings`, API `/api/scoring/saved-scorings`, App Events, export, transfer and backup element `scoring-favourite-scorings`): workspaces are migrated in place when they open, and the packages, backups and transfers made with earlier versions are still imported, while those made with this version need a server of this version or later.
 
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
-- **Web Interface:** the version badge of the header opens **About** instead of the Changelog, the logo of the application takes the page back to its top and its name opens the Changelog ([ticket #169](https://108.132.147.165:8443/tickets/169)).
+- **Web Interface:** the name of the application in the header opens **About**, its logo takes the page back to its top and the version badge opens the Changelog ([ticket #169](https://108.132.147.165:8443/tickets/169)).
 
 #### 🐛 Bug fixes:
 - **Non-Qualified Calls:** a Non-Qualified Calls indexing no longer runs for hours, holding up every other write of the workspace (a Scoring calculation among them), after a Reindex that a restart stopped while it replaced the population of the calls: the indexes of the population missing and the tables a Reindex left are put right once the application starts and as each indexing starts (App Event `nq_population_indexes_restored`), and a Reindex builds the indexes of the population of the tool's schema ([ticket #167](https://108.132.147.165:8443/tickets/167)).

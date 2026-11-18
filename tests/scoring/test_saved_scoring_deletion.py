@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from src.modules.core.repository import Repository, local_now_iso
 from tests.support.scoring_fixtures import scoring_configuration
 
@@ -30,50 +30,50 @@ def deletion_context(tmp_path, monkeypatch):
     engine = SimpleNamespace(METHOD_VERSION='deletion-test-v1',
                              required_input_columns=lambda kind, levels: ['Operator', 'score'],
                              calculate_scoring=calculate)
-    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    monkeypatch.setattr(saved_scorings, '_scoring_engine', lambda: engine)
     return repository, dataset_id, engine, calls
 
 
 @pytest.mark.parametrize('job_status', ['queued', 'completed', 'failed'])
 def test_delete_job_removes_results_cache_and_preserves_sources(deletion_context, job_status):
     repository, dataset_id, engine, calls = deletion_context
-    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    job, _ = saved_scorings.save_saved_scoring(repository, [dataset_id], [], 'NSA')
     if job_status == 'completed':
-        completed = saved_filters.calculate_saved_filter(repository, job['id'])
+        completed = saved_scorings.calculate_saved_scoring(repository, job['id'])
         assert completed['result']['scoring']
     elif job_status == 'failed':
         def fail(*args, **kwargs):
             raise ValueError('Test failure')
         engine.calculate_scoring = fail
-        assert saved_filters.calculate_saved_filter(repository, job['id'])['status'] == 'failed'
-    assert saved_filters.delete_saved_filter(repository, job['id']) is True
-    assert saved_filters.get_saved_filter(repository, job['id'], include_result=True) is None
-    assert saved_filters.list_saved_filters(repository) == []
+        assert saved_scorings.calculate_saved_scoring(repository, job['id'])['status'] == 'failed'
+    assert saved_scorings.delete_saved_scoring(repository, job['id']) is True
+    assert saved_scorings.get_saved_scoring(repository, job['id'], include_result=True) is None
+    assert saved_scorings.list_saved_scorings(repository) == []
     with repository.connection() as connection:
-        assert connection.execute('SELECT COUNT(*) FROM saved_filters WHERE id = ?', (job['id'],)).fetchone()[0] == 0
+        assert connection.execute('SELECT COUNT(*) FROM saved_scorings WHERE id = ?', (job['id'],)).fetchone()[0] == 0
     assert repository.get_dataset(dataset_id) is not None
     assert repository.dataset_row_count(dataset_id) == 1
-    fresh, reused = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    fresh, reused = saved_scorings.save_saved_scoring(repository, [dataset_id], [], 'NSA')
     assert not reused and fresh['id'] != job['id']
     if job_status == 'queued':
-        assert saved_filters.calculate_saved_filter(repository, job['id']) is None
+        assert saved_scorings.calculate_saved_scoring(repository, job['id']) is None
         assert calls == []
-    assert saved_filters.delete_saved_filter(repository, job['id']) is False
+    assert saved_scorings.delete_saved_scoring(repository, job['id']) is False
 
 
 def test_deleted_during_calculation_is_never_recreated(deletion_context):
     repository, dataset_id, engine, calls = deletion_context
-    job, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
+    job, _ = saved_scorings.save_saved_scoring(repository, [dataset_id], [], 'NSA')
 
     def delete_while_calculating(frames, levels, *, baseline_operator, configuration):
-        assert saved_filters.get_saved_filter(repository, job['id'])['status'] == 'processing'
-        assert saved_filters.delete_saved_filter(repository, job['id'])
+        assert saved_scorings.get_saved_scoring(repository, job['id'])['status'] == 'processing'
+        assert saved_scorings.delete_saved_scoring(repository, job['id'])
         return {'scoring': [{'operator': 'EE', 'weighted_points': 1000}]}
 
     engine.calculate_scoring = delete_while_calculating
-    assert saved_filters.calculate_saved_filter(repository, job['id']) is None
-    assert saved_filters.get_saved_filter(repository, job['id'], include_result=True) is None
-    assert saved_filters.list_saved_filters(repository) == []
+    assert saved_scorings.calculate_saved_scoring(repository, job['id']) is None
+    assert saved_scorings.get_saved_scoring(repository, job['id'], include_result=True) is None
+    assert saved_scorings.list_saved_scorings(repository) == []
 
 
 def test_deleted_during_loading_stops_before_calculation(deletion_context, monkeypatch):
@@ -85,24 +85,24 @@ def test_deleted_during_loading_stops_before_calculation(deletion_context, monke
     repository.update_dataset_profile(second_id, status='ready', progress=100, dataset_kind='data',
                                       nr_mode='NSA', row_count=1, column_count=2, processed_at=local_now_iso())
     repository.replace_cdr_catalogue(second_id, campaigns=['2026-Q2'], vendors=[], regions=[], cities=[])
-    job, _ = saved_filters.save_saved_filter(repository, [dataset_id, second_id], [], 'NSA')
+    job, _ = saved_scorings.save_saved_scoring(repository, [dataset_id, second_id], [], 'NSA')
     original_load = repository.load_dataset_rows
     loads = []
 
     def delete_while_loading(*args, **kwargs):
         result = original_load(*args, **kwargs)
         loads.append(args[0])
-        assert saved_filters.delete_saved_filter(repository, job['id'])
+        assert saved_scorings.delete_saved_scoring(repository, job['id'])
         return result
 
     monkeypatch.setattr(repository, 'load_dataset_rows', delete_while_loading)
-    assert saved_filters.calculate_saved_filter(repository, job['id']) is None
+    assert saved_scorings.calculate_saved_scoring(repository, job['id']) is None
     assert loads == [dataset_id]
     assert calls == []
-    assert saved_filters.get_saved_filter(repository, job['id']) is None
+    assert saved_scorings.get_saved_scoring(repository, job['id']) is None
 
 
-def test_the_checked_saved_filters_are_deleted_together(client):
+def test_the_checked_saved_scorings_are_deleted_together(client):
     import json
     from pathlib import Path
 
@@ -118,20 +118,20 @@ def test_the_checked_saved_filters_are_deleted_together(client):
     repository.replace_dataset_rows(dataset_id, pd.DataFrame({'Operator': ['EE'], 'score': [4]}))
     repository.update_dataset_profile(dataset_id, status='ready', progress=100, dataset_kind='data',
                                       nr_mode='NSA', row_count=1, column_count=2, processed_at=local_now_iso())
-    first, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', baseline_operator='EE')
-    second, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', baseline_operator='O2')
-    saved_filters.update_saved_filter(repository, first['id'], name='First', pinned=True)
-    kept, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA', baseline_operator='VF')
+    first, _ = saved_scorings.save_saved_scoring(repository, [dataset_id], [], 'NSA', baseline_operator='EE')
+    second, _ = saved_scorings.save_saved_scoring(repository, [dataset_id], [], 'NSA', baseline_operator='O2')
+    saved_scorings.update_saved_scoring(repository, first['id'], name='First', pinned=True)
+    kept, _ = saved_scorings.save_saved_scoring(repository, [dataset_id], [], 'NSA', baseline_operator='VF')
 
-    response = client.post('/api/scoring/saved-filters/delete', json={'ids': [first['id'], second['id'], first['id'], 999999]})
+    response = client.post('/api/scoring/saved-scorings/delete', json={'ids': [first['id'], second['id'], first['id'], 999999]})
     assert response.status_code == 200
     assert response.json() == {'deleted': [first['id'], second['id']], 'missing': [999999]}
-    # Only the Saved Filters checked are deleted; their CDRs stay.
-    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [kept['id']]
+    # Only the Saved Scorings checked are deleted; their CDRs stay.
+    assert [item['id'] for item in saved_scorings.list_saved_scorings(repository)] == [kept['id']]
     assert repository.get_dataset(dataset_id) is not None
-    details = next(json.loads(row['details']) for row in repository.list_logs() if row['action'] == 'delete_saved_filters')
+    details = next(json.loads(row['details']) for row in repository.list_logs() if row['action'] == 'delete_saved_scorings')
     assert [item['name'] for item in details['deleted']] == ['First', second['name']] and details['missing'] == [999999]
 
     # The Favourite Scorings panel offers the Delete button beside Use newer CDRs.
     page = client.get('/scoring').text
-    assert 'data-saved-filters-delete' in page
+    assert 'data-saved-scorings-delete' in page

@@ -4,7 +4,7 @@ import json
 import re
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from tests.scoring.test_scoring_api import scoring_api
 
 
@@ -44,14 +44,14 @@ def test_scoring_hierarchy_controls_and_saved_job_order(scoring_api):
     assert positions == sorted(positions)
     payload = {'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA',
                'aggregation_levels': ['Region', 'Operator', 'Campaign']}
-    response = client.post('/api/scoring/saved-filters', json=payload)
+    response = client.post('/api/scoring/saved-scorings', json=payload)
     assert response.status_code == 200, response.text
-    job = response.json()['saved_filter']
+    job = response.json()['saved_scoring']
     assert job['aggregation_levels'] == ['Campaign', 'Operator', 'Region']
     assert job['aggregation_contract_version'] == 2
     assert job['aggregation_hierarchy'] == SAVED_HIERARCHY
     assert client.put('/api/scoring/aggregation-hierarchy', json={'levels': DEFAULT_HIERARCHY}).status_code == 200
-    historical = saved_filters.get_saved_filter(scoring_api['repository'], job['id'])
+    historical = saved_scorings.get_saved_scoring(scoring_api['repository'], job['id'])
     assert historical['aggregation_hierarchy'] == SAVED_HIERARCHY
 
 

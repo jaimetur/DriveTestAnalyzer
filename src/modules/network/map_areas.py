@@ -583,7 +583,7 @@ class AreaIndex:
 
     def document_of(self, loaded: Iterable[tuple[str, list[str]]], used: Iterable[str]) -> dict[str, Any]:
         """``document`` for the countries ``loaded`` (see loaded): those read by the processes that placed the tests
-        (see saved_filters._draw_points_loss_apart), in the order they read them."""
+        (see saved_scorings._draw_points_loss_apart), in the order they read them."""
         used = set(used)
         boundaries: dict[str, list] = {}
         countries = []

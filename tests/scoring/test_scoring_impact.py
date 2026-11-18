@@ -13,7 +13,7 @@ import pytest
 from pptx import Presentation
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.scoring import saved_filters, scoring_cache, scoring_impact
+from src.modules.scoring import saved_scorings, scoring_cache, scoring_impact
 from src.modules.core.repository import Repository, local_now_iso
 from src.modules.scoring.scoring import calculate_scoring
 from src.modules.scoring.scoring_config import validate_scoring_configuration
@@ -255,7 +255,7 @@ def test_the_areas_scale_all_environments_as_the_geographical_areas(frames):
     assert all(row['leader_before'] in row['operators'] and row['leader_after'] in row['operators'] for row in cities.values())
 
 
-# ---- The comparison of a Saved Filter, from its CDRs ---------------------------------------------------------------------
+# ---- The comparison of a Saved Scoring, from its CDRs ---------------------------------------------------------------------
 
 def _add_cdrs(repository: Repository, tmp_path: Path, frames: dict[str, pd.DataFrame], campaign: str) -> list[int]:
     ids = []
@@ -286,7 +286,7 @@ def workspace(client, tmp_path):
     data = synthetic_cdr_frames(campaigns=CAMPAIGNS, repeats=1)
     data = {kind: frame.assign(Region=frame['City'].map(lambda city: 'South' if city in SOUTH else 'North')) for kind, frame in data.items()}
     ids = [*_add_cdrs(repository, tmp_path, data, '2026-Q2'), *_add_cdrs(repository, tmp_path, data, '2026-Q3')]
-    saved, _created = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA', username='admin', baseline_operator='EE',
+    saved, _created = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA', username='admin', baseline_operator='EE',
                                                       scoring_profile_id='by-campaign')
     return {'client': client, 'repository': repository, 'filter_id': saved['id'], 'ids': ids}
 
@@ -304,16 +304,16 @@ def _wait_inline(monkeypatch) -> list:
     return jobs
 
 
-def test_the_comparison_of_a_saved_filter_is_calculated_once_and_exported(workspace, monkeypatch):
+def test_the_comparison_of_a_saved_scoring_is_calculated_once_and_exported(workspace, monkeypatch):
     client, repository, filter_id = workspace['client'], workspace['repository'], workspace['filter_id']
     jobs = _wait_inline(monkeypatch)
-    offered = client.get(f'/api/scoring/saved-filters/{filter_id}/impact/options').json()
+    offered = client.get(f'/api/scoring/saved-scorings/{filter_id}/impact/options').json()
     # The latest campaign and the nearest earlier one with another methodology, by default.
     defaults = offered['defaults']
     assert defaults['mode'] == 'campaigns' and defaults['campaign_b'] == '2026-Q3' and defaults['campaign_a'] == '2026-Q2'
     assert {entry['value']: entry['methodology_name'] for entry in offered['campaigns']['NSA']} == {'2026-Q3': 'NetCheck 2026-Q3', '2026-Q2': 'NetCheck 2026'}
     assert defaults['methodology_a'] == 'netcheck-2026' and defaults['methodology_b'] == 'netcheck-2026-q3'
-    response = client.get(f'/api/scoring/saved-filters/{filter_id}/impact')
+    response = client.get(f'/api/scoring/saved-scorings/{filter_id}/impact')
     assert response.status_code == 200, response.text
     state = response.json()
     assert state['status'] == 'completed' and len(jobs) == 1
@@ -326,31 +326,31 @@ def test_the_comparison_of_a_saved_filter_is_calculated_once_and_exported(worksp
     assert part['changes']['counts']['added'] == 3 and 'bridge' not in part and part['areas']['City'] and not impact['maps_error']
     assert part['conclusions']['headline'] and part['drivers']
     # While it is calculated, only how it goes, by its key.
-    status = client.get(f'/api/scoring/saved-filters/{filter_id}/impact/status', params={'key': impact['key']}).json()
+    status = client.get(f'/api/scoring/saved-scorings/{filter_id}/impact/status', params={'key': impact['key']}).json()
     assert status['status'] == 'completed' and status['impact']['key'] == impact['key']
-    assert client.get(f'/api/scoring/saved-filters/{filter_id}/impact/status', params={'key': 'nope'}).status_code == 400
+    assert client.get(f'/api/scoring/saved-scorings/{filter_id}/impact/status', params={'key': 'nope'}).status_code == 400
     # The maps, per field and measure, with their shapes.
-    map_url = f'/api/scoring/saved-filters/{filter_id}/impact/map'
+    map_url = f'/api/scoring/saved-scorings/{filter_id}/impact/map'
     city = client.get(map_url, params={'key': impact['key'], 'field': 'City', 'environment': 'Combined'}).json()
     assert city['field'] == 'City' and city['rows'] and city['analysis']['operators'] and city['shape'] == 'places'
     assert client.get(map_url, params={'key': impact['key'], 'measure': 'unknown'}).status_code == 400
     assert client.get(map_url, params={'key': '0' * 64}).status_code == 409
-    assert 'boundaries' in client.get(f'/api/scoring/saved-filters/{filter_id}/impact/boundaries/Region', params={'key': impact['key']}).json()
+    assert 'boundaries' in client.get(f'/api/scoring/saved-scorings/{filter_id}/impact/boundaries/Region', params={'key': impact['key']}).json()
     # Asked again, it is read from the cache.
-    assert client.get(f'/api/scoring/saved-filters/{filter_id}/impact').json()['impact']['key'] == impact['key'] and len(jobs) == 1
+    assert client.get(f'/api/scoring/saved-scorings/{filter_id}/impact').json()['impact']['key'] == impact['key'] and len(jobs) == 1
     with repository.connection() as connection:
         events = [row[0] for row in connection.execute("SELECT action FROM audit_logs WHERE action LIKE '%methodology_impact%'").fetchall()]
     assert set(events) == {'scoring_methodology_impact_requested', 'scoring_methodology_impact_calculated'}
     # Two methodologies on the tests of one campaign have no bridge.
-    other = client.get(f'/api/scoring/saved-filters/{filter_id}/impact', params={
+    other = client.get(f'/api/scoring/saved-scorings/{filter_id}/impact', params={
         'mode': 'methodologies', 'methodology_a': 'netcheck-2026-q3', 'methodology_b': 'netcheck-2026', 'campaign': '2026-Q2'}).json()
     assert other['impact']['methodology_of'] == {} and other['impact']['before']['profile_name'] == 'NetCheck 2026-Q3' and len(jobs) == 2
     # The exports.
     query = {'mode': 'campaigns'}
-    csv_response = client.get(f'/scoring/saved-filters/{filter_id}/impact/export/csv', params=query)
+    csv_response = client.get(f'/scoring/saved-scorings/{filter_id}/impact/export/csv', params=query)
     rows = list(csv.DictReader(StringIO(csv_response.content.decode('utf-8-sig'))))
     assert {row['Panel'] for row in rows} == {'What changed', 'Scoring', 'Causes', 'Category', 'KPI', 'Scoring of the area', 'GAP', 'Points Lost', 'Map (National points lost)'}
-    deck = client.get(f'/scoring/saved-filters/{filter_id}/impact/export/ppt', params=query)
+    deck = client.get(f'/scoring/saved-scorings/{filter_id}/impact/export/ppt', params=query)
     assert deck.status_code == 200, deck.text
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in Presentation(BytesIO(deck.content)).slides if slide.shapes.title is not None]
     assert any('What changed' in title for title in titles) and any('Per category' in title for title in titles)
@@ -358,9 +358,9 @@ def test_the_comparison_of_a_saved_filter_is_calculated_once_and_exported(worksp
         assert connection.execute("SELECT COUNT(*) FROM audit_logs WHERE action LIKE 'export_scoring_impact_%'").fetchone()[0] == 2
 
 
-def test_a_campaign_keeps_the_scope_of_the_saved_filter_and_refuses_what_cannot_be_compared(workspace, monkeypatch):
+def test_a_campaign_keeps_the_scope_of_the_saved_scoring_and_refuses_what_cannot_be_compared(workspace, monkeypatch):
     client, repository, filter_id = workspace['client'], workspace['repository'], workspace['filter_id']
-    url = f'/api/scoring/saved-filters/{filter_id}/impact'
+    url = f'/api/scoring/saved-scorings/{filter_id}/impact'
     assert client.get(url, params={'mode': 'campaigns', 'campaign_a': '2026-Q2', 'campaign_b': '2026-Q2'}).status_code == 400
     assert client.get(url, params={'mode': 'methodologies', 'methodology_a': 'netcheck-2026', 'methodology_b': 'netcheck-2026'}).status_code == 400
     assert client.get(url, params={'mode': 'methodologies', 'campaign': 'unknown'}).status_code == 400
@@ -373,10 +373,10 @@ def test_a_campaign_keeps_the_scope_of_the_saved_filter_and_refuses_what_cannot_
     sa = scoring_impact.normalize_selection({'nr_mode': 'SA'}, offered)
     assert (sa['campaign_a'], sa['campaign_b'], sa['campaign']) == ('Q2-SA', 'Q3-SA', 'Q3-SA')
     assert scoring_impact.normalize_selection({'nr_mode': 'Unknown'}, offered)['nr_mode'] == 'NSA'
-    saved_filter = saved_filters.get_saved_filter(repository, filter_id, include_internal_snapshot=True)
-    saved_filter['context_filters'] = {**saved_filter['context_filters'], 'Operator': ['EE', 'Three UK']}
+    saved_scoring = saved_scorings.get_saved_scoring(repository, filter_id, include_internal_snapshot=True)
+    saved_scoring['context_filters'] = {**saved_scoring['context_filters'], 'Operator': ['EE', 'Three UK']}
     # The earlier campaign comes first whichever was chosen first, and the filters stay.
-    prepared = scoring_impact.prepare_impact(repository, saved_filter, {'mode': 'campaigns', 'campaign_a': '2026-Q3', 'campaign_b': '2026-Q2'})
+    prepared = scoring_impact.prepare_impact(repository, saved_scoring, {'mode': 'campaigns', 'campaign_a': '2026-Q3', 'campaign_b': '2026-Q2'})
     assert prepared['selection']['campaign_a'] == '2026-Q2' and prepared['selection']['campaign_b'] == '2026-Q3'
     assert prepared['runs']['before']['campaign'] == prepared['runs']['after']['campaign'] == '2026-Q3' and set(prepared['runs']) == {'before', 'after'}
     assert prepared['methodology_of'] == {'before': '26-Q2', 'after': '26-Q3'} or set(prepared['methodology_of']) == {'before', 'after'}
@@ -389,7 +389,7 @@ def test_a_campaign_keeps_the_scope_of_the_saved_filter_and_refuses_what_cannot_
     same['profiles'][1]['campaigns'] = {}
     same['profiles'][0]['campaigns'] = {'from': '2026-Q1', 'to': ''}
     repository.replace_scoring_profiles(same)
-    alike = scoring_impact.prepare_impact(repository, saved_filter, {'mode': 'campaigns'})
+    alike = scoring_impact.prepare_impact(repository, saved_scoring, {'mode': 'campaigns'})
     assert alike['runs']['before'] is alike['runs']['after']
     result = scoring_impact.calculate_impact(repository, alike)
     assert result['same_methodology'] and result['scorings'] == {}
@@ -400,7 +400,7 @@ def test_a_campaign_keeps_the_scope_of_the_saved_filter_and_refuses_what_cannot_
 def test_a_failed_calculation_says_why_and_can_be_tried_again(workspace, monkeypatch):
     client, repository, filter_id = workspace['client'], workspace['repository'], workspace['filter_id']
     _wait_inline(monkeypatch)
-    url = f'/api/scoring/saved-filters/{filter_id}/impact'
+    url = f'/api/scoring/saved-scorings/{filter_id}/impact'
     with monkeypatch.context() as patch:
         patch.setattr(scoring_impact, 'calculate_impact', lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError('No rows')))
         state = client.get(url).json()
@@ -464,15 +464,15 @@ def test_the_maps_reach_the_document(frames):
 
 def test_the_key_of_a_comparison_changes_with_what_it_depends_on(workspace):
     repository, filter_id = workspace['repository'], workspace['filter_id']
-    saved_filter = saved_filters.get_saved_filter(repository, filter_id, include_internal_snapshot=True)
-    key = scoring_impact.prepare_impact(repository, saved_filter)['key']
-    assert scoring_impact.prepare_impact(repository, saved_filter)['key'] == key
-    assert scoring_impact.prepare_impact(repository, saved_filter, {'mode': 'methodologies'})['key'] != key
+    saved_scoring = saved_scorings.get_saved_scoring(repository, filter_id, include_internal_snapshot=True)
+    key = scoring_impact.prepare_impact(repository, saved_scoring)['key']
+    assert scoring_impact.prepare_impact(repository, saved_scoring)['key'] == key
+    assert scoring_impact.prepare_impact(repository, saved_scoring, {'mode': 'methodologies'})['key'] != key
     profiles = copy.deepcopy(repository.get_scoring_profiles())
     profile = next(item for item in profiles['profiles'] if item['id'] == 'netcheck-2026-q3')
     profile['configuration']['metrics'][0]['contexts']['Drive - City']['thresholds']['medium'] = 97.0
     repository.replace_scoring_profiles(profiles)
-    assert scoring_impact.prepare_impact(repository, saved_filter)['key'] != key
+    assert scoring_impact.prepare_impact(repository, saved_scoring)['key'] != key
     assert scoring_cache.read(repository, scoring_impact.CACHE_KIND, key) is None
 
 

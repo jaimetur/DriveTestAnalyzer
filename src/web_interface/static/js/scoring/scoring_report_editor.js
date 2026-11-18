@@ -25,7 +25,7 @@
   const TREND_OPTIONS = [['trend', 'Scoring Trend (two campaigns or more)'], ['areas', 'National & Country Areas Trends']];
   const POINTS_OPTIONS = [
     ['stake', 'Where the points go'], ['kpis', 'Points lost per KPI'], ['map', 'Points lost per City / Region map, by points and per 1,000 tests'],
-    ['postal_map', 'Points lost per Postal Code map (Saved Filters with Postal Codes)'], ['vendors', 'Points lost per Vendor'],
+    ['postal_map', 'Points lost per Postal Code map (Saved Scorings with Postal Codes)'], ['vendors', 'Points lost per Vendor'],
     ['site_types', 'Points lost per kind of site'], ['ran_vendors', 'Points lost per RAN Vendor (host and vendor)'],
     ['site_classes', 'Points lost per site type (Legacy, eMOCN, NNS)'], ['sites', 'Sites to review'], ['stretches', 'Route stretches'],
   ];

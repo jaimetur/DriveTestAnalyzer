@@ -164,7 +164,7 @@ def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle
             _box(slide, left + .15, where_top - .08, width - .3, .01, '#D9DEE3')
             _text(slide, 'Where its points are', left + .15, where_top, width - .3, .22, size=8.5, bold=True, color=MUTED)
             if card['settings'] is None:
-                _text(slide, 'Recalculate the Saved Filter (Scoring Calculation) to see them.', left + .15, where_top + .27, width - .3, .22,
+                _text(slide, 'Recalculate the Saved Scoring (Scoring Calculation) to see them.', left + .15, where_top + .27, width - .3, .22,
                       size=8.5, color=MUTED, anchor=MSO_ANCHOR.MIDDLE)
             for row, (setting, value) in enumerate((card['settings'] or {}).items()):
                 y = where_top + .27 + row * .26

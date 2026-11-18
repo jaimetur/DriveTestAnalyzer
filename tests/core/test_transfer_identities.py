@@ -9,7 +9,7 @@ from pathlib import Path
 import src.DriveTestAnalyzer as core
 from src.modules.reporting import bundle_report_templates as brt
 from src.modules.network_insights import network_insights_favourites as ni_favourites
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from src.modules.core.deletion_rights import (
     AUTO_CALCULATED_FIELDS, PPT_DESIGNER, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, creators, set_creator,
 )
@@ -19,7 +19,7 @@ from src.modules.core.transfer_identities import (
     SCORING_REPORT_CONFIGURATIONS as REPORT_IDENTITIES, ItemMatcher, identities, imported_creator, move_identity,
 )
 from tests.support.scoring_fixtures import load_initial_scoring_configuration
-from tests.scoring.test_saved_filters_reuse import _favourite, _starred_names, _three_cdrs
+from tests.scoring.test_saved_scorings_reuse import _favourite, _starred_names, _three_cdrs
 
 
 def _workspace(name: str):
@@ -222,7 +222,7 @@ def test_the_preview_of_reports_tells_only_what_would_really_change(client, tmp_
     assert brt.definition_changes(before, after) == []
 
 
-def test_favourites_filters_take_the_order_of_the_package_when_only_it_changes(client, tmp_path):
+def test_favourite_scorings_take_the_order_of_the_package_when_only_it_changes(client, tmp_path):
     source, source_repo = _workspace('Filters source')
     destination, destination_repo = _workspace('Filters destination')
     ids = {}
@@ -231,17 +231,17 @@ def test_favourites_filters_take_the_order_of_the_package_when_only_it_changes(c
         repository.replace_scoring_configuration(load_initial_scoring_configuration())
         ids[repository] = _three_cdrs(repository, folder)
     regions = {region: _favourite(source_repo, ids[source_repo], region) for region in ('North', 'South', 'East')}
-    saved_filters.reorder_saved_filters(source_repo, [regions[region] for region in ('North', 'South', 'East')])
-    _transfer('scoring-favourites-filters', source, destination, tmp_path)
+    saved_scorings.reorder_saved_scorings(source_repo, [regions[region] for region in ('North', 'South', 'East')])
+    _transfer('scoring-favourite-scorings', source, destination, tmp_path)
     assert _starred_names(destination_repo) == ['North', 'South', 'East']
 
-    saved_filters.reorder_saved_filters(source_repo, [regions[region] for region in ('East', 'North', 'South')])
+    saved_scorings.reorder_saved_scorings(source_repo, [regions[region] for region in ('East', 'North', 'South')])
     package = tmp_path / 'order.zip'
-    core.build_export_archive_file('scoring-favourites-filters', package, [source.id])
+    core.build_export_archive_file('scoring-favourite-scorings', package, [source.id])
     [preview] = core.preview_import_archive(package, core.read_import_manifest(package), [destination.id], 'super')['packages']
     # Only the order differs: the preview tells it, and leaves the package checked.
     assert preview['changed'] and 'take the order of the package' in json.dumps(preview['sections'])
-    assert 'took the order of the package' in _transfer('scoring-favourites-filters', source, destination, tmp_path)
+    assert 'took the order of the package' in _transfer('scoring-favourite-scorings', source, destination, tmp_path)
     assert _starred_names(destination_repo) == ['East', 'North', 'South']
     [preview] = core.preview_import_archive(package, core.read_import_manifest(package), [destination.id], 'super')['packages']
     assert (preview['changed'], preview['sections']) == (False, [])
@@ -855,7 +855,7 @@ def test_the_nq_calls_configuration_and_the_follow_up_of_the_calls_tell_what_cha
     assert compare(package, element_items('nq-call-tracking', tracking), package).details == [[]]
 
 
-def test_favourites_filters_with_a_campaign_choice_are_compared_without_the_cdrs_of_the_exporting_server():
+def test_favourite_scorings_with_a_campaign_choice_are_compared_without_the_cdrs_of_the_exporting_server():
     from src.modules.cdr.cdr_auto_selection import LATEST_TWO_CAMPAIGNS
     from src.modules.core.import_changes import element_items, predict
 
@@ -864,8 +864,8 @@ def test_favourites_filters_with_a_campaign_choice_are_compared_without_the_cdrs
                  'cdrs': [{'sha256': sha, 'name': f'{sha}.csv', 'kind': 'data'} for sha in cdrs],
                  'baseline_operator': 'Vodafone', 'context_filters': {'Campaign': [campaign]}, 'scoring_profile_id': '',
                  'area_summary': None, 'created_by': 'super'}
-        return element_items('scoring-favourites-filters', {'format': 'drivetest-analyzer-saved-filters', 'version': 1,
-                                                            'saved_filters': [entry]})
+        return element_items('scoring-favourite-scorings', {'format': 'drivetest-analyzer-saved-scorings', 'version': 1,
+                                                            'saved_scorings': [entry]})
 
     # The server that exports it has a newer campaign: Latest 2 campaigns stands for other CDRs there, not another filter.
     changes = predict(items(['b', 'c', 'd'], LATEST_TWO_CAMPAIGNS), items(['a', 'b', 'c'], LATEST_TWO_CAMPAIGNS))

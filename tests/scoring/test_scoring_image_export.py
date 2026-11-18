@@ -17,9 +17,9 @@ APP_STYLES = PROJECT_ROOT / 'src/web_interface/static/css/core/app.css'
 def test_downloaded_scoring_images_and_failures_are_recorded_in_app_events(client, monkeypatch):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     record = {'id': 9, 'name': 'Q3 London', 'pinned': True, 'status': 'completed'}
-    monkeypatch.setattr(app_module, 'get_saved_filter', lambda _repository, filter_id: record if filter_id == 9 else None)
+    monkeypatch.setattr(app_module, 'get_saved_scoring', lambda _repository, filter_id: record if filter_id == 9 else None)
     downloaded = {
-        'saved_filter_id': 9, 'tab': 'Scoring Charts', 'kind': 'chart', 'title': 'Best Network Scoring per Service',
+        'saved_scoring_id': 9, 'tab': 'Scoring Charts', 'kind': 'chart', 'title': 'Best Network Scoring per Service',
         'environment': 'All Environments', 'theme': 'ericsson', 'file_name': 'Best Network Scoring per Service - All Environments.png',
         'format': 'png', 'width': 838, 'height': 720,
     }
@@ -38,10 +38,10 @@ def test_downloaded_scoring_images_and_failures_are_recorded_in_app_events(clien
     assert image['username'] == 'super'
     assert app_event_origin(image['action'], json.loads(image['details']), image['origin']) == 'module:scoring'
     assert describe_app_event(image['action'], json.loads(image['details'])).startswith(
-        'Export scoring image: saved filter ID 9 (favourite), name Q3 London, tab Scoring Charts, kind chart')
+        'Export scoring image: saved scoring ID 9 (favourite), name Q3 London, tab Scoring Charts, kind chart')
     [failure] = events['export_scoring_image_failed']
     details = json.loads(failure['details'])
-    assert details['error'] == 'The browser could not draw it.' and details['saved_filter_id'] is None
+    assert details['error'] == 'The browser could not draw it.' and details['saved_scoring_id'] is None
     assert details['kind'] == 'table' and details['title'] == 'KPI GAP Profile — O2 UK · GAP to EE per KPI'
     assert 'destination' not in json.loads(image['details'])
 
@@ -111,7 +111,7 @@ def test_scoring_results_place_one_download_button_over_the_chart_or_table_under
     assert 'for (const [element, left] of [[button, right - size.width], [copy, right - size.width * 2 - 6]]) {' in buttons
     assert 'const draw = !copy ? window.downloadElementImage : clipboard ? window.copyElementImage : window.drawElementImage;' in buttons
     assert '.element-image-button.element-image-copy.is-copied {' in styles
-    # The zoom buttons are left out of the image, and every download or copy (or failure) is recorded with the Saved Filter.
+    # The zoom buttons are left out of the image, and every download or copy (or failure) is recorded with the Saved Scoring.
     # (The name of an area before the pills of its chart is left out: its image is titled with it.)
     assert ("const IMAGE_EXCLUDED = '.scoring-map-zoom, .scoring-map-zoom-rect, .scoring-content-zoom-rect, "
             ".scoring-area-trend-name';") in script

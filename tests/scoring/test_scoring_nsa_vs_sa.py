@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.modules.scoring import saved_filters, scoring_history
+from src.modules.scoring import saved_scorings, scoring_history
 from src.modules.cdr.column_names import use_campaign_map
 from src.modules.cdr.nr_mode import (
     NSA_VS_SA, campaign_with_nr_mode, normalize_scoring_nr_mode, nr_mode_label, nr_modes_of,
@@ -93,19 +93,19 @@ def test_nsa_vs_sa_is_not_offered_with_one_nr_mode(tmp_path):
                                                     ('UK_Q3_NSA_2026', 'UK_Q3_SA_2026')])
 def test_nsa_vs_sa_scores_each_nr_mode_apart_as_its_own_calculation(tmp_path, sa_campaign, sa_label):
     repository, ids = _workspace(tmp_path, sa_campaign)
-    both, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
+    both, _ = saved_scorings.save_saved_scoring(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
                                               baseline_operator='EE')
     assert both['nr_mode'] == NSA_VS_SA and 'Campaign' in both['levels']
-    result = saved_filters.calculate_saved_filter(repository, both['id'])
+    result = saved_scorings.calculate_saved_scoring(repository, both['id'])
     assert result['status'] == 'completed', result['error']
     combined = result['result']
     assert {row['campaign'] for row in combined['totals']} == {'UK_Q3_NSA_2026', sa_label}
 
     # The NSA and SA scores are those of each NR Mode on its own: the SA operators are no peers of the NSA ones.
-    nsa, _ = saved_filters.save_saved_filter(repository, ids['NSA'], ['Operator', 'Campaign'], 'NSA', baseline_operator='EE')
-    sa, _ = saved_filters.save_saved_filter(repository, ids['SA'], ['Operator', 'Campaign'], 'SA', baseline_operator='EE')
-    nsa_result = saved_filters.calculate_saved_filter(repository, nsa['id'])['result']
-    sa_result = saved_filters.calculate_saved_filter(repository, sa['id'])['result']
+    nsa, _ = saved_scorings.save_saved_scoring(repository, ids['NSA'], ['Operator', 'Campaign'], 'NSA', baseline_operator='EE')
+    sa, _ = saved_scorings.save_saved_scoring(repository, ids['SA'], ['Operator', 'Campaign'], 'SA', baseline_operator='EE')
+    nsa_result = saved_scorings.calculate_saved_scoring(repository, nsa['id'])['result']
+    sa_result = saved_scorings.calculate_saved_scoring(repository, sa['id'])['result']
     assert _totals(combined, 'UK_Q3_NSA_2026') == _totals(nsa_result, 'UK_Q3_NSA_2026')
     assert _totals(combined, sa_label) == _totals(sa_result, sa_campaign)
     # The GAP compares each operator with the reference of its own NR Mode.
@@ -129,11 +129,11 @@ def test_nsa_vs_sa_from_the_scoring_history_keeps_the_nr_modes_apart(tmp_path):
         repository, dataset_ids, ['Operator', 'Campaign'], configuration=configuration, nr_mode_campaigns=True,
         time_split='Weekly')
     assert {row['campaign'] for row in weekly['totals']} == {'2026-W28', '2026-W29', '2026-W28 SA', '2026-W29 SA'}
-    sources, _campaigns, _fingerprint = saved_filters._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
+    sources, _campaigns, _fingerprint = saved_scorings._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
     for source in sources:
         source['levels'] = ['Operator', 'Campaign']
     from src.modules.scoring import scoring
-    frames = saved_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns, {},
+    frames = saved_scorings._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns, {},
                                               nr_mode_campaigns=True)
     by_rows = scoring.calculate_scoring(frames, ['Operator', 'Campaign'], configuration=configuration)
     assert _totals(by_rows, 'UK_Q3_SA_2026') == pytest.approx(_totals(from_history, 'UK_Q3_SA_2026'), rel=1e-2)
@@ -150,13 +150,13 @@ def test_an_operator_without_a_network_in_an_nr_mode_is_left_out_of_its_cdrs(tmp
     scoring_history.sync_history(repository)
     configuration = repository.get_scoring_profile()['configuration']
     dataset_ids = [*ids['NSA'], *ids['SA']]
-    _sources, _campaigns, before = saved_filters._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
+    _sources, _campaigns, before = saved_scorings._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
     repository.replace_operator_mapping_group(None, 'Three', ['Three UK'], '#000000', None, ['NSA'])
-    sources, _campaigns, after = saved_filters._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
+    sources, _campaigns, after = saved_scorings._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
     assert after != before
     for source in sources:
         source['levels'] = ['Operator', 'Campaign']
-    frames = saved_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns, {},
+    frames = saved_scorings._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns, {},
                                               nr_mode_campaigns=True)
     assert all(set(frame.loc[frame[NR_MODE_COLUMN] == 'SA', 'Operator']) == {'EE', 'Vodafone UK'}
                and 'Three UK' in set(frame.loc[frame[NR_MODE_COLUMN] == 'NSA', 'Operator']) for frame in frames.values())
@@ -168,14 +168,14 @@ def test_an_operator_without_a_network_in_an_nr_mode_is_left_out_of_its_cdrs(tmp
         assert ('UK_Q3_NSA_2026', 'Three UK') in operators and ('UK_Q3_SA_2026', 'Three UK') not in operators
     assert _totals(by_rows, 'UK_Q3_SA_2026') == pytest.approx(_totals(from_history, 'UK_Q3_SA_2026'), rel=1e-2)
     # The headings of the panels of the page name the pairs out of scope of the NR Modes of the result.
-    saved, _ = saved_filters.save_saved_filter(repository, dataset_ids, ['Operator'], NSA_VS_SA)
+    saved, _ = saved_scorings.save_saved_scoring(repository, dataset_ids, ['Operator'], NSA_VS_SA)
     groups = repository.list_operator_mapping_groups()
-    payload = core._saved_filter_payload(saved_filters.calculate_saved_filter(repository, saved['id']), groups, [], None)
+    payload = core._saved_scoring_payload(saved_scorings.calculate_saved_scoring(repository, saved['id']), groups, [], None)
     nsa, sa = payload['nr_mode_parts']
     assert payload['out_of_scope'] == sa['out_of_scope'] == ['SA · Three'] and 'out_of_scope' not in nsa
-    single, _ = saved_filters.save_saved_filter(repository, ids['NSA'], ['Operator'], 'NSA')
-    assert 'out_of_scope' not in core._saved_filter_payload(
-        saved_filters.calculate_saved_filter(repository, single['id']), groups, [], None)
+    single, _ = saved_scorings.save_saved_scoring(repository, ids['NSA'], ['Operator'], 'NSA')
+    assert 'out_of_scope' not in core._saved_scoring_payload(
+        saved_scorings.calculate_saved_scoring(repository, single['id']), groups, [], None)
 
 
 def test_nsa_vs_sa_needs_campaign_labels_that_tell_the_nr_modes_apart(tmp_path):
@@ -183,30 +183,30 @@ def test_nsa_vs_sa_needs_campaign_labels_that_tell_the_nr_modes_apart(tmp_path):
     dataset_ids = [*ids['NSA'], *ids['SA']]
     with use_campaign_map({'format': '{year}-Q{quarter}', 'modes_in_label': []}):
         with pytest.raises(ValueError, match='Campaign Map shows the NSA and SA campaigns alike'):
-            saved_filters.save_saved_filter(repository, dataset_ids, ['Operator'], NSA_VS_SA)
+            saved_scorings.save_saved_scoring(repository, dataset_ids, ['Operator'], NSA_VS_SA)
     with pytest.raises(ValueError, match='time split other than All'):
-        saved_filters.save_saved_filter(repository, dataset_ids, ['Operator'], NSA_VS_SA,
+        saved_scorings.save_saved_scoring(repository, dataset_ids, ['Operator'], NSA_VS_SA,
                                         area_summary={'time_split': 'All'})
     # A single NR Mode still needs CDRs of that mode only.
     with pytest.raises(ValueError, match='does not match the selected NSA NR Mode'):
-        saved_filters.save_saved_filter(repository, dataset_ids, ['Operator'], 'NSA')
+        saved_scorings.save_saved_scoring(repository, dataset_ids, ['Operator'], 'NSA')
 
 
-def test_nsa_vs_sa_saved_filters_travel_with_their_nr_mode(tmp_path):
+def test_nsa_vs_sa_saved_scorings_travel_with_their_nr_mode(tmp_path):
     source_folder = tmp_path / 'source'
     source_folder.mkdir()
     source, ids = _workspace(source_folder)
-    saved, _ = saved_filters.save_saved_filter(source, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA)
-    document = saved_filters.saved_filters_document(source)
-    [entry] = document['saved_filters']
+    saved, _ = saved_scorings.save_saved_scoring(source, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA)
+    document = saved_scorings.saved_scorings_document(source)
+    [entry] = document['saved_scorings']
     assert entry['nr_mode'] == NSA_VS_SA
     target_folder = tmp_path / 'target'
     target_folder.mkdir()
     target = Repository(target_folder / 'workspace.db', global_db_path=target_folder / 'global.db')
     target.initialize()
     target.replace_scoring_configuration(load_initial_scoring_configuration())
-    assert saved_filters.import_saved_filters(target, document) == 1
-    [imported] = saved_filters.list_saved_filters(target)
+    assert saved_scorings.import_saved_scorings(target, document) == 1
+    [imported] = saved_scorings.list_saved_scorings(target)
     assert imported['nr_mode'] == NSA_VS_SA
 
 
@@ -243,9 +243,9 @@ def test_documents_name_nsa_vs_sa():
 def _same_operator_result(tmp_path):
     from src.modules.cdr.nr_mode import SAME_OPERATOR_NSA
     repository, ids = _workspace(tmp_path)
-    saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
+    saved, _ = saved_scorings.save_saved_scoring(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
                                                baseline_operator=SAME_OPERATOR_NSA)
-    calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
+    calculated = saved_scorings.calculate_saved_scoring(repository, saved['id'])
     assert calculated['status'] == 'completed', calculated['error']
     return repository, ids, calculated
 
@@ -301,7 +301,7 @@ def test_same_operator_in_nsa_needs_nsa_vs_sa_and_exports(tmp_path):
     from src.modules.scoring.scoring_exports import export_scoring_powerpoint
     repository, ids, calculated = _same_operator_result(tmp_path)
     with pytest.raises(ValueError, match='choose NSA vs SA'):
-        saved_filters.save_saved_filter(repository, ids['SA'], ['Operator'], 'SA', baseline_operator=SAME_OPERATOR_NSA)
+        saved_scorings.save_saved_scoring(repository, ids['SA'], ['Operator'], 'SA', baseline_operator=SAME_OPERATOR_NSA)
     selection, warnings = normalize_scoring_selection(repository, {'nr_mode': NSA_VS_SA, 'baseline_operator': SAME_OPERATOR_NSA})
     assert selection['baseline_operator'] == SAME_OPERATOR_NSA and not warnings
     selection, warnings = normalize_scoring_selection(repository, {'nr_mode': 'NSA', 'baseline_operator': SAME_OPERATOR_NSA})
@@ -316,23 +316,23 @@ def test_same_operator_in_nsa_needs_nsa_vs_sa_and_exports(tmp_path):
 def test_the_page_gets_the_results_of_each_nr_mode_on_their_own(tmp_path):
     import src.DriveTestAnalyzer as core
     repository, ids = _workspace(tmp_path)
-    saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
+    saved, _ = saved_scorings.save_saved_scoring(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
                                                area_summary={'time_split': 'Campaign', 'breakdown': 'Region', 'cities': []})
-    calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
-    payload = core._saved_filter_payload(calculated, [], [], None)
+    calculated = saved_scorings.calculate_saved_scoring(repository, saved['id'])
+    payload = core._saved_scoring_payload(calculated, [], [], None)
     nsa, sa = payload['nr_mode_parts']
     assert (nsa['nr_mode'], sa['nr_mode']) == ('NSA', 'SA')
     # Each part is the result of its NR Mode: its campaign only, in every view.
     assert {row['campaign'] for row in nsa['totals']} == {'UK_Q3_NSA_2026'}
     assert {row['campaign'] for row in sa['totals']} == {'UK_Q3_SA_2026'}
     assert {table['context'].get('campaign') for table in sa['views']['score_tables']} <= {'UK_Q3_SA_2026', None}
-    assert sa['campaigns'] == ['UK_Q3_SA_2026'] and sa['saved_filter']['nr_mode'] == 'SA'
+    assert sa['campaigns'] == ['UK_Q3_SA_2026'] and sa['saved_scoring']['nr_mode'] == 'SA'
     assert sa['views']['insights']['area_summaries'] is not None
     # The whole result stays for the rest of the page.
     assert {row['campaign'] for row in payload['totals']} == {'UK_Q3_NSA_2026', 'UK_Q3_SA_2026'}
-    single, _ = saved_filters.save_saved_filter(repository, ids['NSA'], ['Operator'], 'NSA')
-    assert 'nr_mode_parts' not in core._saved_filter_payload(
-        saved_filters.calculate_saved_filter(repository, single['id']), [], [], None)
+    single, _ = saved_scorings.save_saved_scoring(repository, ids['NSA'], ['Operator'], 'NSA')
+    assert 'nr_mode_parts' not in core._saved_scoring_payload(
+        saved_scorings.calculate_saved_scoring(repository, single['id']), [], [], None)
 
 
 def test_each_panel_of_nsa_goes_before_the_same_panel_of_sa():
@@ -399,9 +399,9 @@ def test_documents_show_each_nr_mode_as_the_results_of_the_page(tmp_path):
     from src.modules.scoring.scoring_exports import export_scoring_report
     from src.modules.scoring.scoring_reports import normalize_report_configuration
     repository, ids = _workspace(tmp_path)
-    saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
+    saved, _ = saved_scorings.save_saved_scoring(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
                                                area_summary={'time_split': 'Campaign', 'breakdown': 'Region', 'cities': []})
-    calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
+    calculated = saved_scorings.calculate_saved_scoring(repository, saved['id'])
     assert calculated['status'] == 'completed', calculated['error']
     report = normalize_report_configuration({'scenarios': [{'name': 'NSA vs SA'}], 'nr_layout': 'interleaved'})
     # NSA & SA in the same chart unless chosen otherwise; without nr_layout, the whole result as it is.
@@ -456,10 +456,10 @@ def test_the_charts_name_the_operators_out_of_scope_at_their_foot(tmp_path):
 
     repository, ids = _workspace(tmp_path, 'UK_Q3_NSA_2026')
     repository.replace_operator_mapping_group(None, 'Three', ['Three UK'], '#000000', None, ['NSA'])
-    saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA)
-    calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
+    saved, _ = saved_scorings.save_saved_scoring(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA)
+    calculated = saved_scorings.calculate_saved_scoring(repository, saved['id'])
     groups = repository.list_operator_mapping_groups()
-    payload = core._saved_filter_payload(calculated, groups, [], None)
+    payload = core._saved_scoring_payload(calculated, groups, [], None)
     assert payload['out_of_scope'] == ['SA · Three']
     assert not any(column.get('out_of_scope') for matrix in payload['views']['hierarchy_score_tables']
                    for column in matrix['hierarchy_columns'])
@@ -474,8 +474,8 @@ def test_the_charts_name_the_operators_out_of_scope_at_their_foot(tmp_path):
                 for shape in slide.shapes if shape.has_text_frame and 'Out of scope' in shape.text_frame.text]
     notes = chart_notes(calculated, calculated['result'])
     assert notes and all(note.startswith('Out of scope: SA · Three: no network in that NR Mode') for note in notes)
-    single, _ = saved_filters.save_saved_filter(repository, ids['NSA'], ['Operator'], 'NSA')
-    nsa = saved_filters.calculate_saved_filter(repository, single['id'])
+    single, _ = saved_scorings.save_saved_scoring(repository, ids['NSA'], ['Operator'], 'NSA')
+    nsa = saved_scorings.calculate_saved_scoring(repository, single['id'])
     assert chart_notes(nsa, nsa['result']) == []
 
 

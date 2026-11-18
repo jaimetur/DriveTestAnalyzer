@@ -353,7 +353,7 @@ def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], con
         for field in ('Operator', 'Campaign', 'Vendor', *dimensions):
             if field in frame and isinstance(frame[field].dtype, pd.CategoricalDtype):
                 # The fields the groups are made of hold their values themselves (None for no value), as the rows of a
-                # CDR read row by row give them (see saved_filters._load_source_frames).
+                # CDR read row by row give them (see saved_scorings._load_source_frames).
                 frame[field] = frame[field].astype(object).where(frame[field].notna(), None)
         if 'Vendor' in frame:
             vendor_operators = [*operator_mappings, *operator_mappings.values()]

@@ -137,8 +137,8 @@ const window = {scrollY: 12, sessionStorage: {
 }};
 const scoringViewStorageKey = payload.storageKey;
 const resultTabNames = new Set(['scoring', 'gap', 'charts']);
-let selectedSavedFilterId = payload.savedFilterId;
-let currentResultsSavedFilterId = payload.savedFilterId;
+let selectedSavedScoringId = payload.savedScoringId;
+let currentResultsSavedScoringId = payload.savedScoringId;
 let activeResultTab = 'gap';
 let selectedEnvironment = 'Combined';
 const gapLayoutSelect = {value: 'end'};
@@ -151,10 +151,10 @@ const restored = readScoringViewState();
 for (const [key, value] of Object.entries(restored.gapComparisons)) gapComparisonSelections.set(key, value);
 const firstKey = gapComparisonIdentity(payload.table, 'hierarchy-gap');
 const secondKey = gapComparisonIdentity(payload.table, 'gap-summary:EE');
-const otherSavedFilter = payload.savedFilterId;
-selectedSavedFilterId = `${otherSavedFilter}-next`;
-const nextSavedFilterKey = gapComparisonIdentity(payload.table, 'hierarchy-gap');
-selectedSavedFilterId = otherSavedFilter;
+const otherSavedScoring = payload.savedScoringId;
+selectedSavedScoringId = `${otherSavedScoring}-next`;
+const nextSavedScoringKey = gapComparisonIdentity(payload.table, 'hierarchy-gap');
+selectedSavedScoringId = otherSavedScoring;
 gapComparisonSelections.set(firstKey, 'operator:Vodafone UK');
 gapComparisonSelections.set(secondKey, 'all');
 persistScoringViewState();
@@ -163,12 +163,12 @@ const restoredAfterSave = readScoringViewState();
 process.stdout.write(JSON.stringify({
   selected: restored.gapComparisons[firstKey],
   summarySelected: restored.gapComparisons[secondKey],
-  otherSavedFilter: restored.gapComparisons[nextSavedFilterKey] || null,
+  otherSavedScoring: restored.gapComparisons[nextSavedScoringKey] || null,
   invalid: restored.gapComparisons.invalid || null,
   savedSelected: restoredAfterSave.gapComparisons[firstKey],
   savedSummarySelected: restoredAfterSave.gapComparisons[secondKey],
   savedUnrelated: saved.context_selections || saved.score || null,
-  firstKey, secondKey, nextSavedFilterKey,
+  firstKey, secondKey, nextSavedScoringKey,
 }));
 '''
     table = {
@@ -182,14 +182,14 @@ process.stdout.write(JSON.stringify({
         ['gap-summary:EE', table['title'], table['context'], ''], separators=(',', ':'),
     )
     hierarchy_key = json.dumps(
-        ['savedFilter-42', 'hierarchy-gap', hierarchy_identity], separators=(',', ':'),
+        ['savedScoring-42', 'hierarchy-gap', hierarchy_identity], separators=(',', ':'),
     )
     summary_key = json.dumps(
-        ['savedFilter-42', 'gap-summary:EE', summary_identity], separators=(',', ':'),
+        ['savedScoring-42', 'gap-summary:EE', summary_identity], separators=(',', ':'),
     )
     result = _run_node_json(program, {
         'storageKey': 'workspace-scoring-view',
-        'savedFilterId': 'savedFilter-42',
+        'savedScoringId': 'savedScoring-42',
         'table': table,
         'state': {
             'gap_comparisons': {
@@ -202,9 +202,9 @@ process.stdout.write(JSON.stringify({
 
     assert result['selected'] == 'operator:O2 UK'
     assert result['summarySelected'] == 'all'
-    assert result['otherSavedFilter'] is None
+    assert result['otherSavedScoring'] is None
     assert result['invalid'] is None
-    assert result['firstKey'] != result['nextSavedFilterKey']
+    assert result['firstKey'] != result['nextSavedScoringKey']
     assert result['savedSelected'] == 'operator:Vodafone UK'
     assert result['savedSummarySelected'] == 'all'
     assert result['savedUnrelated'] is None

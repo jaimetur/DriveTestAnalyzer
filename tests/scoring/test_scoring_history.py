@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.modules.scoring import saved_filters, scoring, scoring_history
+from src.modules.scoring import saved_scorings, scoring, scoring_history
 from src.modules.core.repository import Repository, local_now_iso
 from tests.support.scoring_fixtures import load_initial_scoring_configuration
 
@@ -87,10 +87,10 @@ def history_repository(tmp_path):
 
 
 def _by_rows(repository, ids, levels, configuration, context_filters=None, time_split=None):
-    sources, _campaigns, _fingerprint = saved_filters._source_snapshot(repository, ids)
+    sources, _campaigns, _fingerprint = saved_scorings._source_snapshot(repository, ids)
     for source in sources:
         source['levels'] = [*levels, *(scoring.START_TIME_COLUMNS if time_split else ())]
-    frames = saved_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns,
+    frames = saved_scorings._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns,
                                               context_filters or {})
     return scoring.calculate_scoring(frames, levels, baseline_operator='EE', configuration=configuration,
                                      time_split=time_split)
@@ -181,9 +181,9 @@ def test_a_cdr_is_identified_by_its_file_and_processing_not_its_name(history_rep
 def test_a_job_is_calculated_from_the_history_and_gets_its_points_lost_map(history_repository):
     repository, ids, _configuration = history_repository
     scoring_history.sync_history(repository)
-    job, cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    job, cached = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
     assert not cached
-    finished = saved_filters.calculate_saved_filter(repository, job['id'])
+    finished = saved_scorings.calculate_saved_scoring(repository, job['id'])
     assert finished['status'] == 'completed'
     result = finished['result']
     assert result['source'] == 'history' and result['scoring']
@@ -198,22 +198,22 @@ def test_a_job_is_calculated_from_the_history_and_gets_its_points_lost_map(histo
 def test_the_points_lost_map_of_a_result_from_the_history_is_a_job_of_its_own(history_repository):
     repository, ids, _configuration = history_repository
     scoring_history.sync_history(repository)
-    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    saved, _cached = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
     submitted = []
-    finished = saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append)
+    finished = saved_scorings.calculate_saved_scoring(repository, saved['id'], submitted.append)
     # The scores are ready at once; the map waits in its own job, shown among the background tasks.
     assert finished['status'] == 'completed' and finished['result']['points_loss'] == {'version': 2, 'pending': True}
-    [task] = saved_filters.points_loss_tasks(repository.db_path)
+    [task] = saved_scorings.points_loss_tasks(repository.db_path)
     assert task['label'] == f"Points Lost Map #{saved['id']}" and task['status'] == 'queued'
     [job] = submitted
-    assert saved_filters.is_saved_filter_work(job, (), saved['id']) and not saved_filters.is_saved_filter_work(job, (), 0)
+    assert saved_scorings.is_saved_scoring_work(job, (), saved['id']) and not saved_scorings.is_saved_scoring_work(job, (), 0)
     job()
-    result = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result']
+    result = saved_scorings.get_saved_scoring(repository, saved['id'], include_result=True)['result']
     assert 'pending' not in result['points_loss'] and 'shares' in result['points_loss']
-    assert saved_filters.points_loss_tasks(repository.db_path) == []
+    assert saved_scorings.points_loss_tasks(repository.db_path) == []
 
 
-def test_queued_work_of_the_saved_filter_being_looked_at_goes_first():
+def test_queued_work_of_the_saved_scoring_being_looked_at_goes_first():
     from threading import Event
     from src.modules.core.background_scheduler import BackgroundTaskScheduler
 
@@ -255,16 +255,16 @@ def test_a_city_without_measurements_in_the_filtered_campaigns_is_left_out_of_th
 def test_the_points_lost_map_job_reports_its_step_and_progress(history_repository, monkeypatch):
     repository, ids, _configuration = history_repository
     scoring_history.sync_history(repository)
-    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    saved, _cached = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
     submitted = []
-    saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append)
+    saved_scorings.calculate_saved_scoring(repository, saved['id'], submitted.append)
     reports = []
-    complete = saved_filters._complete_points_loss
+    complete = saved_scorings._complete_points_loss
 
     def recorded(*args, **kwargs):
         report = args[-1]
         return complete(*args[:-1], lambda value, step: (reports.append((value, step)), report(value, step)))
-    monkeypatch.setattr(saved_filters, '_complete_points_loss', recorded)
+    monkeypatch.setattr(saved_scorings, '_complete_points_loss', recorded)
     [job] = submitted
     job()
     values = [value for value, _step in reports]
@@ -277,18 +277,18 @@ def test_the_points_lost_map_job_reports_its_step_and_progress(history_repositor
 
 
 def _points_loss_inputs_of(repository, ids):
-    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
-    saved_filter = saved_filters.get_saved_filter(repository, saved['id'], include_internal_snapshot=True)
-    sources, _campaigns, _fingerprint = saved_filters._source_snapshot(repository, ids, expected_nr_mode='NSA')
-    configuration = saved_filters.validate_scoring_configuration(saved_filter['configuration'])
-    return saved_filter, sources, configuration, saved_filter.get('context_filters', {})
+    saved, _cached = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    saved_scoring = saved_scorings.get_saved_scoring(repository, saved['id'], include_internal_snapshot=True)
+    sources, _campaigns, _fingerprint = saved_scorings._source_snapshot(repository, ids, expected_nr_mode='NSA')
+    configuration = saved_scorings.validate_scoring_configuration(saved_scoring['configuration'])
+    return saved_scoring, sources, configuration, saved_scoring.get('context_filters', {})
 
 
 def test_the_points_lost_map_drawn_apart_is_the_one_drawn_in_the_application(history_repository, monkeypatch):
     import subprocess
 
     repository, ids, _configuration = history_repository
-    saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
+    saved_scoring, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
     steps = []
     processes = []
     popen = subprocess.Popen
@@ -297,13 +297,13 @@ def test_the_points_lost_map_drawn_apart_is_the_one_drawn_in_the_application(his
         processes.append(popen(*args, **kwargs))
         return processes[-1]
     monkeypatch.setattr(subprocess, 'Popen', recorded)
-    apart = saved_filters._draw_points_loss_apart(repository, saved_filter, [dict(source) for source in sources],
+    apart = saved_scorings._draw_points_loss_apart(repository, saved_scoring, [dict(source) for source in sources],
                                                   configuration, filters, lambda value, step: steps.append(step))
-    here = saved_filters.draw_points_loss(repository, saved_filter, [dict(source) for source in sources], configuration,
-                                          filters, saved_filters._scoring_engine())
+    here = saved_scorings.draw_points_loss(repository, saved_scoring, [dict(source) for source in sources], configuration,
+                                          filters, saved_scorings._scoring_engine())
     # The Data tests in one process, the Voice and Speech tests in another, put together: the same map.
     assert len(processes) == 2
-    assert saved_filters._serialize_result_value(apart) == saved_filters._serialize_result_value(here)
+    assert saved_scorings._serialize_result_value(apart) == saved_scorings._serialize_result_value(here)
     assert apart['shares'] and any(step.startswith('Mapping the Data tests: KPI ') for step in steps)
 
 
@@ -311,23 +311,23 @@ def test_the_points_lost_map_put_together_by_cdr_type_is_the_one_drawn_at_once(h
     from src.modules.scoring import scoring_points_loss
 
     repository, ids, _configuration = history_repository
-    saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
+    saved_scoring, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
     for source in sources:
-        source['levels'] = list(saved_filter['levels'])
-    frames = saved_filters._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
+        source['levels'] = list(saved_scoring['levels'])
+    frames = saved_scorings._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
                                                scoring.load_input_columns, filters)
-    options = saved_filters._engine_kwargs(repository, saved_filter, configuration, scoring.calculate_scoring)
+    options = saved_scorings._engine_kwargs(repository, saved_scoring, configuration, scoring.calculate_scoring)
     arguments = dict(configuration=configuration, operator_mappings=options.get('operator_mappings'),
                      map_areas=options.get('map_areas'))
-    expected = scoring.calculate_points_loss(frames, saved_filter['levels'], **arguments)
+    expected = scoring.calculate_points_loss(frames, saved_scoring['levels'], **arguments)
     # Each CDR type worked out apart (its points sent to another process), put together in their order.
-    parts = [part for kind in frames for part in scoring.points_loss_parts({kind: frames[kind]}, saved_filter['levels'],
+    parts = [part for kind in frames for part in scoring.points_loss_parts({kind: frames[kind]}, saved_scoring['levels'],
                                                                            **arguments)]
     for part in parts:
         scoring_points_loss.compact_contribution(part['places'])
     assert len(parts) == 3
     together = scoring.points_loss_document(parts, options.get('map_areas'))
-    assert saved_filters._serialize_result_value(together) == saved_filters._serialize_result_value(expected)
+    assert saved_scorings._serialize_result_value(together) == saved_scorings._serialize_result_value(expected)
 
 
 def test_the_points_lost_map_reads_each_cdr_type_from_the_copies_with_the_same_rows_and_map(history_repository):
@@ -335,12 +335,12 @@ def test_the_points_lost_map_reads_each_cdr_type_from_the_copies_with_the_same_r
 
     repository, ids, _configuration = history_repository
     assert cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))['status'] == 'ready'
-    saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
+    saved_scoring, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
     for source in sources:
-        source['levels'] = list(saved_filter['levels'])
-    by_rows = saved_filters._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
+        source['levels'] = list(saved_scoring['levels'])
+    by_rows = saved_scorings._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
                                                 scoring.load_input_columns, filters)
-    by_type = saved_filters._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
+    by_type = saved_scorings._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
                                                 scoring.load_input_columns, filters, columnar=True)
     # The same rows and values, the text as Categoricals.
     assert set(by_type) == set(by_rows)
@@ -354,13 +354,13 @@ def test_the_points_lost_map_reads_each_cdr_type_from_the_copies_with_the_same_r
                 actual = actual.astype(object).where(actual.notna(), None)
                 expected = expected.astype(object).where(expected.notna(), None)
             pd.testing.assert_series_equal(actual, expected, check_exact=True)
-    options = saved_filters._engine_kwargs(repository, saved_filter, configuration, scoring.calculate_scoring)
-    expected = scoring.calculate_points_loss(by_rows, saved_filter['levels'], configuration=configuration,
+    options = saved_scorings._engine_kwargs(repository, saved_scoring, configuration, scoring.calculate_scoring)
+    expected = scoring.calculate_points_loss(by_rows, saved_scoring['levels'], configuration=configuration,
                                              operator_mappings=options.get('operator_mappings'),
                                              map_areas=options.get('map_areas'))
-    drawn = saved_filters.draw_points_loss(repository, saved_filter, [dict(source) for source in sources], configuration,
+    drawn = saved_scorings.draw_points_loss(repository, saved_scoring, [dict(source) for source in sources], configuration,
                                            filters, scoring)
-    assert saved_filters._serialize_result_value(drawn) == saved_filters._serialize_result_value(expected)
+    assert saved_scorings._serialize_result_value(drawn) == saved_scorings._serialize_result_value(expected)
     assert drawn['shares']
 
 
@@ -368,7 +368,7 @@ def test_stopping_the_points_lost_map_ends_its_process_at_once(history_repositor
     import subprocess
 
     repository, ids, _configuration = history_repository
-    saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
+    saved_scoring, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
     processes = []
     popen = subprocess.Popen
 
@@ -378,9 +378,9 @@ def test_stopping_the_points_lost_map_ends_its_process_at_once(history_repositor
     monkeypatch.setattr(subprocess, 'Popen', recorded)
 
     def stop(_value, _step):
-        raise saved_filters._MapStopped()
-    with pytest.raises(saved_filters._MapStopped):
-        saved_filters._draw_points_loss_apart(repository, saved_filter, sources, configuration, filters, stop)
+        raise saved_scorings._MapStopped()
+    with pytest.raises(saved_scorings._MapStopped):
+        saved_scorings._draw_points_loss_apart(repository, saved_scoring, sources, configuration, filters, stop)
     # Every process drawing the map (one per group of CDR types) is ended.
     assert processes and all(process.poll() is not None for process in processes)
 
@@ -388,40 +388,40 @@ def test_stopping_the_points_lost_map_ends_its_process_at_once(history_repositor
 def test_a_stopped_points_lost_map_keeps_the_scores_and_is_drawn_again_when_resumed(history_repository):
     repository, ids, _configuration = history_repository
     scoring_history.sync_history(repository)
-    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    saved, _cached = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
     submitted = []
-    saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append)
+    saved_scorings.calculate_saved_scoring(repository, saved['id'], submitted.append)
     [job] = submitted
     # A user stops the map from its card before it is drawn.
-    assert saved_filters.request_points_loss_stop(repository.db_path, saved['id'])
+    assert saved_scorings.request_points_loss_stop(repository.db_path, saved['id'])
     job()
-    stopped = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)
-    assert stopped['result']['points_loss'] == {'version': 2, 'error': saved_filters.POINTS_LOSS_STOPPED}
-    assert stopped['result']['scoring'] and saved_filters.stopped_points_loss_ids(repository) == [saved['id']]
+    stopped = saved_scorings.get_saved_scoring(repository, saved['id'], include_result=True)
+    assert stopped['result']['points_loss'] == {'version': 2, 'error': saved_scorings.POINTS_LOSS_STOPPED}
+    assert stopped['result']['scoring'] and saved_scorings.stopped_points_loss_ids(repository) == [saved['id']]
     # Once the application is idle it is drawn again.
-    assert saved_filters.resume_stopped_points_loss(repository, saved['id'])
-    assert saved_filters.stopped_points_loss_ids(repository) == []
+    assert saved_scorings.resume_stopped_points_loss(repository, saved['id'])
+    assert saved_scorings.stopped_points_loss_ids(repository) == []
     resumed = []
-    saved_filters.queue_points_loss(repository, saved['id'], resumed.append)
+    saved_scorings.queue_points_loss(repository, saved['id'], resumed.append)
     [job] = resumed
     job()
-    drawn = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)
-    assert drawn['result']['points_loss']['shares'] and not saved_filters.resume_stopped_points_loss(repository, saved['id'])
+    drawn = saved_scorings.get_saved_scoring(repository, saved['id'], include_result=True)
+    assert drawn['result']['points_loss']['shares'] and not saved_scorings.resume_stopped_points_loss(repository, saved['id'])
 
 
 def test_the_points_lost_map_task_shows_its_progress_and_the_time_left(monkeypatch):
-    key = saved_filters._points_loss_key('/tmp/progress-workspace.db', 7)
-    started = saved_filters.time.time() - 120
-    monkeypatch.setitem(saved_filters._points_loss_jobs, key, {
+    key = saved_scorings._points_loss_key('/tmp/progress-workspace.db', 7)
+    started = saved_scorings.time.time() - 120
+    monkeypatch.setitem(saved_scorings._points_loss_jobs, key, {
         'status': 'processing', 'queued_at': started, 'started_at': started, 'progress': 40.0,
         'detail': 'Mapping the Voice tests: group 30 of 90'})
-    [task] = saved_filters.points_loss_tasks('/tmp/progress-workspace.db')
+    [task] = saved_scorings.points_loss_tasks('/tmp/progress-workspace.db')
     # 40% in two minutes: about three more.
     assert task['progress'] == 40.0
     assert task['detail'] == 'Mapping the Voice tests: group 30 of 90 · about 3 min left'
 
 
-def test_saved_filters_reuse_the_points_lost_maps_and_trends_of_the_same_cdrs_and_methodology(history_repository, monkeypatch):
+def test_saved_scorings_reuse_the_points_lost_maps_and_trends_of_the_same_cdrs_and_methodology(history_repository, monkeypatch):
     from src.modules.scoring import scoring_cache
 
     repository, ids, _configuration = history_repository
@@ -434,13 +434,13 @@ def test_saved_filters_reuse_the_points_lost_maps_and_trends_of_the_same_cdrs_an
     submitted = []
 
     def calculated(**options):
-        saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA', area_summary=area, **options)
+        saved, _cached = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA', area_summary=area, **options)
         written.clear()
         submitted.clear()
-        result = saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append)['result']
+        result = saved_scorings.calculate_saved_scoring(repository, saved['id'], submitted.append)['result']
         for job in submitted:
             job()
-        return saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result'] if submitted else result
+        return saved_scorings.get_saved_scoring(repository, saved['id'], include_result=True)['result'] if submitted else result
 
     national = calculated()
     assert sorted(written) == ['points-loss', 'trends'] and 'shares' in national['points_loss'] and len(submitted) == 1
@@ -455,8 +455,8 @@ def test_saved_filters_reuse_the_points_lost_maps_and_trends_of_the_same_cdrs_an
 
 def test_rows_are_read_only_from_the_cdrs_of_the_chosen_campaigns():
     sources = [{'metadata': {'campaigns': ['UK_Q2_2026']}}, {'metadata': {'campaigns': ['UK_Q3_2026']}}, {'metadata': {'campaigns': []}}]
-    assert saved_filters._campaign_sources(sources, {'Campaign': ['2026-Q3']}) == sources[1:]
-    assert saved_filters._campaign_sources(sources, {'Campaign': []}) == sources
+    assert saved_scorings._campaign_sources(sources, {'Campaign': ['2026-Q3']}) == sources[1:]
+    assert saved_scorings._campaign_sources(sources, {'Campaign': []}) == sources
 
 
 def test_a_running_job_sees_the_work_of_its_workspace_waiting_before_it():
@@ -487,19 +487,19 @@ def test_a_running_job_sees_the_work_of_its_workspace_waiting_before_it():
 def test_a_points_lost_map_gives_way_to_the_work_waiting_and_goes_on_later(history_repository):
     repository, ids, _configuration = history_repository
     scoring_history.sync_history(repository)
-    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    saved, _cached = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA')
     submitted, waiting = [], [True]
-    saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append, lambda: waiting[0])
+    saved_scorings.calculate_saved_scoring(repository, saved['id'], submitted.append, lambda: waiting[0])
     # Another calculation waits: the map gives way at its first step and is queued again, still pending.
     submitted.pop()()
-    assert len(submitted) == 1 and saved_filters.points_loss_tasks(repository.db_path)[0]['status'] == 'queued'
-    result = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result']
+    assert len(submitted) == 1 and saved_scorings.points_loss_tasks(repository.db_path)[0]['status'] == 'queued'
+    result = saved_scorings.get_saved_scoring(repository, saved['id'], include_result=True)['result']
     assert result['points_loss'] == {'version': 2, 'pending': True}
     # Once nothing waits, it is drawn.
     waiting[0] = False
     submitted.pop()()
-    result = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)['result']
-    assert 'shares' in result['points_loss'] and submitted == [] and saved_filters.points_loss_tasks(repository.db_path) == []
+    result = saved_scorings.get_saved_scoring(repository, saved['id'], include_result=True)['result']
+    assert 'shares' in result['points_loss'] and submitted == [] and saved_scorings.points_loss_tasks(repository.db_path) == []
 
 
 def test_the_history_takes_the_operator_patterns_as_the_rows_of_the_cdrs(history_repository):

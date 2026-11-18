@@ -38,7 +38,7 @@ COORDINATE_SOURCES = NETCHECK_PROFILE.coordinate_sources
 AREA = 'Area'
 CITY_AREA = 'City|Area'
 CITY_AREA_SEPARATOR = '\x1f'
-# The postal code of each test (see postal_areas), only placed for the Saved Filters that ask for it.
+# The postal code of each test (see postal_areas), only placed for the Saved Scorings that ask for it.
 POSTAL = 'Postal Code'
 MAP_FIELDS = (*AREA_FIELDS, AREA, POSTAL)
 NOT_SPECIFIED = 'Not specified'

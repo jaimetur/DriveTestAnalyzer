@@ -187,7 +187,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     import pandas as pd
 
     from src.modules.scoring import scoring as scoring_engine
-    from src.modules.scoring import saved_filters
+    from src.modules.scoring import saved_scorings
     from tests.scoring.test_scoring_most_reliable import _reliable_configuration
 
     client = scoring_api['client']
@@ -202,13 +202,13 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None: (
         scoring_engine.calculate_scoring({'voice': pd.DataFrame(rows)}, levels, baseline_operator=baseline_operator,
                                          configuration=configuration))
-    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
-    created = client.post('/api/scoring/saved-filters', json={
+    monkeypatch.setattr(saved_scorings, '_scoring_engine', lambda: engine)
+    created = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'],
         'nr_mode': 'NSA', 'baseline_operator': 'EE',
     })
-    job_id = created.json()['saved_filter']['id']
-    saved_filters.calculate_saved_filter(repository, job_id)
+    job_id = created.json()['saved_scoring']['id']
+    saved_scorings.calculate_saved_scoring(repository, job_id)
 
     national = default_scenario(name='National')
     leeds = default_scenario(name='Leeds', context_filters={'City': ['Leeds']})
@@ -220,7 +220,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     assert 'Weekly' in [item['name'] for item in client.get('/api/scoring/report-configurations').json()['configurations']]
 
     # The report uses the CDRs, NR Mode, methodology and GAP reference of the Calculation panel.
-    job = saved_filters.get_saved_filter(repository, job_id)
+    job = saved_scorings.get_saved_scoring(repository, job_id)
     selection = {key: job[key] for key in ('dataset_ids', 'nr_mode', 'baseline_operator', 'scoring_profile_id')}
     assert client.post('/api/scoring/report/ppt', json={'configuration': configuration}).status_code == 400
     response = client.post('/api/scoring/report/ppt', json={'configuration': configuration, **selection})
@@ -232,7 +232,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     assert 'National' in titles and 'Best Network Scoring' in leeds and 'Most Reliable Network Scoring' not in leeds
     assert client.get('/api/scoring/report-configurations').json()['last']['scenarios'][1]['name'] == 'Leeds'
     # The Leeds scenario has its own scoring job with its filter.
-    jobs = saved_filters.list_saved_filters(repository)
+    jobs = saved_scorings.list_saved_scorings(repository)
     assert any((job.get('context_filters') or {}).get('City') == ['Leeds'] for job in jobs)
 
     # From the page, every scenario takes the filters and Split by of the Calculation panel (an Operator pattern here);
@@ -240,7 +240,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     page = client.post('/api/scoring/report/ppt', json={'configuration': configuration, **selection,
                                                         'context_filters': {'Operator': ['Not Three*']}, 'aggregation_levels': ['Operator']})
     assert page.status_code == 200, page.text
-    jobs = saved_filters.list_saved_filters(repository)
+    jobs = saved_scorings.list_saved_scorings(repository)
     assert any((job.get('context_filters') or {}).get('Operator') == ['Not Three*'] for job in jobs)
     assert client.get('/api/scoring/report-configurations').json()['last']['scenarios'][1]['context_filters'] == {'City': ['Leeds']}
 
@@ -271,12 +271,12 @@ def test_levels_with_a_single_value_are_left_out_of_report_scenarios(monkeypatch
         return {'id': len(calculated), 'status': 'completed', 'levels': list(levels)}, True
 
     monkeypatch.setattr(core, 'validate_complete_scoring_cdr_selection', lambda *_args, **_kwargs: [1])
-    monkeypatch.setattr(core, 'save_saved_filter', create)
-    monkeypatch.setattr(core, 'get_saved_filter', lambda _repository, job_id, include_result=False: {
+    monkeypatch.setattr(core, 'save_saved_scoring', create)
+    monkeypatch.setattr(core, 'get_saved_scoring', lambda _repository, job_id, include_result=False: {
         'id': job_id, 'status': 'completed', 'aggregation_levels': calculated[job_id - 1], 'result': one_campaign,
     })
     scenario = default_scenario(aggregation_levels=['Operator', 'City', 'Campaign'])
-    job = core._scenario_saved_filter(None, {'dataset_ids': [1], 'nr_mode': 'NSA'}, scenario, 'super')
+    job = core._scenario_saved_scoring(None, {'dataset_ids': [1], 'nr_mode': 'NSA'}, scenario, 'super')
     # The Campaign level splits nothing: the scenario is calculated again without it.
     assert calculated == [['Operator', 'City', 'Campaign'], ['Operator', 'City']]
     assert job['aggregation_levels'] == ['Operator', 'City']
@@ -326,5 +326,5 @@ def test_report_api_shows_each_nr_mode_as_the_page_chooses_without_remembering_i
     for wrong in ({'nr_layout': 'other'}, {'nr_layout': 'grouped', 'nr_charts': 'other'}):
         response = client.post('/api/scoring/report/ppt', json={**request, **wrong})
         assert response.status_code == 400 and 'NSA vs SA must be' in response.json()['detail']
-    response = client.get('/scoring/saved-filters/1/export/ppt?nr_layout=other')
+    response = client.get('/scoring/saved-scorings/1/export/ppt?nr_layout=other')
     assert response.status_code == 400 and 'NSA vs SA must be' in response.json()['detail']

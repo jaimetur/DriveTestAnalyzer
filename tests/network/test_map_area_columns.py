@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from src.modules.network import map_area_columns, map_areas
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from src.modules.core.repository import Repository, local_now_iso
 from src.modules.scoring.scoring import calculate_scoring
 from tests.support.scoring_fixtures import scoring_configuration
@@ -51,7 +51,7 @@ def add_voice_cdr(repository: Repository, name: str = 'Spain_Voice.csv') -> int:
 
 def test_the_tests_of_a_cdr_keep_their_map_area_until_the_map_areas_change(repository):
     dataset_id = add_voice_cdr(repository)
-    _sources, _campaigns, fingerprint = saved_filters._source_snapshot(repository, [dataset_id])
+    _sources, _campaigns, fingerprint = saved_scorings._source_snapshot(repository, [dataset_id])
     assert map_area_columns.stale_datasets(repository) == [(dataset_id, 'voice')]
 
     assert map_area_columns.fill_dataset(repository, dataset_id, 'voice') == 60
@@ -64,7 +64,7 @@ def test_the_tests_of_a_cdr_keep_their_map_area_until_the_map_areas_change(repos
     assert map_area_columns.current_datasets(repository, [dataset_id]) == {dataset_id}
     assert map_area_columns.stale_datasets(repository) == []
     # The areas kept in the rows do not change the CDR for its scorings.
-    assert saved_filters._source_snapshot(repository, [dataset_id])[2] == fingerprint
+    assert saved_scorings._source_snapshot(repository, [dataset_id])[2] == fingerprint
 
     # Other Map Areas: the tests are placed again.
     layer = map_areas.list_layers(repository)[0]

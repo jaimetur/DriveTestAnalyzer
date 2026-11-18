@@ -1767,8 +1767,8 @@ class SectionGenerator:
         }]}
         base = {'dataset_ids': dataset_ids, 'nr_mode': nr_mode, 'baseline_operator': options['baseline_operator'],
                 'scoring_profile_id': options['methodology'] or None,
-                # A Saved Filter already calculated for these CDRs and filters (such as a Favourite Scoring) is used as it is.
-                'reuse_saved_filters': True}
+                # A Saved Scoring already calculated for these CDRs and filters (such as a Favourite Scoring) is used as it is.
+                'reuse_saved_scorings': True}
         self.progress('Calculating Scoring & GAP Analysis')
         try:
             content_bytes, _filename, _job = self.core.build_scoring_report_document(self.repository, base, report, self.user.username)
@@ -1948,12 +1948,12 @@ def _calls_signature(repository: Any) -> list[Any]:
     return signature
 
 
-def _saved_filters_signature(repository: Any) -> list[Any]:
-    """What changes when a Saved Filter is calculated again (the Scoring section uses their results)."""
+def _saved_scorings_signature(repository: Any) -> list[Any]:
+    """What changes when a Saved Scoring is calculated again (the Scoring section uses their results)."""
     try:
         with repository.connection() as connection:
             return list(connection.execute(
-                'SELECT COUNT(*), MAX(updated_at), MAX(finished_at), SUM(calculation_count) FROM saved_filters').fetchone())
+                'SELECT COUNT(*), MAX(updated_at), MAX(finished_at), SUM(calculation_count) FROM saved_scorings').fetchone())
     except sqlite3.Error:
         return []
 
@@ -1962,7 +1962,7 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
                         generator: 'SectionGenerator') -> str:
     """Identity of a generated section: the version and code of the application, its options and the common filters,
     and every input its module reads (the CDRs, the Operator and Vendor Maps, the Main Cities and, per module, the
-    PPT Designs, the methodologies and the Saved Filters calculated, the inventory of the analysis, the follow-up of the
+    PPT Designs, the methodologies and the Saved Scorings calculated, the inventory of the analysis, the follow-up of the
     calls or the CDRs of CDR Analysis). The same identity means the same document; a change of any input, or an update
     of the application, generates it again."""
     inputs: dict[str, Any] = {
@@ -1978,8 +1978,8 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
         inputs['designs'] = {item['key']: stored.get(item['key']) for item in section['items']}
     elif section['key'] == 'scoring':
         inputs['methodologies'] = repository.get_scoring_profiles()
-        # A Saved Filter of the same selection is used as it is: calculating one again generates the section again.
-        inputs['saved_filters'] = _saved_filters_signature(repository)
+        # A Saved Scoring of the same selection is used as it is: calculating one again generates the section again.
+        inputs['saved_scorings'] = _saved_scorings_signature(repository)
     elif section['key'] == 'network_insights':
         inputs['analysis'] = core.network_insights_summary_key(generator.network_selection(section))
     elif section['key'] == 'non_qualified_calls':

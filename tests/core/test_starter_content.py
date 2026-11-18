@@ -16,7 +16,7 @@ VENDOR_FILTER = re.compile(r'^\s*(Operator|Vendor|Operator_Vendor|Vendor_Operato
 
 def _seed_favourites(repository):
     """The favourites a new workspace starts with, which the client fixture leaves out (see conftest)."""
-    return (starter_content._seed_favourites_filters(repository),
+    return (starter_content._seed_favourite_scorings(repository),
             starter_content._seed_bundle_report_template_favourites(repository, 'system'))
 
 
@@ -228,14 +228,14 @@ def test_netcheck_2025_reaches_a_workspace_with_overlapping_campaigns_without_th
 def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
     import src.DriveTestAnalyzer as app_module
     from src.modules.reporting import bundle_report_templates
-    from src.modules.scoring import saved_filters
+    from src.modules.scoring import saved_scorings
 
     repository = app_module.repository
 
     def shipped(folder):
         return [json.loads(path.read_text(encoding='utf-8')) for path in sorted((ASSETS / folder).glob('*.json'))]
 
-    assert _seed_favourites(repository) == (len(shipped('scoring-favourites-filters')),
+    assert _seed_favourites(repository) == (len(shipped('scoring-favourite-scorings')),
                                             len(shipped('bundle-report-template-favourites')))
 
     # The favourite Bundle Report Templates, with the shipped Designs of their NR Mode checked as they were.
@@ -252,12 +252,12 @@ def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
         assert checked and all(design['nr_mode'] == nr_mode for design in checked)
         assert f'{nr_mode} - NetCheck CDR Report (Main Cities)' in [design['name'] for design in checked]
     # The Favourite Scorings, in their order, wait for the CDRs of their Campaign choice.
-    filters = [item for item in saved_filters.list_saved_filters(repository) if item['pinned']]
+    filters = [item for item in saved_scorings.list_saved_scorings(repository) if item['pinned']]
     assert [item['name'] for item in filters] == [item['name'] for item in sorted(
-        shipped('scoring-favourites-filters'), key=lambda item: item['position'])]
+        shipped('scoring-favourite-scorings'), key=lambda item: item['position'])]
     assert all(item['dataset_ids'] == [] and item['area_summary']['main_cities'] for item in filters)
     assert filters[0]['missing_cdrs'] == ['Latest campaign CDRs']
-    for item in shipped('scoring-favourites-filters'):
+    for item in shipped('scoring-favourite-scorings'):
         assert 'cdrs' not in item and item['context_filters']['Campaign'][0].startswith('@')
         assert not any(values for key, values in item['context_filters'].items() if key != 'Campaign')
 

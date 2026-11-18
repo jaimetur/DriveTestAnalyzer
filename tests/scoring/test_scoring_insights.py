@@ -173,7 +173,7 @@ def test_campaign_comparison_names_the_methodologies_of_a_result_by_campaign():
     import copy
 
     from src.modules.scoring import scoring
-    from src.modules.scoring.saved_filters import AGGREGATION_CONTRACT_VERSION
+    from src.modules.scoring.saved_scorings import AGGREGATION_CONTRACT_VERSION
     from src.modules.scoring.scoring_config import validate_scoring_profiles
     from src.modules.scoring.scoring_insights import comparison_note
     from src.modules.scoring.scoring_methodologies import merge_results, methodology_groups

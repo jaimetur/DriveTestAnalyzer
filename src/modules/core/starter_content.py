@@ -23,7 +23,7 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   ``query_sql`` on the ``selected_data``, ``selected_voice`` and ``selected_speech`` views);
 - ``assets/bundle-report-template-favourites/*.json``: the reports of Reporting (``name`` and ``definition``, as
   their export carries them), which find the shipped PPT Designs by their name; they start without a schedule;
-- ``assets/scoring-favourites-filters/*.json``: Scoring & GAP Favourite Scorings (an entry of their export without its
+- ``assets/scoring-favourite-scorings/*.json``: Scoring & GAP Favourite Scorings (an entry of their export without its
   CDRs), each with a Campaign choice (Latest campaign…) whose CDRs it takes once the workspace has them.
 
 The Vendor Maps of a new workspace come from ``assets/labels-vendors/default-vendor-maps.json`` (see ``repository``);
@@ -330,15 +330,15 @@ def _seed_bundle_report_template_favourites(repository: Any, username: str) -> i
     return import_entries(repository, entries, username, workspace_designs(repository)) if entries else 0
 
 
-def _seed_favourites_filters(repository: Any) -> int:
-    from src.modules.scoring.saved_filters import SAVED_FILTERS_FORMAT, SAVED_FILTERS_VERSION, import_saved_filters, list_saved_filters
+def _seed_favourite_scorings(repository: Any) -> int:
+    from src.modules.scoring.saved_scorings import SAVED_SCORINGS_FORMAT, SAVED_SCORINGS_VERSION, import_saved_scorings, list_saved_scorings
 
-    entries = _shipped_entries('scoring-favourites-filters', {item['name'].casefold() for item in list_saved_filters(repository)})
+    entries = _shipped_entries('scoring-favourite-scorings', {item['name'].casefold() for item in list_saved_scorings(repository)})
     if not entries:
         return 0
     # (After the Favourite Scorings the workspace has, whatever their place among the starter ones.)
-    return import_saved_filters(repository, {'format': SAVED_FILTERS_FORMAT, 'version': SAVED_FILTERS_VERSION,
-                                             'saved_filters': entries}, takes_order=False)
+    return import_saved_scorings(repository, {'format': SAVED_SCORINGS_FORMAT, 'version': SAVED_SCORINGS_VERSION,
+                                             'saved_scorings': entries}, takes_order=False)
 
 
 def seed_starter_content(repository: Any, username: str = 'system') -> dict[str, int] | None:
@@ -365,7 +365,7 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
         'auto_calculated_fields': _seed_calculated_dimensions(repository),
         'scoring_report_configurations': _seed_report_configurations(repository),
         'query_builder_queries': _seed_queries(repository, username),
-        'favourites_filters': _seed_favourites_filters(repository),
+        'favourite_scorings': _seed_favourite_scorings(repository),
     }
     # After the PPT Designs and the report configurations, which the reports name.
     added['bundle_report_template_favourites'] = _seed_bundle_report_template_favourites(repository, username)

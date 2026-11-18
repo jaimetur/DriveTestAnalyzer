@@ -357,7 +357,7 @@ def _normalize_selection(
             parsed_ids.append(dataset_id)
     rows_by_id = {int(row['id']): row for row in rows}
     context_filters = _normalize_context_filters(raw_selection.get('context_filters'), hierarchy, warnings)
-    # The CDRs follow the NR Mode and the Campaign filter (auto_cdrs); a Saved Filter opened in the
+    # The CDRs follow the NR Mode and the Campaign filter (auto_cdrs); a Saved Scoring opened in the
     # panel keeps its own CDRs until the NR Mode or a filter changes.
     auto_cdrs = raw_selection.get('auto_cdrs')
     if auto_cdrs is None:

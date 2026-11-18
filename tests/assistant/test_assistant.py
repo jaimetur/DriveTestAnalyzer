@@ -12,7 +12,7 @@ import src.DriveTestAnalyzer as core
 from src.modules.assistant import assistant, assistant_query, assistant_tools
 from src.modules.nq import nq_prioritization
 from src.modules.ppt_designer import comment_writers as writers
-from src.modules.scoring import saved_filters, scoring_history
+from src.modules.scoring import saved_scorings, scoring_history
 from src.modules.assistant.assistant_privacy import Pseudonymizer, workspace_pseudonymizer
 from src.modules.core.repository import Repository
 from tests.support.scoring_fixtures import load_initial_scoring_configuration
@@ -79,10 +79,10 @@ def test_every_figure_of_an_answer_comes_from_the_tools():
     assert assistant.untraced_figures(text, tables, allowed) == ['123,45', '700.5']
 
 
-def test_the_scoring_of_the_assistant_is_the_one_of_a_saved_filter(scored_repository):
+def test_the_scoring_of_the_assistant_is_the_one_of_a_saved_scoring(scored_repository):
     repository, ids = scored_repository
-    job, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Vendor'], 'NSA')
-    expected = saved_filters.calculate_saved_filter(repository, job['id'])['result']
+    job, _cached = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Vendor'], 'NSA')
+    expected = saved_scorings.calculate_saved_scoring(repository, job['id'])['result']
     context = assistant_tools.ToolContext(repository=repository, workspace_name='UK', username='super')
     result = assistant_tools.scoring(context, {'campaigns': ['latest'], 'nr_mode': 'NSA', 'split_by': ['Operator', 'Vendor'],
                                                'detail': ['environments', 'gap', 'kpis']})

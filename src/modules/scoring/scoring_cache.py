@@ -1,5 +1,5 @@
-"""Calculations that Saved Filters share, kept in the cache folder of the workspace (``.cache/scoring``): the National &
-Geographical Areas Trends and the Points Lost Map of each methodology. Another Saved Filter with the same CDRs,
+"""Calculations that Saved Scorings share, kept in the cache folder of the workspace (``.cache/scoring``): the National &
+Geographical Areas Trends and the Points Lost Map of each methodology. Another Saved Scoring with the same CDRs,
 methodology and options (or the same one calculated again) reads them instead of calculating them again.
 
 The key of each one holds everything it depends on (the revision of its CDRs, the methodology, the options, the
@@ -22,7 +22,7 @@ CACHE_VERSION = 1
 MAX_BYTES = 1024 ** 3
 # The modules whose code calculates what is kept (their paths below src/modules): a change in any of them calculates
 # it again.
-CODE_MODULES = ('scoring/saved_filters', 'scoring/scoring', 'scoring/scoring_area_summary', 'scoring/scoring_history',
+CODE_MODULES = ('scoring/saved_scorings', 'scoring/scoring', 'scoring/scoring_area_summary', 'scoring/scoring_history',
                 'scoring/scoring_methodologies', 'scoring/scoring_points_loss', 'scoring/scoring_vendors',
                 'network/map_areas', 'network/map_area_columns')
 _prune_lock = threading.Lock()

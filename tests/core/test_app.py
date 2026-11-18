@@ -2474,7 +2474,7 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         ('mappings-reference-data', 'Workspace Config'),
         ('app-events', 'App Logs'),
         ('designs', 'PPT Designer'), ('ppt-templates', 'PPT Designer'),
-        ('scoring-configuration', 'Benchmark'), ('scoring-favourites-filters', 'Benchmark'), ('scoring-report-templates', 'Benchmark'),
+        ('scoring-configuration', 'Benchmark'), ('scoring-favourite-scorings', 'Benchmark'), ('scoring-report-templates', 'Benchmark'),
         ('scoring-excluded-calls', 'Benchmark'), ('scoring-export-panels', 'Benchmark'),
         ('network-insights-favourites', 'Network Insights'),
         ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
@@ -6488,22 +6488,22 @@ def test_background_task_stop_endpoint_stops_accessible_workspace_work(client) -
 
 def test_a_points_lost_map_can_be_stopped_from_its_background_card(client) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.scoring import saved_filters
+    from src.modules.scoring import saved_scorings
 
     login(client)
     workspace = app_module.active_workspace
-    key = saved_filters._points_loss_key(workspace.database_path, 41)
-    saved_filters._points_loss_jobs[key] = {'status': 'processing', 'queued_at': 1.0, 'started_at': 1.0, 'progress': 30.0,
+    key = saved_scorings._points_loss_key(workspace.database_path, 41)
+    saved_scorings._points_loss_jobs[key] = {'status': 'processing', 'queued_at': 1.0, 'started_at': 1.0, 'progress': 30.0,
                                             'detail': 'Mapping the Data tests: KPI 3 of 21'}
     try:
-        [card] = [task for task in app_module._saved_filter_points_loss_tasks(workspace) if task['id'] == 'saved-filter-map:41']
+        [card] = [task for task in app_module._saved_scoring_points_loss_tasks(workspace) if task['id'] == 'saved-scoring-map:41']
         assert card['stop_url'] == f'/api/background-tasks/{workspace.id}/stop'
         response = client.post(card['stop_url'], data={'task_id': card['stop_task_id']})
         assert response.status_code == 200
-        assert saved_filters._points_loss_jobs[key]['stop'] is True
+        assert saved_scorings._points_loss_jobs[key]['stop'] is True
         assert any(row['action'] == 'stop_points_loss_map' for row in app_module.repository.list_logs(limit=20))
     finally:
-        saved_filters._points_loss_jobs.pop(key, None)
+        saved_scorings._points_loss_jobs.pop(key, None)
     # Once it ended, it can no longer be stopped.
     assert client.post(card['stop_url'], data={'task_id': card['stop_task_id']}).status_code == 409
 
@@ -9340,7 +9340,7 @@ def test_top_navigation_shows_document_links(client) -> None:
     login(client)
     response = client.get("/workspace")
     assert response.status_code == 200
-    assert "title=\"Open the Changelog\">DriveTest Analyzer</a></h1>" in response.text
+    assert "data-about-open>DriveTest Analyzer</a></h1>" in response.text
     assert f"v{__version__} · {__release_date__}" in response.text
     assert 'href="/documents/view/readme"' in response.text
     assert 'href="/documents/view/changelog"' in response.text
@@ -9480,21 +9480,21 @@ def test_small_screens_have_a_menu_bar_instead_of_the_tab_rows(client) -> None:
     assert "menu.querySelectorAll('a[href], [data-about-open]').forEach((item) => item.addEventListener('click', () => setOpen(false)));" in app_script
 
 
-def test_the_version_badge_opens_about_and_the_logo_takes_the_page_to_its_top(client) -> None:
+def test_the_name_opens_about_the_version_the_changelog_and_the_logo_the_top_of_the_page(client) -> None:
     root = Path(__file__).parents[2]
     app_script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     login(client)
     page = client.get('/scoring').text
-    # The version badge of the header opens About (its link to the Changelog is kept for the pages without it).
-    assert 'class="title-badge" href="/documents/view/changelog" title="About ' in page and '" data-about-open>v' in page
+    # The name of the application opens About (its link to the Changelog is kept for the pages without it), the version
+    # badge the Changelog.
+    assert 'class="brand-title-link" href="/documents/view/changelog" title="About ' in page and '" data-about-open>DriveTest Analyzer</a></h1>' in page
+    assert 'class="title-badge" href="/documents/view/changelog" title="Open the Changelog">v' in page
     about = app_script[app_script.index("document.querySelectorAll('[data-about-open]')"):]
     assert about.index('event.preventDefault();') < about.index('overlay.hidden = false;')
     # The logo is a button back to the top of the page, as the button that appears once the page is scrolled.
     assert 'class="brand-mark-button" data-scroll-top title="Back to the top of the page"' in page
     assert "document.querySelectorAll('[data-scroll-top]').forEach((logo) => logo.addEventListener('click', backToTopOfPage));" in app_script
     assert "button.addEventListener('click', backToTopOfPage);" in app_script
-    # The title opens the Changelog.
-    assert '<h1><a class="brand-title-link" href="/documents/view/changelog" title="Open the Changelog">' in page
 
 
 def test_the_red_card_stands_at_the_left_above_the_task_cards_and_below_the_open_drawer() -> None:

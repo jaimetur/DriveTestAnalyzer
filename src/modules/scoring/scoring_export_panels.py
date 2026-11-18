@@ -2,7 +2,7 @@
 exports: every operator, or the Focus operators of the Operator Maps (see operator_roles).
 
 Each workspace chooses them in Workspace Config (Scoring Export Panels): a panel that is not Exportable is left out of
-every Scoring document (the Saved Filter exports, the scoring reports, Reporting Jobs and Bundle Report Templates) and
+every Scoring document (the Saved Scoring exports, the scoring reports, Reporting Jobs and Bundle Report Templates) and
 of the editors of their content. A document can still show every operator in the Focus Operators panels (``Export All
 Operators in Focus panels``). The settings travel as the Scoring Export Panels element of Import / Export, transfers and
 backups.
@@ -54,7 +54,7 @@ EXPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...] = (
         ('stake', 'Where the points go', ALL_OPERATORS),
         ('kpis', 'Points lost per KPI', FOCUS_OPERATORS),
         ('map', 'Points lost per City / Region map, by points and per 1,000 tests', FOCUS_OPERATORS),
-        ('postal_map', 'Points lost per Postal Code map (Saved Filters with Postal Codes)', FOCUS_OPERATORS),
+        ('postal_map', 'Points lost per Postal Code map (Saved Scorings with Postal Codes)', FOCUS_OPERATORS),
         ('vendors', 'Points lost per Vendor', FOCUS_OPERATORS),
         ('site_types', 'Points lost per kind of site', FOCUS_OPERATORS),
         ('ran_vendors', 'Points lost per RAN Vendor (host and vendor)', FOCUS_OPERATORS),

@@ -7,7 +7,7 @@ import pytest
 import src.DriveTestAnalyzer as core
 from src.modules.mapping.mapping_assignments import (assignment_effects, assignment_rows, comment_changes, detected_values,
                                             load_name_comments, unassigned_values, value_campaigns)
-from src.modules.mapping.mapping_renames import count_saved_filters
+from src.modules.mapping.mapping_renames import count_saved_scorings
 from tests.nq.test_non_qualified_calls import add_cdr, login, voice_rows, workspace_user
 
 
@@ -40,7 +40,7 @@ def test_effects_list_merges_moved_values_and_labels_with_underscores():
     mappings = {'vodafone sa': 'VF_SA', 'vf_sa': 'VF_SA', 'vodafone vonr': 'VF_SA', 'vf': 'VF'}
     detected = ['Vodafone SA', 'Vodafone VoNR', 'Vodafone UK']
     effects = assignment_effects('operator', [('Vodafone VoNR', 'VF_VoNR'), ('Vodafone UK', 'vf_sa')], detected,
-                                 mappings, ['VF_SA', 'VF'], saved_filters=lambda label: {'VF_SA': 2}.get(label, 0))
+                                 mappings, ['VF_SA', 'VF'], saved_scorings=lambda label: {'VF_SA': 2}.get(label, 0))
     assert effects['merges'] == [{'label': 'VF_SA', 'values': ['Vodafone SA', 'Vodafone UK']}]
     assert effects['moved'] == [{'value': 'Vodafone VoNR', 'from': 'VF_SA', 'to': 'VF_VoNR', 'filters': 2}]
     assert effects['underscores'] == ['VF_VoNR']
@@ -198,12 +198,12 @@ def test_viewers_see_the_card_without_the_assignment_links(client, tmp_path):
     assert client.post('/api/workspace-config/operator-mappings/preview', json={'assignments': []}).status_code == 403
 
 
-def test_moving_a_value_counts_the_saved_filters_of_its_label_without_changing_them(client, tmp_path):
+def test_moving_a_value_counts_the_saved_scorings_of_its_label_without_changing_them(client, tmp_path):
     _cdr_with_unassigned_values(tmp_path)
     core.repository.replace_operator_mapping_group(None, 'VF_SA', ['Vodafone Lab SA', 'Vodafone Lab VoNR'])
     stored = json.dumps({'operator': ['VF_SA']})
     core.repository.set_workspace_state('nq_calls_filters', stored)
-    assert count_saved_filters(core.repository, 'operator', 'VF_SA', core.repository.chart_mapping_settings()) == 1
+    assert count_saved_scorings(core.repository, 'operator', 'VF_SA', core.repository.chart_mapping_settings()) == 1
     login(client)
     preview = client.post('/api/workspace-config/operator-mappings/preview', json={'assignments': [
         {'value': 'Vodafone Lab VoNR', 'label': 'VF_LabVoNR'}]}).json()

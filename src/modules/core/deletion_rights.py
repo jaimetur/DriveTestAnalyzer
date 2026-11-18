@@ -1,5 +1,5 @@
 """Who deletes what the users of a workspace share: admins and super-admins delete everything, the other roles only
-what they created (PPT Designer, PPT Templates, Scoring Saved Filters and Methodologies, the favourites of the
+what they created (PPT Designer, PPT Templates, Scoring Saved Scorings and Methodologies, the favourites of the
 Scoring report editor, Reporting Jobs and Bundle Report Template favourites).
 
 The items whose table has no creator of their own keep it in the workspace settings, by kind. Those created before it
@@ -158,7 +158,7 @@ def assign_unknown_creators(repository: Any) -> dict[str, int]:
     from src.modules.ppt_designer.ppt_designer import LEGACY_STATE_KEY, STATE_KEY
     from src.modules.reporting.report_tasks import REPORT_TASKS_TABLE, ensure_report_task_tables
     from src.modules.core.repository import SCORING_CONFIGURATION_STATE_KEY
-    from src.modules.scoring.saved_filters import SAVED_FILTERS_TABLE
+    from src.modules.scoring.saved_scorings import SAVED_SCORINGS_TABLE
     from src.modules.scoring.scoring_reports import load_report_state
 
     owner = UNKNOWN_CREATOR_OWNER
@@ -167,7 +167,7 @@ def assign_unknown_creators(repository: Any) -> dict[str, int]:
     ensure_tables(repository)
     unknown = "TRIM(COALESCE(created_by, '')) = '' OR LOWER(TRIM(created_by)) = 'system'"
     with repository.connection() as connection:
-        for kind, table in (('saved_filters', SAVED_FILTERS_TABLE), ('reporting_jobs', REPORT_TASKS_TABLE),
+        for kind, table in (('saved_scorings', SAVED_SCORINGS_TABLE), ('reporting_jobs', REPORT_TASKS_TABLE),
                             ('bundle_report_template_favourites', BUNDLE_REPORT_TEMPLATES_TABLE),
                             ('ppt_templates', 'report_templates')):
             changed[kind] = connection.execute(f'UPDATE {table} SET created_by = ? WHERE {unknown}', (owner,)).rowcount

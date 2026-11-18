@@ -69,13 +69,13 @@ def test_uncounted_writes_keep_what_was_read_and_best_effort_writes_do_not(tmp_p
     assert kept(repository, 'test', None, read) == 'second' and len(reads) == 2
 
 
-def test_the_schema_of_a_workspace_finds_the_saved_filters_that_finished_by_their_date(tmp_path) -> None:
+def test_the_schema_of_a_workspace_finds_the_saved_scorings_that_finished_by_their_date(tmp_path) -> None:
     repository = workspace(tmp_path)
     with repository.connection() as connection:
         plan = ' '.join(str(row[3]) for row in connection.execute(
-            'EXPLAIN QUERY PLAN SELECT id FROM saved_filters WHERE finished_at >= ?', ('2026-01-01',)))
-    # The date is stored after the result of each Saved Filter: without its index every result was read to look at it.
-    assert 'idx_saved_filters_finished' in plan
+            'EXPLAIN QUERY PLAN SELECT id FROM saved_scorings WHERE finished_at >= ?', ('2026-01-01',)))
+    # The date is stored after the result of each Saved Scoring: without its index every result was read to look at it.
+    assert 'idx_saved_scorings_finished' in plan
 
 
 def test_nothing_is_kept_for_longer_than_its_time(tmp_path, monkeypatch) -> None:

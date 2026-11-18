@@ -26,7 +26,7 @@ def test_the_open_workspace_is_refused_to_a_user_it_was_not_given_to(client):
     # Its pages send to Workspace, which says why; its requests are refused.
     page = client.get('/scoring', headers={'accept': 'text/html'}, follow_redirects=False)
     assert page.status_code == 303 and page.headers['location'].startswith('/workspace?workspace_error=You+do+not+have+access')
-    for path in ('/api/scoring/saved-filters', '/api/datasets/status', '/api/workspace-config/campaign-map', '/api/app-logs'):
+    for path in ('/api/scoring/saved-scorings', '/api/datasets/status', '/api/workspace-config/campaign-map', '/api/app-logs'):
         refused = client.get(path)
         assert refused.status_code == 403 and 'open workspace (Default)' in refused.json()['detail'], path
     assert client.post('/workspace/delete-datasets', data={'dataset_ids': ['1']}).status_code == 403
@@ -37,9 +37,9 @@ def test_the_open_workspace_is_refused_to_a_user_it_was_not_given_to(client):
     assert client.get('/tickets').status_code == 200
     # A user of the workspace, and a super-admin without a grant, use it.
     assert login(client, 'EINSIDE', 'EINSIDE123').status_code == 303
-    assert client.get('/api/scoring/saved-filters').status_code == 200
+    assert client.get('/api/scoring/saved-scorings').status_code == 200
     assert login(client).status_code == 303
-    assert client.get('/api/scoring/saved-filters').status_code == 200
+    assert client.get('/api/scoring/saved-scorings').status_code == 200
     assert core.needs_open_workspace('/workspace') is False and core.needs_open_workspace('/reporting/files/1/x') is False
     assert core.needs_open_workspace('/workspace-config') and core.needs_open_workspace('/api/workspace/auto-calculated-fields')
     assert not core.needs_open_workspace('/api/workspaces/sizes')

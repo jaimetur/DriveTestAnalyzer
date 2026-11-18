@@ -17,7 +17,7 @@ import pytest
 from pptx import Presentation
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from src.modules.core.repository import Repository, local_now_iso
 from tests.support.scoring_fixtures import scoring_configuration
 from src.modules.scoring.scoring_config import load_aggregation_hierarchy
@@ -29,11 +29,11 @@ def _login(client) -> None:
 
 
 def _mark_scoring_result_as_legacy(repository: Repository, job_id: int) -> None:
-    result = saved_filters.get_saved_filter(repository, job_id, include_result=True)['result']
+    result = saved_scorings.get_saved_scoring(repository, job_id, include_result=True)['result']
     result.pop('gap_direction', None)
     with sqlite3.connect(repository.db_path) as connection:
         connection.execute(
-            'UPDATE saved_filters SET result_json = ? WHERE id = ?',
+            'UPDATE saved_scorings SET result_json = ? WHERE id = ?',
             (json.dumps(result, ensure_ascii=False), job_id),
         )
 
@@ -107,7 +107,7 @@ def scoring_api(client, tmp_path, monkeypatch):
         return {'scoring': scoring, 'charts': charts, 'gap': gap, 'warnings': []}
 
     engine.calculate_scoring = calculate_scoring
-    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    monkeypatch.setattr(saved_scorings, '_scoring_engine', lambda: engine)
     submitted = []
 
     def record_submission(task_repository, callback, *args, **kwargs):
@@ -270,7 +270,7 @@ def test_scoring_selection_persists_for_workspace_and_rejects_delayed_tab_update
     # The CDRs follow the NR Mode and Campaign: without CDRs of their own, they are chosen again.
     chosen_again = client.put('/api/scoring/selection', json={'selection': {**common_selection, 'dataset_ids': []}})
     assert chosen_again.json()['selection']['dataset_ids'] == scoring_api['complete_dataset_ids']
-    # An opened Saved Filter keeps its own CDRs (here none).
+    # An opened Saved Scoring keeps its own CDRs (here none).
     empty_selection = {**common_selection, 'dataset_ids': [], 'auto_cdrs': False}
     cleared = client.put('/api/scoring/selection', json={'selection': empty_selection})
     assert cleared.status_code == 200 and cleared.json()['accepted'] is True
@@ -280,7 +280,7 @@ def test_scoring_selection_persists_for_workspace_and_rejects_delayed_tab_update
 def test_scoring_selection_recovers_from_deleted_cdr_and_methodology(scoring_api):
     client = scoring_api['client']
     repository = scoring_api['repository']
-    # The CDRs of an opened Saved Filter, one of them deleted later.
+    # The CDRs of an opened Saved Scoring, one of them deleted later.
     selection = {
         'dataset_ids': scoring_api['complete_dataset_ids'],
         'auto_cdrs': False,
@@ -347,14 +347,14 @@ def test_scoring_selection_survives_workspace_database_backup_restore(scoring_ap
 
 
 def test_scoring_api_validates_auth_mode_and_missing_jobs(client, scoring_api):
-    assert client.get('/api/scoring/saved-filters').status_code == 200
-    assert client.get('/api/scoring/saved-filters/999999').status_code == 404
-    assert client.get('/scoring/saved-filters/999999/export/scoring').status_code == 404
+    assert client.get('/api/scoring/saved-scorings').status_code == 200
+    assert client.get('/api/scoring/saved-scorings/999999').status_code == 404
+    assert client.get('/scoring/saved-scorings/999999/export/scoring').status_code == 404
 
     sa_id = _add_ready_cdr(
         scoring_api['repository'], scoring_api['tmp_path'], name='UK_Q2_2026_SA_Data.csv', nr_mode='SA',
     )
-    response = client.post('/api/scoring/saved-filters', json={
+    response = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': [scoring_api['dataset_id'], sa_id],
         'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
     })
@@ -363,7 +363,7 @@ def test_scoring_api_validates_auth_mode_and_missing_jobs(client, scoring_api):
 
     client.get('/logout', follow_redirects=False)
     assert client.get('/scoring', follow_redirects=False).status_code == 303
-    assert client.get('/api/scoring/saved-filters').status_code == 401
+    assert client.get('/api/scoring/saved-scorings').status_code == 401
 
 
 def test_scoring_configuration_api_round_trips_complete_validated_document(scoring_api):
@@ -441,7 +441,7 @@ def test_scoring_job_can_select_inactive_profile_without_changing_workspace_defa
     profiles['profiles'].append(inactive)
     repository.replace_scoring_profiles(profiles)
 
-    response = client.post('/api/scoring/saved-filters', json={
+    response = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'],
         'nr_mode': 'NSA',
         'aggregation_levels': ['Region', 'City'],
@@ -449,7 +449,7 @@ def test_scoring_job_can_select_inactive_profile_without_changing_workspace_defa
     })
 
     assert response.status_code == 200, response.text
-    job = response.json()['saved_filter']
+    job = response.json()['saved_scoring']
     assert job['scoring_profile_id'] == 'custom-2024'
     assert job['scoring_profile_name'] == 'Custom 2024'
     assert job['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] == 88
@@ -458,16 +458,16 @@ def test_scoring_job_can_select_inactive_profile_without_changing_workspace_defa
     assert repository.get_scoring_profiles()['active_profile_id'] == active_id
     assert repository.get_scoring_configuration() == active_configuration
 
-    defaulted = client.post('/api/scoring/saved-filters', json={
+    defaulted = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'],
         'nr_mode': 'NSA',
         'aggregation_levels': ['Operator'],
         'scoring_profile_id': '',
     })
     assert defaulted.status_code == 200, defaulted.text
-    assert defaulted.json()['saved_filter']['scoring_profile_id'] == active_id
+    assert defaulted.json()['saved_scoring']['scoring_profile_id'] == active_id
 
-    unknown = client.post('/api/scoring/saved-filters', json={
+    unknown = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'],
         'nr_mode': 'NSA',
         'aggregation_levels': ['Operator'],
@@ -480,27 +480,27 @@ def test_scoring_job_can_select_inactive_profile_without_changing_workspace_defa
 def test_scoring_exports_accept_expanded_and_summary_table_modes(scoring_api):
     client = scoring_api['client']
     repository = scoring_api['repository']
-    response = client.post('/api/scoring/saved-filters', json={
+    response = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'],
         'nr_mode': 'NSA',
         'aggregation_levels': ['Operator'],
     })
     assert response.status_code == 200, response.text
-    job = saved_filters.calculate_saved_filter(repository, response.json()['saved_filter']['id'])
+    job = saved_scorings.calculate_saved_scoring(repository, response.json()['saved_scoring']['id'])
     assert job['status'] == 'completed'
 
-    legacy_csv = client.get(f"/scoring/saved-filters/{job['id']}/export/scoring")
-    city_raw_csv = client.get(f"/scoring/saved-filters/{job['id']}/export/scoring?environment=DriveCity")
-    summary_csv = client.get(f"/scoring/saved-filters/{job['id']}/export/scoring?table_mode=summary")
+    legacy_csv = client.get(f"/scoring/saved-scorings/{job['id']}/export/scoring")
+    city_raw_csv = client.get(f"/scoring/saved-scorings/{job['id']}/export/scoring?environment=DriveCity")
+    summary_csv = client.get(f"/scoring/saved-scorings/{job['id']}/export/scoring?table_mode=summary")
     city_summary_csv = client.get(
-        f"/scoring/saved-filters/{job['id']}/export/scoring?table_mode=summary&environment=DriveCity",
+        f"/scoring/saved-scorings/{job['id']}/export/scoring?table_mode=summary&environment=DriveCity",
     )
-    summary_ppt = client.get(f"/scoring/saved-filters/{job['id']}/export/ppt?table_mode=summary&gap_layout=adjacent")
-    city_ppt = client.get(f"/scoring/saved-filters/{job['id']}/export/ppt?environment=DriveCity")
-    invalid_environment = client.get(f"/scoring/saved-filters/{job['id']}/export/ppt?environment=Unknown")
-    invalid_mode = client.get(f"/scoring/saved-filters/{job['id']}/export/gap?table_mode=compact")
-    invalid_gap_layout = client.get(f"/scoring/saved-filters/{job['id']}/export/ppt?gap_layout=side")
-    summary_word = client.get(f"/scoring/saved-filters/{job['id']}/export/word?table_mode=summary")
+    summary_ppt = client.get(f"/scoring/saved-scorings/{job['id']}/export/ppt?table_mode=summary&gap_layout=adjacent")
+    city_ppt = client.get(f"/scoring/saved-scorings/{job['id']}/export/ppt?environment=DriveCity")
+    invalid_environment = client.get(f"/scoring/saved-scorings/{job['id']}/export/ppt?environment=Unknown")
+    invalid_mode = client.get(f"/scoring/saved-scorings/{job['id']}/export/gap?table_mode=compact")
+    invalid_gap_layout = client.get(f"/scoring/saved-scorings/{job['id']}/export/ppt?gap_layout=side")
+    summary_word = client.get(f"/scoring/saved-scorings/{job['id']}/export/word?table_mode=summary")
     assert summary_word.status_code == 200
     assert summary_word.headers['content-disposition'].endswith('.docx')
     from docx import Document as WordDocument
@@ -559,38 +559,38 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
         {'canonical': 'Vodafone UK', 'aliases': ['VF'], 'color': '#445566'},
         {'canonical': 'EE', 'aliases': ['EE (UK)'], 'color': '#778899'},
     ])
-    created = client.post('/api/scoring/saved-filters', json=payload)
+    created = client.post('/api/scoring/saved-scorings', json=payload)
     assert created.status_code == 200, created.text
-    job_id = created.json()['saved_filter']['id']
-    assert created.json()['saved_filter']['status'] == 'queued'
+    job_id = created.json()['saved_scoring']['id']
+    assert created.json()['saved_scoring']['status'] == 'queued'
     # (The calculation, then the result as served kept, ticket #168.)
-    calculations = lambda: [job for job in scoring_api['submitted'] if job[1] is saved_filters.calculate_saved_filter]
+    calculations = lambda: [job for job in scoring_api['submitted'] if job[1] is saved_scorings.calculate_saved_scoring]
     assert len(calculations()) == 1
 
-    unfinished_export = client.get(f'/scoring/saved-filters/{job_id}/export/scoring')
+    unfinished_export = client.get(f'/scoring/saved-scorings/{job_id}/export/scoring')
     assert unfinished_export.status_code == 409
 
-    completed = saved_filters.calculate_saved_filter(scoring_api['repository'], job_id)
+    completed = saved_scorings.calculate_saved_scoring(scoring_api['repository'], job_id)
     assert completed['status'] == 'completed'
     assert scoring_api['calls'][0]['levels'] == ['Operator', 'Region']
     assert scoring_api['calls'][0]['baseline_operator'] == 'EE'
 
-    cached = client.post('/api/scoring/saved-filters', json=payload)
+    cached = client.post('/api/scoring/saved-scorings', json=payload)
     assert cached.status_code == 200
     assert cached.json()['cached'] is True
-    assert cached.json()['saved_filter']['id'] == job_id
+    assert cached.json()['saved_scoring']['id'] == job_id
     assert len(calculations()) == 1
 
     _mark_scoring_result_as_legacy(scoring_api['repository'], job_id)
 
-    result = client.get(f'/api/scoring/saved-filters/{job_id}')
+    result = client.get(f'/api/scoring/saved-scorings/{job_id}')
     assert result.status_code == 200
-    assert result.json()['saved_filter']['status'] == 'completed'
+    assert result.json()['saved_scoring']['status'] == 'completed'
     assert result.json()['scoring'][0]['weighted_points'] == 4.2
     assert result.json()['charts'][0]['category'] == 'Overall'
     assert result.json()['gap'][0]['gap_points'] == -0.6
     assert result.json()['gap_direction'] == 'operator_minus_reference'
-    stored_result = saved_filters.get_saved_filter(scoring_api['repository'], job_id, include_result=True)['result']
+    stored_result = saved_scorings.get_saved_scoring(scoring_api['repository'], job_id, include_result=True)['result']
     assert stored_result['gap'][0]['gap_points'] == 0.6
     assert 'gap_direction' not in stored_result
     assert [row['operator'] for row in result.json()['scoring']] == ['EE', 'O2', 'Three UK', 'Vodafone UK']
@@ -599,11 +599,11 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
     assert score_table['operator_styles']['Three UK']['color'] == '#AABBCC'
     assert score_table['operator_styles']['EE']['color'] == '#778899'
 
-    csv_response = client.get(f'/scoring/saved-filters/{job_id}/export/scoring')
+    csv_response = client.get(f'/scoring/saved-scorings/{job_id}/export/scoring')
     assert csv_response.status_code == 200
     assert csv_response.headers['content-type'].startswith('text/csv')
     assert 'Download Throughput' in csv_response.content.decode('utf-8-sig')
-    gap_csv = client.get(f'/scoring/saved-filters/{job_id}/export/gap')
+    gap_csv = client.get(f'/scoring/saved-scorings/{job_id}/export/gap')
     assert gap_csv.status_code == 200
     assert 'gap_points' in gap_csv.content.decode('utf-8-sig')
     gap_csv_rows = pd.read_csv(StringIO(gap_csv.content.decode('utf-8-sig')))
@@ -611,7 +611,7 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
 
     # Drawn in NetCheck, whose operators fill the headers with their colour (Ericsson is the default of the users).
     assert client.put('/api/scoring/theme', json={'theme': 'netcheck'}).status_code == 200
-    ppt_response = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
+    ppt_response = client.get(f'/scoring/saved-scorings/{job_id}/export/ppt')
     assert ppt_response.status_code == 200, ppt_response.text
     presentation = Presentation(BytesIO(ppt_response.content))
     slide_text = '\n'.join(
@@ -643,13 +643,13 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
         assert 'North' not in [scoring_table.cell(1, column).text for column in range(fixed_count, fixed_count + 4)]
         assert str(scoring_table.cell(0, fixed_count).fill.fore_color.rgb) == 'AABBCC'
 
-    forced = client.post('/api/scoring/saved-filters', json={**payload, 'force': True})
+    forced = client.post('/api/scoring/saved-scorings', json={**payload, 'force': True})
     assert forced.status_code == 200
-    # Recalculate calculates the same Saved Filter again.
-    assert forced.json()['saved_filter']['id'] == job_id
+    # Recalculate calculates the same Saved Scoring again.
+    assert forced.json()['saved_scoring']['id'] == job_id
     assert forced.json()['cached'] is False
     assert len(calculations()) == 2
-    assert len(saved_filters.list_saved_filters(scoring_api['repository'])) == 1
+    assert len(saved_scorings.list_saved_scorings(scoring_api['repository'])) == 1
 
 
 def test_scoring_job_match_api_is_read_only_and_uses_complete_validation(scoring_api):
@@ -663,43 +663,43 @@ def test_scoring_job_match_api_is_read_only_and_uses_complete_validation(scoring
         'context_filters': {'Region': ['North']},
     }
 
-    missing = client.post('/api/scoring/saved-filters/match', json=payload)
+    missing = client.post('/api/scoring/saved-scorings/match', json=payload)
     assert missing.status_code == 200, missing.text
-    assert missing.json() == {'saved_filter': None}
-    assert saved_filters.list_saved_filters(repository) == []
+    assert missing.json() == {'saved_scoring': None}
+    assert saved_scorings.list_saved_scorings(repository) == []
     assert scoring_api['submitted'] == []
 
-    created = client.post('/api/scoring/saved-filters', json=payload)
+    created = client.post('/api/scoring/saved-scorings', json=payload)
     assert created.status_code == 200, created.text
-    job_id = created.json()['saved_filter']['id']
+    job_id = created.json()['saved_scoring']['id']
     submitted_before_match = len(scoring_api['submitted'])
-    matched = client.post('/api/scoring/saved-filters/match', json=payload)
+    matched = client.post('/api/scoring/saved-scorings/match', json=payload)
     assert matched.status_code == 200, matched.text
-    assert matched.json()['saved_filter']['id'] == job_id
-    assert matched.json()['saved_filter']['status'] == 'queued'
-    assert len(saved_filters.list_saved_filters(repository)) == 1
+    assert matched.json()['saved_scoring']['id'] == job_id
+    assert matched.json()['saved_scoring']['status'] == 'queued'
+    assert len(saved_scorings.list_saved_scorings(repository)) == 1
     assert len(scoring_api['submitted']) == submitted_before_match
 
-    incomplete = client.post('/api/scoring/saved-filters/match', json={
+    incomplete = client.post('/api/scoring/saved-scorings/match', json={
         **payload, 'dataset_ids': [scoring_api['dataset_id']],
     })
     assert incomplete.status_code == 400
-    assert len(saved_filters.list_saved_filters(repository)) == 1
+    assert len(saved_scorings.list_saved_scorings(repository)) == 1
     assert len(scoring_api['submitted']) == submitted_before_match
 
-    saved_filters.calculate_saved_filter(repository, job_id)
-    forced = client.post('/api/scoring/saved-filters', json={**payload, 'force': True})
+    saved_scorings.calculate_saved_scoring(repository, job_id)
+    forced = client.post('/api/scoring/saved-scorings', json={**payload, 'force': True})
     assert forced.status_code == 200, forced.text
-    assert forced.json()['saved_filter']['id'] == job_id
+    assert forced.json()['saved_scoring']['id'] == job_id
     assert forced.json()['cached'] is False
-    assert forced.json()['saved_filter']['status'] == 'queued'
-    assert len(saved_filters.list_saved_filters(repository)) == 1
+    assert forced.json()['saved_scoring']['status'] == 'queued'
+    assert len(saved_scorings.list_saved_scorings(repository)) == 1
 
 
 def test_global_raw_kpis_survive_job_reload_api_get_and_csv_export(scoring_api, monkeypatch):
     client = scoring_api['client']
     repository = scoring_api['repository']
-    engine = saved_filters._scoring_engine()
+    engine = saved_scorings._scoring_engine()
     original_calculate = engine.calculate_scoring
     metric = repository.get_scoring_configuration()['metrics'][0]
     global_kpi = {
@@ -723,22 +723,22 @@ def test_global_raw_kpis_survive_job_reload_api_get_and_csv_export(scoring_api, 
         'aggregation_levels': ['Operator', 'Region'],
         'nr_mode': 'NSA', 'baseline_operator': 'EE',
     }
-    created = client.post('/api/scoring/saved-filters', json=payload)
+    created = client.post('/api/scoring/saved-scorings', json=payload)
     assert created.status_code == 200, created.text
-    job_id = created.json()['saved_filter']['id']
-    completed = saved_filters.calculate_saved_filter(repository, job_id)
+    job_id = created.json()['saved_scoring']['id']
+    completed = saved_scorings.calculate_saved_scoring(repository, job_id)
     assert completed['status'] == 'completed'
-    persisted = saved_filters.get_saved_filter(repository, job_id, include_result=True)
+    persisted = saved_scorings.get_saved_scoring(repository, job_id, include_result=True)
     assert persisted['result']['global_kpis'] == [global_kpi]
 
-    response = client.get(f'/api/scoring/saved-filters/{job_id}')
+    response = client.get(f'/api/scoring/saved-scorings/{job_id}')
     assert response.status_code == 200, response.text
     api_result = response.json()
     assert api_result['global_kpis'] == [global_kpi]
     assert api_result['scoring'] == persisted['result']['scoring']
     assert api_result['charts'] == persisted['result']['charts']
 
-    csv_response = client.get(f'/scoring/saved-filters/{job_id}/export/scoring?table_mode=expanded&environment=all')
+    csv_response = client.get(f'/scoring/saved-scorings/{job_id}/export/scoring?table_mode=expanded&environment=all')
     assert csv_response.status_code == 200, csv_response.text
     exported_rows = list(csv.DictReader(StringIO(csv_response.content.decode('utf-8-sig'))))
     global_row = next((row for row in exported_rows if (
@@ -751,7 +751,7 @@ def test_global_raw_kpis_survive_job_reload_api_get_and_csv_export(scoring_api, 
 
     without_global_kpis = deepcopy(persisted['result'])
     without_global_kpis.pop('global_kpis')
-    job_metadata = saved_filters.get_saved_filter(repository, job_id)
+    job_metadata = saved_scorings.get_saved_scoring(repository, job_id)
     baseline_rows = list(csv.DictReader(StringIO(export_scoring_csv(
         job_metadata, without_global_kpis, 'scoring', 'expanded', environment='all',
     ))))
@@ -765,15 +765,15 @@ def test_global_raw_kpis_survive_job_reload_api_get_and_csv_export(scoring_api, 
 
 def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(scoring_api, monkeypatch):
     client = scoring_api['client']
-    response = client.post('/api/scoring/saved-filters', json={
+    response = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'],
         'aggregation_levels': ['Operator'],
         'nr_mode': 'NSA',
         'baseline_operator': 'EE',
     })
     assert response.status_code == 200, response.text
-    job_id = response.json()['saved_filter']['id']
-    saved_filters.calculate_saved_filter(scoring_api['repository'], job_id)
+    job_id = response.json()['saved_scoring']['id']
+    saved_scorings.calculate_saved_scoring(scoring_api['repository'], job_id)
     _mark_scoring_result_as_legacy(scoring_api['repository'], job_id)
 
     from src.modules.scoring import scoring_exports
@@ -792,34 +792,34 @@ def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(
     composed = []
     monkeypatch.setattr(bundle_report_templates, 'module_document',
                         lambda key, content, kind, _title='', **_options: composed.append((key, content, kind)) or content)
-    exported = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
+    exported = client.get(f'/scoring/saved-scorings/{job_id}/export/ppt')
     assert exported.status_code == 200
     assert exported.content == b'ppt' and composed == [('scoring', b'ppt', 'powerpoint')]
     assert captured['operators'] == {}
     # The operators enabled in each section of the page travel with the export.
-    exported = client.get(f'/scoring/saved-filters/{job_id}/export/ppt',
+    exported = client.get(f'/scoring/saved-scorings/{job_id}/export/ppt',
                           params={'operators': json.dumps({'summary-operators': ['VF', 'EE']})})
     assert exported.status_code == 200 and captured['operators'] == {'summary-operators': ['VF', 'EE']}
-    assert client.get(f'/scoring/saved-filters/{job_id}/export/ppt', params={'operators': '[1]'}).status_code == 400
+    assert client.get(f'/scoring/saved-scorings/{job_id}/export/ppt', params={'operators': '[1]'}).status_code == 400
     assert captured['gap_layout'] == 'end'
     assert captured['show_gap_values'] is True
     assert captured['result']['gap'][0]['gap_points'] == -0.6
     assert captured['result']['gap_direction'] == 'operator_minus_reference'
 
-    adjacent = client.get(f'/scoring/saved-filters/{job_id}/export/ppt?gap_layout=adjacent')
+    adjacent = client.get(f'/scoring/saved-scorings/{job_id}/export/ppt?gap_layout=adjacent')
     assert adjacent.status_code == 200
     assert captured['gap_layout'] == 'adjacent'
 
-    hidden_gaps = client.get(f'/scoring/saved-filters/{job_id}/export/ppt?show_gap_values=false')
+    hidden_gaps = client.get(f'/scoring/saved-scorings/{job_id}/export/ppt?show_gap_values=false')
     assert hidden_gaps.status_code == 200
     assert captured['show_gap_values'] is False
 
-    stored = saved_filters.get_saved_filter(scoring_api['repository'], job_id, include_result=True)['result']
+    stored = saved_scorings.get_saved_scoring(scoring_api['repository'], job_id, include_result=True)['result']
     assert stored['gap'][0]['gap_points'] == 0.6
     assert 'gap_direction' not in stored
 
 
-def test_real_cdr_ingestion_is_scored_from_its_saved_filter_and_reuses_its_result(client):
+def test_real_cdr_ingestion_is_scored_from_its_saved_scoring_and_reuses_its_result(client):
     _login(client)
     workspace = app_module.active_workspace
     configured_repository = Repository(workspace.database_path, app_module.repository.global_db_path,
@@ -877,9 +877,9 @@ def test_real_cdr_ingestion_is_scored_from_its_saved_filter_and_reuses_its_resul
     dataset_id = int(datasets_by_name[uploads[0][0]]['id'])
     expected_dataset_ids = [int(dataset['id']) for dataset in selected_datasets]
 
-    # Processing CDRs saves no Saved Filter: only the selections used are kept.
-    assert client.get('/api/scoring/saved-filters').json()['saved_filters'] == []
-    created = client.post('/api/scoring/saved-filters', json={
+    # Processing CDRs saves no Saved Scoring: only the selections used are kept.
+    assert client.get('/api/scoring/saved-scorings').json()['saved_scorings'] == []
+    created = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': expected_dataset_ids, 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
         'baseline_operator': 'EE',
     })
@@ -887,10 +887,10 @@ def test_real_cdr_ingestion_is_scored_from_its_saved_filter_and_reuses_its_resul
     deadline = time.monotonic() + 10
     automatic_job = None
     while time.monotonic() < deadline:
-        response = client.get('/api/scoring/saved-filters')
+        response = client.get('/api/scoring/saved-scorings')
         assert response.status_code == 200, response.text
         automatic_job = next((
-            job for job in response.json()['saved_filters']
+            job for job in response.json()['saved_scorings']
             if set(job['dataset_ids']) == set(expected_dataset_ids)
             and job['aggregation_levels'] == ['Operator']
         ), None)
@@ -898,9 +898,9 @@ def test_real_cdr_ingestion_is_scored_from_its_saved_filter_and_reuses_its_resul
             break
         time.sleep(0.05)
 
-    assert automatic_job is not None and automatic_job['id'] == created.json()['saved_filter']['id']
+    assert automatic_job is not None and automatic_job['id'] == created.json()['saved_scoring']['id']
     assert automatic_job['status'] == 'completed', automatic_job
-    result_response = client.get(f"/api/scoring/saved-filters/{automatic_job['id']}")
+    result_response = client.get(f"/api/scoring/saved-scorings/{automatic_job['id']}")
     assert result_response.status_code == 200, result_response.text
     result = result_response.json()
 
@@ -908,62 +908,62 @@ def test_real_cdr_ingestion_is_scored_from_its_saved_filter_and_reuses_its_resul
     assert {row['operator']: row['value'] for row in c17_rows} == {'EE': 100.0, 'O2': 50.0}
     assert any('Incomplete KPI or environment coverage' in warning for warning in result['warnings'])
 
-    csv_response = client.get(f"/scoring/saved-filters/{automatic_job['id']}/export/scoring")
+    csv_response = client.get(f"/scoring/saved-scorings/{automatic_job['id']}/export/scoring")
     assert csv_response.status_code == 200, csv_response.text
     exported_rows = list(csv.DictReader(StringIO(csv_response.content.decode('utf-8-sig'))))
     exported_c17 = {row['operator']: float(row['value']) for row in exported_rows if row['kpi_code'] == 'K12'}
     assert exported_c17 == {'EE': 100.0, 'O2': 50.0}
 
-    cached = client.post('/api/scoring/saved-filters', json={
+    cached = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': expected_dataset_ids, 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
         'baseline_operator': 'EE',
     })
     assert cached.status_code == 200, cached.text
     assert cached.json()['cached'] is True
-    assert cached.json()['saved_filter']['id'] == automatic_job['id']
+    assert cached.json()['saved_scoring']['id'] == automatic_job['id']
 
 
 @pytest.mark.parametrize('job_status', ['queued', 'completed', 'failed'])
 def test_scoring_delete_api_removes_job_and_recompute_uses_new_id(scoring_api, job_status):
     client = scoring_api['client']
     payload = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA'}
-    response = client.post('/api/scoring/saved-filters', json=payload)
+    response = client.post('/api/scoring/saved-scorings', json=payload)
     assert response.status_code == 200, response.text
-    job_id = response.json()['saved_filter']['id']
+    job_id = response.json()['saved_scoring']['id']
     repository = scoring_api['repository']
     if job_status == 'completed':
-        assert saved_filters.calculate_saved_filter(repository, job_id)['status'] == 'completed'
-        assert client.get(f'/api/scoring/saved-filters/{job_id}').json()['scoring']
+        assert saved_scorings.calculate_saved_scoring(repository, job_id)['status'] == 'completed'
+        assert client.get(f'/api/scoring/saved-scorings/{job_id}').json()['scoring']
     elif job_status == 'failed':
-        saved_filters._update_saved_filter(repository, job_id, status='failed', last_error='Test failure')
-    response = client.delete(f'/api/scoring/saved-filters/{job_id}')
+        saved_scorings._update_saved_scoring(repository, job_id, status='failed', last_error='Test failure')
+    response = client.delete(f'/api/scoring/saved-scorings/{job_id}')
     assert response.status_code == 200, response.text
     assert response.json() == {'deleted': job_id}
-    assert client.get(f'/api/scoring/saved-filters/{job_id}').status_code == 404
-    assert client.get(f'/scoring/saved-filters/{job_id}/export/scoring').status_code == 404
-    assert client.delete(f'/api/scoring/saved-filters/{job_id}').status_code == 404
-    assert client.get('/api/scoring/saved-filters').json()['saved_filters'] == []
+    assert client.get(f'/api/scoring/saved-scorings/{job_id}').status_code == 404
+    assert client.get(f'/scoring/saved-scorings/{job_id}/export/scoring').status_code == 404
+    assert client.delete(f'/api/scoring/saved-scorings/{job_id}').status_code == 404
+    assert client.get('/api/scoring/saved-scorings').json()['saved_scorings'] == []
     assert repository.get_dataset(scoring_api['dataset_id']) is not None
-    recreated = client.post('/api/scoring/saved-filters', json=payload)
+    recreated = client.post('/api/scoring/saved-scorings', json=payload)
     assert recreated.status_code == 200, recreated.text
     assert recreated.json()['cached'] is False
-    assert recreated.json()['saved_filter']['id'] != job_id
+    assert recreated.json()['saved_scoring']['id'] != job_id
 
 
 def test_scoring_delete_requires_login_and_workspace_access(scoring_api, monkeypatch):
     client = scoring_api['client']
-    created = client.post('/api/scoring/saved-filters', json={
+    created = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
     })
-    job_id = created.json()['saved_filter']['id']
+    job_id = created.json()['saved_scoring']['id']
     client.get('/logout', follow_redirects=False)
-    assert client.delete(f'/api/scoring/saved-filters/{job_id}').status_code == 401
-    assert saved_filters.get_saved_filter(scoring_api['repository'], job_id) is not None
+    assert client.delete(f'/api/scoring/saved-scorings/{job_id}').status_code == 401
+    assert saved_scorings.get_saved_scoring(scoring_api['repository'], job_id) is not None
     _login(client)
     monkeypatch.setattr(app_module.repository, 'user_has_workspace_access', lambda username, workspace_id: False)
-    denied = client.delete(f'/api/scoring/saved-filters/{job_id}')
+    denied = client.delete(f'/api/scoring/saved-scorings/{job_id}')
     assert denied.status_code == 403
-    assert saved_filters.get_saved_filter(scoring_api['repository'], job_id) is not None
+    assert saved_scorings.get_saved_scoring(scoring_api['repository'], job_id) is not None
 
 
 def test_scoring_calculations_appear_in_the_background_tasks_with_their_time(scoring_api):
@@ -971,28 +971,28 @@ def test_scoring_calculations_appear_in_the_background_tasks_with_their_time(sco
 
     client = scoring_api['client']
     repository = scoring_api['repository']
-    created = client.post('/api/scoring/saved-filters', json={
+    created = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
         'baseline_operator': 'EE',
     })
-    job_id = created.json()['saved_filter']['id']
+    job_id = created.json()['saved_scoring']['id']
 
     def task():
         groups = client.get('/api/background-tasks').json()
         return next((item for group in groups.get('groups', []) for item in group['tasks']
-                     if item['id'].startswith('saved-filter:') and item['id'].endswith(f':{job_id}')), None)
+                     if item['id'].startswith('saved-scoring:') and item['id'].endswith(f':{job_id}')), None)
 
     queued = task()
     assert queued['label'] == f'Scoring calculation #{job_id} (NSA)' and queued['status'] == 'queued'
     started = datetime.now().astimezone() - timedelta(seconds=75)
     with repository.connection() as connection:
-        connection.execute("UPDATE saved_filters SET status = 'processing', progress = 40, message = 'Reading processed CDR rows', "
+        connection.execute("UPDATE saved_scorings SET status = 'processing', progress = 40, message = 'Reading processed CDR rows', "
                            'started_at = ? WHERE id = ?', (started.isoformat(), job_id))
     running = task()
     assert running['status'] == 'processing' and running['detail'] == 'Reading processed CDR rows'
     assert abs(running['started_at'] - started.timestamp()) < 1
     with repository.connection() as connection:
-        connection.execute("UPDATE saved_filters SET status = 'completed', progress = 100, finished_at = ? WHERE id = ?",
+        connection.execute("UPDATE saved_scorings SET status = 'completed', progress = 100, finished_at = ? WHERE id = ?",
                            (datetime.now().astimezone().isoformat(), job_id))
     # A finished calculation stays a few seconds, with its calculation time.
     finished = task()
@@ -1003,29 +1003,29 @@ def test_a_favourite_scoring_opens_from_its_result_kept_on_disk(scoring_api, mon
     """Ticket #168: the views of a result take up to a minute to build on the server; they are built once its
     calculation ends and kept in the Scoring cache of the workspace, so the result opens at once, also after a restart."""
     client, repository = scoring_api['client'], scoring_api['repository']
-    created = client.post('/api/scoring/saved-filters', json={
+    created = client.post('/api/scoring/saved-scorings', json={
         'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator', 'Region'],
         'nr_mode': 'NSA', 'baseline_operator': 'EE'})
-    job_id = created.json()['saved_filter']['id']
+    job_id = created.json()['saved_scoring']['id']
     # The calculation is queued, then the result as served is kept.
     jobs = [callback for _repository, callback, _args, _kwargs in scoring_api['submitted']]
-    assert jobs == [saved_filters.calculate_saved_filter, app_module._keep_saved_filter_result]
-    saved_filters.calculate_saved_filter(repository, job_id)
-    app_module._keep_saved_filter_result(repository, job_id)
+    assert jobs == [saved_scorings.calculate_saved_scoring, app_module._keep_saved_scoring_result]
+    saved_scorings.calculate_saved_scoring(repository, job_id)
+    app_module._keep_saved_scoring_result(repository, job_id)
     kept = list((repository.db_path.resolve().parent / '.cache' / 'scoring' / 'results').glob(f'{job_id}-*.json.gz'))
     assert len(kept) == 1
     assert any(row['action'] == 'scoring_result_kept' for row in repository.list_logs())
     # After a restart (nothing in memory) it opens from the disk, without building its views again.
     app_module.SCORING_RESULTS_CACHE.clear()
-    monkeypatch.setattr(app_module, '_saved_filter_payload', lambda *args: pytest.fail('The views were built again.'))
-    opened = client.get(f'/api/scoring/saved-filters/{job_id}')
-    assert opened.status_code == 200 and opened.json()['saved_filter']['status'] == 'completed'
+    monkeypatch.setattr(app_module, '_saved_scoring_payload', lambda *args: pytest.fail('The views were built again.'))
+    opened = client.get(f'/api/scoring/saved-scorings/{job_id}')
+    assert opened.status_code == 200 and opened.json()['saved_scoring']['status'] == 'completed'
     assert opened.json()['scoring'][0]['weighted_points'] == 4.2
     # Every Favourite Scoring kept: the idle server keeps none again.
-    saved_filter = saved_filters.get_saved_filter(repository, job_id)
-    assert app_module.saved_filter_result_kept(repository, saved_filter, '')
+    saved_scoring = saved_scorings.get_saved_scoring(repository, job_id)
+    assert app_module.saved_scoring_result_kept(repository, saved_scoring, '')
     monkeypatch.undo()
-    # A new result of the Saved Filter (recalculated, other Operator Maps) is kept in place of the older one.
+    # A new result of the Saved Scoring (recalculated, other Operator Maps) is kept in place of the older one.
     newer = kept[0].with_name(f'{job_id}-newer.json.gz')
-    app_module._store_saved_filter_result(newer, b'packed')
+    app_module._store_saved_scoring_result(newer, b'packed')
     assert list(kept[0].parent.glob(f'{job_id}-*.json.gz')) == [newer] and newer.read_bytes() == b'packed'

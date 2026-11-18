@@ -52,7 +52,7 @@ def test_each_user_keeps_their_own_panel_selection(scoring_api):
 
 def test_the_calculation_event_records_its_filters(client, scoring_api):
     repository = scoring_api['repository']
-    response = client.post('/api/scoring/saved-filters', json={
+    response = client.post('/api/scoring/saved-scorings', json={
         **_selection(scoring_api, Region=['North'], Operator_Vendor=['VF_Ericsson'], Vendor=[]),
     })
     assert response.status_code == 200, response.text

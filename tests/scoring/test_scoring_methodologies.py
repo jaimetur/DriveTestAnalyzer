@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.modules.scoring import saved_filters
+from src.modules.scoring import saved_scorings
 from src.modules.core.repository import Repository, local_now_iso
 from src.modules.scoring.scoring_config import validate_scoring_profiles
 from src.modules.scoring.scoring_methodologies import (
@@ -15,7 +15,7 @@ from src.modules.scoring.scoring_methodologies import (
     methodology_label, normalize_campaign_range, split_result,
 )
 from tests.support.scoring_fixtures import scoring_configuration
-from tests.scoring.test_saved_filters import scoring_engine  # noqa: F401 - the fake engine fixture
+from tests.scoring.test_saved_scorings import scoring_engine  # noqa: F401 - the fake engine fixture
 
 
 def two_methodologies(earlier: dict | None = None, later: dict | None = None) -> dict:
@@ -128,7 +128,7 @@ def add_campaign_dataset(repository: Repository, name: str, campaign: str, kind:
     return dataset_id
 
 
-def test_a_saved_filter_by_campaign_scores_each_campaign_with_its_methodology(tmp_path, scoring_engine):  # noqa: F811
+def test_a_saved_scoring_by_campaign_scores_each_campaign_with_its_methodology(tmp_path, scoring_engine):  # noqa: F811
     engine, calls = scoring_engine
     repository = Repository(tmp_path / 'workspace.db')
     repository.initialize()
@@ -137,14 +137,14 @@ def test_a_saved_filter_by_campaign_scores_each_campaign_with_its_methodology(tm
                    for quarter in ('Q2', 'Q3') for kind in ('data', 'voice', 'speech')]
 
     with pytest.raises(ValueError, match='needs Campaign in the Break down by'):
-        saved_filters.save_saved_filter(repository, dataset_ids, ['Region'], 'NSA', scoring_profile_id=BY_CAMPAIGN)
+        saved_scorings.save_saved_scoring(repository, dataset_ids, ['Region'], 'NSA', scoring_profile_id=BY_CAMPAIGN)
 
-    saved, _reused = saved_filters.save_saved_filter(repository, dataset_ids, ['Campaign'], 'NSA',
+    saved, _reused = saved_scorings.save_saved_scoring(repository, dataset_ids, ['Campaign'], 'NSA',
                                                      scoring_profile_id=BY_CAMPAIGN)
     assert saved['scoring_profile_id'] == BY_CAMPAIGN
     assert saved['scoring_profile_name'] == (
         'By campaign (NetCheck 2026: 2026-Q2 · NetCheck 2026-Q3: 2026-Q3)')
-    result = saved_filters.calculate_saved_filter(repository, saved['id'])
+    result = saved_scorings.calculate_saved_scoring(repository, saved['id'])
     assert result['status'] == 'completed', result['error']
     # One calculation per methodology, with the rows of its campaigns only (the scoring_engine fixture leaves out the
     # Geographical Areas & Scoring Trends; see test_scoring_area_summary).
@@ -193,7 +193,7 @@ def test_each_campaign_of_a_result_by_campaign_is_shown_with_its_methodology():
         parts.append((group, scoring.calculate_scoring(frames, ['Operator', 'Campaign'], baseline_operator='EE',
                                                        configuration=group['configuration'])))
     merged = merge_results(parts)
-    from src.modules.scoring.saved_filters import AGGREGATION_CONTRACT_VERSION
+    from src.modules.scoring.saved_scorings import AGGREGATION_CONTRACT_VERSION
     views = build_scoring_views({'levels': ['Operator', 'Campaign'],
                                  'aggregation_contract_version': AGGREGATION_CONTRACT_VERSION}, merged)
     by_campaign = {}

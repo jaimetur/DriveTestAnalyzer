@@ -1,4 +1,4 @@
-"""The Points Lost Map of one methodology, or of some of its CDR types, drawn in a process of its own (see saved_filters._draw_points_loss_apart).
+"""The Points Lost Map of one methodology, or of some of its CDR types, drawn in a process of its own (see saved_scorings._draw_points_loss_apart).
 
 The application keeps answering while the rows of the tests are read and mapped, a stop ends the process at once, and
 its memory is given back when it ends. The parent sends the inputs pickled on stdin; the process reports its progress
@@ -36,21 +36,21 @@ def main() -> int:
     threading.Thread(target=_end_with_the_application, name='points-loss-parent', daemon=True).start()
     payload = pickle.load(sys.stdin.buffer)
     try:
-        from src.modules.scoring import saved_filters
+        from src.modules.scoring import saved_scorings
         from src.modules.core.repository import Repository
 
         repository = Repository(Path(payload['db_path']), Path(payload['global_db_path']),
                                 Path(payload['registry_db_path']) if payload['registry_db_path'] else None)
         progress = lambda value, step: _send({'progress': float(value), 'step': str(step)})  # noqa: E731
         if payload.get('kinds') is not None:
-            # The parts of some CDR types, put together by the parent (see saved_filters._draw_points_loss_apart).
-            points_loss = saved_filters.draw_points_loss_parts(
-                repository, payload['saved_filter'], payload['sources'], payload['configuration'],
+            # The parts of some CDR types, put together by the parent (see saved_scorings._draw_points_loss_apart).
+            points_loss = saved_scorings.draw_points_loss_parts(
+                repository, payload['saved_scoring'], payload['sources'], payload['configuration'],
                 payload['context_filters'], payload['kinds'], progress)
         else:
-            points_loss = saved_filters.draw_points_loss(
-                repository, payload['saved_filter'], payload['sources'], payload['configuration'],
-                payload['context_filters'], saved_filters._scoring_engine(), progress)
+            points_loss = saved_scorings.draw_points_loss(
+                repository, payload['saved_scoring'], payload['sources'], payload['configuration'],
+                payload['context_filters'], saved_scorings._scoring_engine(), progress)
         with open(payload['result_path'], 'wb') as handle:
             pickle.dump(points_loss, handle, protocol=pickle.HIGHEST_PROTOCOL)
     except Exception as exc:  # The parent shows the error of the map (of the first CDR with one: ``at``).

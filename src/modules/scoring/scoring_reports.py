@@ -84,7 +84,7 @@ def _normalize_options(raw: Any) -> dict[str, Any]:
     options = copy.deepcopy(_OPTION_DEFAULTS)
     options['enabled'] = bool(raw.get('enabled', True))
     options['environments'] = 'split' if raw.get('environments') == 'split' else 'all'
-    # Only these environments (All Environments for the combined one), as the export of a Saved Filter chooses them;
+    # Only these environments (All Environments for the combined one), as the export of a Saved Scoring chooses them;
     # without them, All Environments or a block per environment (``environments``).
     names = _strings(raw.get('environment_names'))
     if names:

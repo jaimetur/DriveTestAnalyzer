@@ -1,6 +1,6 @@
 """Methodology Impact of Scoring & GAP Analysis: what a change of methodology does to the results.
 
-The tests of one campaign are scored with two methodologies, with the scope of the open Saved Filter (NR Mode, filters and
+The tests of one campaign are scored with two methodologies, with the scope of the open Saved Scoring (NR Mode, filters and
 GAP reference), so every difference comes from the methodology alone, never from the network: its operators, environments,
 categories, KPIs, geographical areas, GAPs and points lost, with the analysis of scoring_impact_analysis and the maps of
 scoring_impact_maps. Between two campaigns, the campaigns only choose the methodologies (those that apply to each one): the
@@ -24,9 +24,9 @@ from src.modules.cdr.cdr_auto_selection import campaign_identity, is_flex_campai
 from src.modules.cdr.column_names import campaign_sort_key, compact_campaign_value
 from src.modules.cdr.nr_mode import NSA_VS_SA, SAME_OPERATOR_NSA, normalize_scoring_nr_mode, nr_mode_label
 from src.modules.network import postal_areas
-from src.modules.scoring.saved_filters import (
+from src.modules.scoring.saved_scorings import (
     AGGREGATION_CONTRACT_VERSION, DEFAULT_BASELINE_OPERATOR, _attach_mapping_boundaries, _load_source_frames, _points_loss_of,
-    _prepare_saved_filter, _read_campaigns, _source_snapshot,
+    _prepare_saved_scoring, _read_campaigns, _source_snapshot,
 )
 from src.modules.scoring.scoring_area_summary import has_area_filters, whole_country_filters
 from src.modules.scoring.scoring_impact_analysis import conclusions, drivers_part
@@ -128,22 +128,22 @@ def _campaign_entries(repository: Any, nr_mode: str, profiles: dict[str, Any]) -
     return entries
 
 
-def _own_campaigns(saved_filter: dict[str, Any]) -> set[str]:
-    filters = saved_filter.get('resolved_context_filters') or {}
+def _own_campaigns(saved_scoring: dict[str, Any]) -> set[str]:
+    filters = saved_scoring.get('resolved_context_filters') or {}
     return {campaign_identity(value) for value in filters.get('Campaign') or []}
 
 
-def impact_options(repository: Any, saved_filter: dict[str, Any]) -> dict[str, Any]:
+def impact_options(repository: Any, saved_scoring: dict[str, Any]) -> dict[str, Any]:
     """The methodologies and campaigns the comparison can choose, and what it compares at first: the latest campaign of the
-    Saved Filter and the nearest earlier one with another methodology (the methodologies of those two)."""
+    Saved Scoring and the nearest earlier one with another methodology (the methodologies of those two)."""
     profiles = repository.get_scoring_profiles()
-    selected = normalize_scoring_nr_mode(saved_filter.get('nr_mode')) or 'NSA'
+    selected = normalize_scoring_nr_mode(saved_scoring.get('nr_mode')) or 'NSA'
     modes = ['NSA', 'SA'] if selected == NSA_VS_SA else [selected]
     campaigns = {mode: _campaign_entries(repository, mode, profiles) for mode in modes}
     modes = [mode for mode in modes if campaigns[mode]] or modes
     methodologies = [{'id': profile['id'], 'name': profile['name'], 'campaigns': profile.get('campaigns') or {}}
                      for profile in profiles['profiles']]
-    own = _own_campaigns(saved_filter)
+    own = _own_campaigns(saved_scoring)
 
     def defaults_of(entries: list[dict[str, Any]]) -> dict[str, str]:
         usable = [entry for entry in entries if not entry['flex']] or entries
@@ -725,18 +725,18 @@ def _finish_part(part: dict[str, Any], maps: dict[str, Any] | None, scoring: str
 # Preparing and calculating a comparison
 # ---------------------------------------------------------------------------------------------------------------------
 
-def _prepare_run(repository: Any, saved_filter: dict[str, Any], nr_mode: str, profile: dict[str, Any], entry: dict[str, Any],
+def _prepare_run(repository: Any, saved_scoring: dict[str, Any], nr_mode: str, profile: dict[str, Any], entry: dict[str, Any],
                  baseline: str, cache: dict[Any, Any]) -> dict[str, Any]:
-    """One calculation of the comparison: the tests of a campaign, within the scope of the Saved Filter, with a methodology."""
+    """One calculation of the comparison: the tests of a campaign, within the scope of the Saved Scoring, with a methodology."""
     wanted = {campaign_identity(value) for value in entry['spellings']}
-    # The CDRs of the campaign the Saved Filter uses, else those the campaign uses by itself.
-    own = [dataset_id for dataset_id, campaigns in _read_campaigns(repository, [int(value) for value in saved_filter.get('dataset_ids') or []]).items()
+    # The CDRs of the campaign the Saved Scoring uses, else those the campaign uses by itself.
+    own = [dataset_id for dataset_id, campaigns in _read_campaigns(repository, [int(value) for value in saved_scoring.get('dataset_ids') or []]).items()
            if any(campaign_identity(value) in wanted for value in campaigns)]
     dataset_ids = own or auto_scoring_cdr_ids(repository, nr_mode, list(entry['spellings']))
     if not dataset_ids:
         raise ValueError(f"The campaign {entry['label']} has no Data, Voice and Speech CDRs of {nr_mode_label(nr_mode)}.")
-    filters = {**(saved_filter.get('context_filters') or {}), 'Campaign': list(entry['spellings'])}
-    prepared = _prepare_saved_filter(repository, dataset_ids, ['Operator'], nr_mode, baseline_operator=baseline,
+    filters = {**(saved_scoring.get('context_filters') or {}), 'Campaign': list(entry['spellings'])}
+    prepared = _prepare_saved_scoring(repository, dataset_ids, ['Operator'], nr_mode, baseline_operator=baseline,
                                      context_filters=filters, scoring_profile_id=profile['id'], cache=cache)
     snapshot = prepared['snapshot']
     return {'profile_id': profile['id'], 'profile_name': profile['name'], 'campaign': entry['value'], 'campaign_label': entry['label'],
@@ -746,14 +746,14 @@ def _prepare_run(repository: Any, saved_filter: dict[str, Any], nr_mode: str, pr
             'baseline_aliases': snapshot['baseline_aliases'], 'operator_mappings': snapshot['operator_mappings']}
 
 
-def prepare_impact(repository: Any, saved_filter: dict[str, Any], raw_selection: Any = None) -> dict[str, Any]:
+def prepare_impact(repository: Any, saved_scoring: dict[str, Any], raw_selection: Any = None) -> dict[str, Any]:
     """What a comparison calculates and its key: the same tests with each methodology."""
-    options = impact_options(repository, saved_filter)
+    options = impact_options(repository, saved_scoring)
     selection = normalize_selection(raw_selection, options)
     profiles = repository.get_scoring_profiles()
     by_id = {profile['id']: profile for profile in profiles['profiles']}
     entries = {entry['value']: entry for entry in options['campaigns'][selection['nr_mode']]}
-    baseline = str(saved_filter.get('baseline_operator') or DEFAULT_BASELINE_OPERATOR)
+    baseline = str(saved_scoring.get('baseline_operator') or DEFAULT_BASELINE_OPERATOR)
     notes = []
     if baseline == SAME_OPERATOR_NSA:
         # Same operator in NSA compares both NR Modes, and the impact is of one NR Mode.
@@ -770,19 +770,19 @@ def prepare_impact(repository: Any, saved_filter: dict[str, Any], raw_selection:
         profile_before, profile_after = by_id[selection['methodology_a']], by_id[selection['methodology_b']]
         tests = entries[selection['campaign']]
     nr_mode = selection['nr_mode']
-    runs = {'before': _prepare_run(repository, saved_filter, nr_mode, profile_before, tests, baseline, cache)}
+    runs = {'before': _prepare_run(repository, saved_scoring, nr_mode, profile_before, tests, baseline, cache)}
     runs['after'] = (runs['before'] if profile_before['id'] == profile_after['id'] else
-                     _prepare_run(repository, saved_filter, nr_mode, profile_after, tests, baseline, cache))
-    postal = postal_areas.wanted(saved_filter) or bool(postal_areas.list_postal_layers(repository))
+                     _prepare_run(repository, saved_scoring, nr_mode, profile_after, tests, baseline, cache))
+    postal = postal_areas.wanted(saved_scoring) or bool(postal_areas.list_postal_layers(repository))
     key = scoring_cache.key_of({
         'kind': CACHE_KIND, 'code': _code_version(), 'selection': selection,
         'runs': {name: run['result_key'] for name, run in runs.items()},
-        'postal': postal_areas.postal_version(repository, postal_areas.chosen_map(saved_filter)) if postal else '',
+        'postal': postal_areas.postal_version(repository, postal_areas.chosen_map(saved_scoring)) if postal else '',
         'operator_groups': repository.list_operator_mapping_groups(), 'vendor_groups': repository.list_vendor_mapping_groups(),
     })
     return {'key': key, 'selection': selection, 'runs': runs, 'notes': notes, 'methodology_of': sources_of,
-            'postal': postal, 'postal_map': postal_areas.chosen_map(saved_filter),
-            'saved_filter_id': saved_filter.get('id'), 'saved_filter_name': saved_filter.get('name') or ''}
+            'postal': postal, 'postal_map': postal_areas.chosen_map(saved_scoring),
+            'saved_scoring_id': saved_scoring.get('id'), 'saved_scoring_name': saved_scoring.get('name') or ''}
 
 
 class _CampaignRows:
@@ -823,12 +823,12 @@ def _result_of(repository: Any, run: dict[str, Any], levels: list[str], filters:
 
 
 def _draw_maps(repository: Any, prepared: dict[str, Any], report: Callable[[str], None]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """The Points Lost Map of the tests of the whole country with each methodology, as a Saved Filter draws it (in processes of their
-    own, kept for the next comparison or Saved Filter with the same CDRs and methodology)."""
+    """The Points Lost Map of the tests of the whole country with each methodology, as a Saved Scoring draws it (in processes of their
+    own, kept for the next comparison or Saved Scoring with the same CDRs and methodology)."""
     documents = []
     for name in ('before', 'after'):
         run = prepared['runs'][name]
-        job = {'id': prepared.get('saved_filter_id'), 'levels': ['Operator'], 'nr_mode': run['nr_mode'], 'baseline_operator': run['baseline_operator'],
+        job = {'id': prepared.get('saved_scoring_id'), 'levels': ['Operator'], 'nr_mode': run['nr_mode'], 'baseline_operator': run['baseline_operator'],
                'baseline_aliases': run['baseline_aliases'], 'operator_mappings': run['operator_mappings'],
                'area_summary': {'postal_codes': True, 'postal_map': prepared['postal_map']} if prepared['postal'] else None}
         sources, _campaigns, _fingerprint = _source_snapshot(repository, run['dataset_ids'], expected_nr_mode=run['nr_mode'])
@@ -981,7 +981,7 @@ def queue_impact(repository: Any, prepared: dict[str, Any], submit: Callable[...
 def _details(prepared: dict[str, Any]) -> dict[str, Any]:
     """What App Events records of a comparison."""
     runs = prepared['runs']
-    return {'saved_filter_id': prepared.get('saved_filter_id'), 'name': prepared.get('saved_filter_name'),
+    return {'saved_scoring_id': prepared.get('saved_scoring_id'), 'name': prepared.get('saved_scoring_name'),
             **prepared['selection'], 'before': runs['before']['profile_name'], 'after': runs['after']['profile_name'],
             'campaign': runs['before']['campaign'], 'datasets': runs['before']['dataset_ids']}
 

@@ -555,9 +555,9 @@ CREATE TABLE IF NOT EXISTS chart_mapping_groups (
     PRIMARY KEY (mapping_type, canonical_value)
 );
 
--- The Saved Filters of Scoring & GAP Analysis: every selection used, with its saved result (see
--- saved_filters). selection_key identifies the selection, result_key what its result was calculated with.
-CREATE TABLE IF NOT EXISTS saved_filters (
+-- The Saved Scorings of Scoring & GAP Analysis: every selection used, with its saved result (see
+-- saved_scorings). selection_key identifies the selection, result_key what its result was calculated with.
+CREATE TABLE IF NOT EXISTS saved_scorings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     selection_key TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
@@ -587,13 +587,13 @@ CREATE TABLE IF NOT EXISTS saved_filters (
     finished_at TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_saved_filters_order
-ON saved_filters(pinned DESC, last_used_at DESC);
+CREATE INDEX IF NOT EXISTS idx_saved_scorings_order
+ON saved_scorings(pinned DESC, last_used_at DESC);
 
--- The Saved Filters that have just finished are found by their date: the date is stored after the result of each
--- Saved Filter (megabytes), and looking at it in every row read all of them.
-CREATE INDEX IF NOT EXISTS idx_saved_filters_finished
-ON saved_filters(finished_at);
+-- The Saved Scorings that have just finished are found by their date: the date is stored after the result of each
+-- Saved Scoring (megabytes), and looking at it in every row read all of them.
+CREATE INDEX IF NOT EXISTS idx_saved_scorings_finished
+ON saved_scorings(finished_at);
 
 """
 
@@ -884,7 +884,7 @@ class Repository:
         """Let every connection() of this workspace in the block (this request's thread) reuse one connection.
 
         Opening a connection parses the whole schema of the workspace, a few milliseconds with hundreds of CDR tables,
-        so reads that open many in a row (checking whether a selection is a Saved Filter opens over a hundred) share
+        so reads that open many in a row (checking whether a selection is a Saved Scoring opens over a hundred) share
         one. Meant for reads: the block's writes are committed together when it ends.
         """
         shared = _SHARED_CONNECTIONS.get() or {}
@@ -1093,9 +1093,9 @@ class Repository:
         with self.connection() as conn:
             self._configure_database_journal(conn)
             self._migrate_calculated_dimensions_table(conn)
-            self._rename_earlier_saved_filters_table(conn)
+            self._rename_earlier_saved_scorings_table(conn)
             conn.executescript(SCHEMA)
-            self._ensure_saved_filter_columns(conn)
+            self._ensure_saved_scoring_columns(conn)
             self._convert_scoring_jobs(conn)
             self._ensure_chart_mapping_groups(conn)
             self._ensure_design_filter_selection_columns(conn)
@@ -2483,39 +2483,42 @@ class Repository:
                 'system', 'retired_report_jobs_dropped', json.dumps({'tables': dropped, 'executed_by': 'system'}), local_now_iso()))
 
     @staticmethod
-    def _rename_earlier_saved_filters_table(conn: sqlite3.Connection) -> None:
-        """Keep the Saved Filters of a workspace opened while they were called Previous Filters or Saved Scorings."""
+    def _rename_earlier_saved_scorings_table(conn: sqlite3.Connection) -> None:
+        """Keep the Saved Scorings of a workspace opened while they were called Saved Filters (until v0.12.7) or Previous
+        Filters."""
         tables = {str(row['name']) for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
-        earlier = next((name for name in ('scoring_previous_filters', 'saved_scorings') if name in tables), None)
-        if earlier is None or 'saved_filters' in tables:
+        earlier = next((name for name in ('saved_filters', 'scoring_previous_filters') if name in tables), None)
+        if earlier is None or 'saved_scorings' in tables:
             return
-        conn.execute(f'DROP INDEX IF EXISTS idx_{earlier}_order')
-        conn.execute(f'ALTER TABLE {earlier} RENAME TO saved_filters')
-        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(saved_filters)').fetchall()}
+        # (Its indexes go with it under their earlier names: those of the schema are built again on it.)
+        for suffix in ('order', 'finished'):
+            conn.execute(f'DROP INDEX IF EXISTS idx_{earlier}_{suffix}')
+        conn.execute(f'ALTER TABLE {earlier} RENAME TO saved_scorings')
+        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(saved_scorings)').fetchall()}
         if 'filter_key' in columns:
-            conn.execute('ALTER TABLE saved_filters RENAME COLUMN filter_key TO selection_key')
+            conn.execute('ALTER TABLE saved_scorings RENAME COLUMN filter_key TO selection_key')
 
     @staticmethod
-    def _ensure_saved_filter_columns(conn: sqlite3.Connection) -> None:
-        """Add how many times each Saved Filter has been calculated (once for those with a result) and the place of the
+    def _ensure_saved_scoring_columns(conn: sqlite3.Connection) -> None:
+        """Add how many times each Saved Scoring has been calculated (once for those with a result) and the place of the
         starred ones in their list."""
-        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(saved_filters)').fetchall()}
+        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(saved_scorings)').fetchall()}
         if 'calculation_count' not in columns:
-            conn.execute('ALTER TABLE saved_filters ADD COLUMN calculation_count INTEGER NOT NULL DEFAULT 0')
-            conn.execute("UPDATE saved_filters SET calculation_count = 1 WHERE status = 'completed'")
+            conn.execute('ALTER TABLE saved_scorings ADD COLUMN calculation_count INTEGER NOT NULL DEFAULT 0')
+            conn.execute("UPDATE saved_scorings SET calculation_count = 1 WHERE status = 'completed'")
         if 'position' not in columns:
-            # The starred Saved Filters keep their place in the list (moved by dragging them): they start in the order
+            # The starred Saved Scorings keep their place in the list (moved by dragging them): they start in the order
             # they were shown, the latest used first.
-            conn.execute('ALTER TABLE saved_filters ADD COLUMN position INTEGER')
+            conn.execute('ALTER TABLE saved_scorings ADD COLUMN position INTEGER')
             starred = conn.execute(
-                'SELECT id FROM saved_filters WHERE pinned = 1 ORDER BY julianday(last_used_at) DESC, id DESC').fetchall()
-            conn.executemany('UPDATE saved_filters SET position = ? WHERE id = ?',
+                'SELECT id FROM saved_scorings WHERE pinned = 1 ORDER BY julianday(last_used_at) DESC, id DESC').fetchall()
+            conn.executemany('UPDATE saved_scorings SET position = ? WHERE id = ?',
                              [(index, int(row['id'])) for index, row in enumerate(starred, start=1)])
 
     @staticmethod
     def _convert_scoring_jobs(conn: sqlite3.Connection) -> None:
-        """Turn the Scoring Jobs saved by earlier versions into Saved Filters."""
-        from src.modules.scoring.saved_filters import convert_scoring_jobs
+        """Turn the Scoring Jobs saved by earlier versions into Saved Scorings."""
+        from src.modules.scoring.saved_scorings import convert_scoring_jobs
         convert_scoring_jobs(conn)
 
     def _merge_report_template_nr_modes(self, conn: sqlite3.Connection) -> None:
@@ -5941,7 +5944,7 @@ class Repository:
 
             json_columns = {
                 'dataset_profiles': [('processing_options_json', False)],
-                'saved_filters': [('dataset_ids_json', True), ('source_metadata_json', False)],
+                'saved_scorings': [('dataset_ids_json', True), ('source_metadata_json', False)],
                 'audit_logs': [('details', False)],
                 'workspace_state': [('value', False)],
             }
@@ -6030,8 +6033,8 @@ class Repository:
                 "SELECT dataset_id FROM dataset_profiles WHERE status IN ('queued', 'processing')"
             ).fetchall() if 'dataset_profiles' in tables else []
             scoring_rows = conn.execute(
-                "SELECT id FROM saved_filters WHERE status IN ('queued', 'processing')"
-            ).fetchall() if 'saved_filters' in tables else []
+                "SELECT id FROM saved_scorings WHERE status IN ('queued', 'processing')"
+            ).fetchall() if 'saved_scorings' in tables else []
             dataset_ids = [int(row['dataset_id']) for row in dataset_rows] if fail_datasets else []
             if dataset_ids:
                 placeholders = ','.join('?' for _ in dataset_ids)
@@ -6044,7 +6047,7 @@ class Repository:
             if scoring_ids:
                 placeholders = ','.join('?' for _ in scoring_ids)
                 conn.execute(
-                    f"UPDATE saved_filters SET status = 'failed', last_error = ?, message = ?, updated_at = ?, finished_at = ? "
+                    f"UPDATE saved_scorings SET status = 'failed', last_error = ?, message = ?, updated_at = ?, finished_at = ? "
                     f"WHERE id IN ({placeholders})",
                     (message, message, now, now, *scoring_ids),
                 )

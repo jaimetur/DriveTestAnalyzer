@@ -957,7 +957,7 @@ def test_gap_value_toggle_defaults_off_and_only_changes_scoring_tables():
     assert "if (showGapValuesToggle) showGapValuesToggle.checked = restoredScoringViewState.showGapValues === true;" in script
     assert "function showGapValues() {\n    return Boolean(showGapValuesToggle?.checked);" in script
     assert "if (!showGapValues()) {\n      for (const [operatorIndex, operator] of operators.entries()) appendScore(operator, operatorIndex);\n      return;" in script
-    assert "if (event.target === showGapValuesToggle) {\n      syncGapValueControls();\n      if (currentResults) renderResult(currentResults, selectedSavedFilter, ['scoring']);" in script
+    assert "if (event.target === showGapValuesToggle) {\n      syncGapValueControls();\n      if (currentResults) renderResult(currentResults, selectedSavedScoring, ['scoring']);" in script
     assert "function renderTable(pane, source, emptyCopy, {hideGapColumns = false} = {})" in script
     assert "renderTable(gapPane, gapRows, 'No GAP rows are available for the selected baseline operator.');" in script
     assert "function appendScoringGapScale(pane, tableData) {\n    if (!showGapValues()) return;" in script
@@ -987,7 +987,7 @@ def test_gap_value_choice_is_sent_only_to_powerpoint_export():
 
     # The PowerPoint and Word take the theme of the page too.
     assert "const gapOption = kind === 'ppt' ? `&show_gap_values=${showGapValues() ? 'true' : 'false'}&theme=${encodeURIComponent(activeTheme?.id || 'netcheck')}` : '';" in script
-    assert "link.href = enabled ? `${exportBase}/${encodeURIComponent(savedFilterId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';" in script
+    assert "link.href = enabled ? `${exportBase}/${encodeURIComponent(savedScoringId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';" in script
     assert "const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'" in script
     assert "const query = `table_mode=${encodeURIComponent(selectedTableMode())}&gap_layout=${encodeURIComponent(selectedGapLayout())}&environment=${encodeURIComponent(selectedEnvironment || 'all')}`" in script
     # The KPI order of the GAP tables and the KPI GAP Profile goes to the PowerPoint and Word only.
@@ -1004,7 +1004,7 @@ const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
 const results = [];
 (async () => {
-  // Each case: the button chosen, the boxes the user changes and whether the Saved Filter has Most Reliable.
+  // Each case: the button chosen, the boxes the user changes and whether the Saved Scoring has Most Reliable.
   const cases = [
     {choice: 'confirm', toggle: [], reliable: true},
     {choice: 'secondary', toggle: ['most_reliable', 'Combined', 'Drive - City'], reliable: true},
@@ -1044,33 +1044,33 @@ const results = [];
     };
     vm.createContext(context);
     vm.runInContext(Object.values(payload.snippets).join('\n'), context);
-    await vm.runInContext("exportSelectedScoringReport({href: 'https://example.test/scoring/saved-filters/7/export/ppt?environment=all'})", context);
+    await vm.runInContext("exportSelectedScoringReport({href: 'https://example.test/scoring/saved-scorings/7/export/ppt?environment=all'})", context);
     results.push({downloaded, warning, inputs: inputs.map(({value, checked, disabled}) => ({value, checked, disabled})), title: dialog?.title, labels: [dialog?.confirmLabel, dialog?.secondaryLabel]});
   }
   process.stdout.write(JSON.stringify(results));
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
     default, custom, nothing, cancelled, operators, every = _run_node_json(program, payload)
-    # Best Network and All Environments are ticked; Most Reliable only when the Saved Filter has it.
+    # Best Network and All Environments are ticked; Most Reliable only when the Saved Scoring has it.
     assert [(item['value'], item['checked'], item['disabled']) for item in default['inputs']] == [
         ('best_network', True, False), ('most_reliable', False, False), ('Combined', True, False),
         ('Drive - City', False, False), ('Drive - Roads', False, False), ('true', False, False)]
     assert default['title'] == 'Export Selected Scoring Report' and default['labels'] == ['PowerPoint', 'Word']
     assert default['downloaded'] == {
-        'url': 'https://example.test/scoring/saved-filters/7/export/ppt?environment=all&scorings=best_network&environments=Combined',
+        'url': 'https://example.test/scoring/saved-scorings/7/export/ppt?environment=all&scorings=best_network&environments=Combined',
         'label': 'PowerPoint'}
     assert custom['downloaded'] == {
-        'url': 'https://example.test/scoring/saved-filters/7/export/word?environment=all&scorings=best_network'
+        'url': 'https://example.test/scoring/saved-scorings/7/export/word?environment=all&scorings=best_network'
                '&scorings=most_reliable&environments=Drive+-+City', 'label': 'Word'}
     assert ('most_reliable', False, True) in [(item['value'], item['checked'], item['disabled']) for item in nothing['inputs']]
     assert nothing['downloaded'] is None and 'Choose at least one scoring' in nothing['warning']
     assert cancelled['downloaded'] is None
     # The operators enabled in the sections of the page travel with the export (only the sections changed).
     assert operators['downloaded']['url'] == (
-        'https://example.test/scoring/saved-filters/7/export/ppt?environment=all&scorings=best_network&environments=Combined'
+        'https://example.test/scoring/saved-scorings/7/export/ppt?environment=all&scorings=best_network&environments=Combined'
         '&operators=%7B%22summary-operators%22%3A%5B%22VF%22%2C%22EE%22%5D%7D')
     # Export All Operators in Focus panels (off by default) shows every operator in the panels of the Focus operators.
-    assert every['downloaded']['url'] == ('https://example.test/scoring/saved-filters/7/export/ppt?environment=all'
+    assert every['downloaded']['url'] == ('https://example.test/scoring/saved-scorings/7/export/ppt?environment=all'
                                           '&scorings=best_network&environments=Combined&all_operators=true')
 
 
@@ -1201,7 +1201,7 @@ def test_scoring_view_state_round_trips_filters_and_false_checkboxes():
         'snippets': snippets,
         'storageKey': 'drivetest-analyzer:scoring-view:jaime:workspace-a',
         'initial': {
-            'saved_filter_id': 'savedFilter-17', 'result_tab': 'gap', 'scroll_y': 321,
+            'saved_scoring_id': 'savedScoring-17', 'result_tab': 'gap', 'scroll_y': 321,
             'environment': 'DriveCity', 'gap_layout': 'sideways',
             'show_kpi_values': False, 'show_gap_values': False,
         },
@@ -1217,7 +1217,7 @@ const context = {
     getItem: key => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, String(value)),
   }},
-  selectedSavedFilterId: null,
+  selectedSavedScoringId: null,
   activeResultTab: 'scoring',
   selectedEnvironment: 'all',
   gapLayoutSelect: {value: 'end'},
@@ -1227,7 +1227,7 @@ const context = {
 vm.createContext(context);
 vm.runInContext(Object.values(payload.snippets).join('\n') + '\nglobalThis.restored = readScoringViewState();', context);
 const restored = context.restored;
-context.selectedSavedFilterId = restored.savedFilterId;
+context.selectedSavedScoringId = restored.savedScoringId;
 context.activeResultTab = restored.resultTab;
 context.selectedEnvironment = restored.environment;
 context.gapLayoutSelect.value = restored.gapLayout;
@@ -1448,7 +1448,7 @@ process.stdout.write(JSON.stringify({
     assert result['options'] == ['all', 'DriveCity']
 
 
-def test_scoring_job_title_and_cdr_summary_use_saved_filters_and_source_names():
+def test_scoring_job_title_and_cdr_summary_use_saved_scorings_and_source_names():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     snippets = [
         _constant_source(script, 'valueOf'),
@@ -1458,19 +1458,19 @@ def test_scoring_job_title_and_cdr_summary_use_saved_filters_and_source_names():
         _function_source(script, 'firstValue'),
         _function_source(script, 'formatDate'),
         _function_source(script, 'selectedContextFilters'),
-        _function_source(script, 'savedSavedFilterValues'),
+        _function_source(script, 'savedSavedScoringValues'),
         _function_source(script, 'campaignLabels'),
         _function_source(script, 'hierarchyDisplayValue'),
         _function_source(script, 'insightCampaignKey'),
-        _function_source(script, 'savedFilterCampaigns'),
-        _function_source(script, 'savedFilterCardTitleSegments'),
-        _function_source(script, 'savedFilterCardTitle'),
-        _function_source(script, 'savedFilterCdrNames'),
-        _function_source(script, 'savedFilterCdrSummary'),
+        _function_source(script, 'savedScoringCampaigns'),
+        _function_source(script, 'savedScoringCardTitleSegments'),
+        _function_source(script, 'savedScoringCardTitle'),
+        _function_source(script, 'savedScoringCdrNames'),
+        _function_source(script, 'savedScoringCdrSummary'),
     ]
     payload = {
         'snippets': snippets,
-        'savedFilter': {
+        'savedScoring': {
             'created_at': '2026-10-01T12:00:00Z', 'nr_mode': 'NSA',
             'dataset_names': ['data.csv', 'voice.csv', 'voice.csv'],
             'context_filters': {'Operator': [], 'Vendor': [], 'Region': [], 'City': [], 'Campaign': []},
@@ -1484,7 +1484,7 @@ def test_scoring_job_title_and_cdr_summary_use_saved_filters_and_source_names():
     program = r"""
 const vm = require('node:vm');
 const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-const context = {savedFilter: payload.savedFilter,
+const context = {savedScoring: payload.savedScoring,
   operatorGroups: [],
   catalogueKeyByLevel: new Map([['Vendor', 'vendors']]),
   datasetCatalogues: new Map([['1', {vendors: ['Nokia']}], ['2', {vendors: ['Ericsson']}]]),
@@ -1493,15 +1493,15 @@ const context = {savedFilter: payload.savedFilter,
   contextFilterSelects: new Map([['Vendor', {options: [{value: 'Nokia'}, {value: 'Ericsson'}], selectedOptions: [{value: 'Nokia'}, {value: 'Ericsson'}]}]])};
 vm.createContext(context);
 vm.runInContext(payload.snippets.join('\n') + `
-  globalThis.completeVendors = savedSavedFilterValues({dataset_ids: [1, 2], context_filters: {Vendor: ['Ericsson', 'Nokia']}}, 'Vendor');
-  globalThis.subsetVendors = savedSavedFilterValues({dataset_ids: [1, 2], context_filters: {Vendor: ['Nokia']}}, 'Vendor');
+  globalThis.completeVendors = savedSavedScoringValues({dataset_ids: [1, 2], context_filters: {Vendor: ['Ericsson', 'Nokia']}}, 'Vendor');
+  globalThis.subsetVendors = savedSavedScoringValues({dataset_ids: [1, 2], context_filters: {Vendor: ['Nokia']}}, 'Vendor');
   globalThis.submittedFilters = selectedContextFilters();
-  globalThis.title = savedFilterCardTitle(savedFilter);
-  globalThis.cdrSummary = savedFilterCdrSummary(savedFilter);
-  globalThis.metadataCdrSummary = savedFilterCdrSummary({source_metadata: {data: {name: 'data.csv'}, voice: {name: 'voice.csv'}}});
-  globalThis.partialVendors = savedSavedFilterValues({context_filters: {Vendor: ['Nokia']}, resolved_context_filters: {Vendor: ['Nokia', 'Ericsson']}}, 'Vendor');
-  globalThis.legacyVendors = savedSavedFilterValues({resolved_context_filters: {Vendor: ['Ericsson']}}, 'Vendor');
-  globalThis.fallbackTitle = savedFilterCardTitle({created_at: 'not-a-date', nr_mode: 'SA', dataset_ids: [1], source_metadata: [{campaigns: ['UK_Q3_2026']}]});`, context);
+  globalThis.title = savedScoringCardTitle(savedScoring);
+  globalThis.cdrSummary = savedScoringCdrSummary(savedScoring);
+  globalThis.metadataCdrSummary = savedScoringCdrSummary({source_metadata: {data: {name: 'data.csv'}, voice: {name: 'voice.csv'}}});
+  globalThis.partialVendors = savedSavedScoringValues({context_filters: {Vendor: ['Nokia']}, resolved_context_filters: {Vendor: ['Nokia', 'Ericsson']}}, 'Vendor');
+  globalThis.legacyVendors = savedSavedScoringValues({resolved_context_filters: {Vendor: ['Ericsson']}}, 'Vendor');
+  globalThis.fallbackTitle = savedScoringCardTitle({created_at: 'not-a-date', nr_mode: 'SA', dataset_ids: [1], source_metadata: [{campaigns: ['UK_Q3_2026']}]});`, context);
 process.stdout.write(JSON.stringify({title: context.title, cdrSummary: context.cdrSummary,
   metadataCdrSummary: context.metadataCdrSummary, fallbackTitle: context.fallbackTitle,
   partialVendors: context.partialVendors, legacyVendors: context.legacyVendors,
@@ -1693,23 +1693,23 @@ const opened = [];
 const context = {
   calculationMatchKey: '', calculationMatchRevision: 0, calculationMatchTimer: null, calculationMatchRefresh: false,
   calculationMatchPending: false, calculationMatchRecheck: false,
-  submittingCalculation: false, savedFiltersUrl: '/api/scoring/saved-filters', editingSavedFilter: null,
+  submittingCalculation: false, savedScoringsUrl: '/api/scoring/saved-scorings', editingSavedScoring: null,
   calculateButton: {disabled: false}, recalculateButton: {disabled: false},
-  // The Saved Filter 8 is the one open: a selection that is another one up to date opens it on its own (ticket #168).
-  loadingResults: new Set(), scoringClosed: false, selectedSavedFilterId: '8',
+  // The Saved Scoring 8 is the one open: a selection that is another one up to date opens it on its own (ticket #168).
+  loadingResults: new Set(), scoringClosed: false, selectedSavedScoringId: '8',
   UP_TO_DATE_MESSAGE: 'This selection is a scoring already calculated and up to date: Open Scoring opens it.',
   OPENING_MESSAGE: 'Opening this scoring…',
-  useSavedFilter: (record, options) => opened.push([record.id, options.quiet, options.source]),
+  useSavedScoring: (record, options) => opened.push([record.id, options.quiet, options.source]),
   selectedLevels: () => ['City'], selectedDatasetIds: () => [12, 14],
   scoringProfileSelect: {value: 'profile-a'}, nrFilter: {value: 'NSA'},
   baselineInput: {value: 'Operator A'}, selectedContextFilters: () => ({Region: ['North']}),
   areaSummaryPayload: () => null,
   // Calculate Scoring or Open Scoring, as each answer tells it.
   showCalculateAction: open => shown.push(open),
-  // Whether the selection is no Saved Filter (its card and the results of the opened one hide).
+  // Whether the selection is no Saved Scoring (its card and the results of the opened one hide).
   showUnmatchedSelection: value => unmatched.push(value),
-  recalculatingSavedFilters: new Set(), savedFilterIdOf: record => String(record?.id ?? ''),
-  normalizeStatus: savedFilter => savedFilter?.status || '', isActive: savedFilter => ['queued', 'processing'].includes(savedFilter?.status),
+  recalculatingSavedScorings: new Set(), savedScoringIdOf: record => String(record?.id ?? ''),
+  normalizeStatus: savedScoring => savedScoring?.status || '', isActive: savedScoring => ['queued', 'processing'].includes(savedScoring?.status),
   setMessage: (text, kind = '') => messages.push({text, kind}),
   requestJson: (...args) => new Promise((resolve, reject) => requests.push({args, resolve, reject})),
   window: {
@@ -1724,31 +1724,31 @@ async function main() {
   context.updateCalculationMatch(true);
   const pending = [context.calculateButton.disabled, context.recalculateButton.disabled];
   timers[0]();
-  requests[0].resolve({saved_filter: null});
+  requests[0].resolve({saved_scoring: null});
   await flush();
   const noMatch = [context.calculateButton.disabled, context.recalculateButton.disabled, messages.at(-1)?.text];
 
   context.calculationMatchKey = '';
   context.updateCalculationMatch(true);
   timers[1]();
-  requests[1].resolve({saved_filter: {id: 8, status: 'completed', up_to_date: true}});
+  requests[1].resolve({saved_scoring: {id: 8, status: 'completed', up_to_date: true}});
   await flush();
   const completed = [context.calculateButton.disabled, context.recalculateButton.disabled, shown.at(-1), messages.at(-1)?.text];
 
   context.calculationMatchKey = '';
   context.updateCalculationMatch(true);
   timers[2]();
-  requests[2].resolve({saved_filter: {id: 9, status: 'queued'}});
+  requests[2].resolve({saved_scoring: {id: 9, status: 'queued'}});
   await flush();
   const active = [context.calculateButton.disabled, context.recalculateButton.disabled];
 
-  // The savedFilter polling checks the same selection again without enabling or disabling the buttons meanwhile.
+  // The savedScoring polling checks the same selection again without enabling or disabling the buttons meanwhile.
   context.calculateButton.disabled = false;
   context.calculationMatchRefresh = true;
   context.updateCalculationMatch(true);
   const refreshing = [context.calculateButton.disabled, context.recalculateButton.disabled, requests.length];
   timers.at(-1)();
-  requests.at(-1).resolve({saved_filter: {id: 9, status: 'queued'}});
+  requests.at(-1).resolve({saved_scoring: {id: 9, status: 'queued'}});
   await flush();
   const refreshed = [context.calculateButton.disabled, context.recalculateButton.disabled];
   timers.splice(3); requests.splice(3);
@@ -1760,16 +1760,16 @@ async function main() {
   context.baselineInput.value = 'Operator B';
   context.updateCalculationMatch(true);
   timers[4]();
-  requests[4].resolve({saved_filter: null});
+  requests[4].resolve({saved_scoring: null});
   await flush();
   const latestMessage = messages.at(-1)?.text;
-  requests[3].resolve({saved_filter: {id: 10, status: 'completed'}});
+  requests[3].resolve({saved_scoring: {id: 10, status: 'completed'}});
   await flush();
   const staleResponseIgnored = context.calculationMatchRevision > staleRevision
     && context.calculateButton.disabled === false && context.recalculateButton.disabled === true
     && messages.at(-1)?.text === latestMessage;
 
-  // A check slower than the Saved Filter polling: the refreshes wait for its answer instead of discarding it,
+  // A check slower than the Saved Scoring polling: the refreshes wait for its answer instead of discarding it,
   // and the selection is checked once more after that answer.
   context.baselineInput.value = 'Operator C';
   context.updateCalculationMatch(true);
@@ -1781,11 +1781,11 @@ async function main() {
     context.updateCalculationMatch(true);
   }
   const waiting = [requests.length - slowRequests, timers.length - slowTimers];
-  requests.at(-1).resolve({saved_filter: {id: 11, status: 'completed', up_to_date: true}});
+  requests.at(-1).resolve({saved_scoring: {id: 11, status: 'completed', up_to_date: true}});
   await flush();
   const answered = [context.calculateButton.disabled, context.recalculateButton.disabled, timers.length - slowTimers];
   timers.at(-1)();
-  requests.at(-1).resolve({saved_filter: {id: 11, status: 'completed', up_to_date: true}});
+  requests.at(-1).resolve({saved_scoring: {id: 11, status: 'completed', up_to_date: true}});
   await flush();
   const rechecked = [requests.length - slowRequests, timers.length - slowTimers,
     context.calculateButton.disabled, context.recalculateButton.disabled];
@@ -1809,12 +1809,12 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
     assert result['waiting'] == [0, 0]
     assert result['answered'] == [False, False, 1]
     assert result['rechecked'] == [1, 1, False, False]
-    # Only the selection without a Saved Filter (the first and the stale-check answers) is unmatched.
+    # Only the selection without a Saved Scoring (the first and the stale-check answers) is unmatched.
     assert result['unmatched'] == [True, False, False, False, True, False, False]
-    # A new selection that is another Saved Filter up to date opens it on its own, quietly; the one open (8) does not
+    # A new selection that is another Saved Scoring up to date opens it on its own, quietly; the one open (8) does not
     # open again and a refresh opens nothing (ticket #168).
     assert result['opened'] == [[11, True, 'selection']]
-    assert result['matchUrl'] == '/api/scoring/saved-filters/match'
+    assert result['matchUrl'] == '/api/scoring/saved-scorings/match'
     assert result['matchPayload'] == {
         'dataset_ids': [12, 14], 'aggregation_levels': ['Operator', 'City'],
         'scoring_profile_id': 'profile-a', 'nr_mode': 'NSA', 'baseline_operator': 'Operator A',
@@ -1915,7 +1915,7 @@ def test_kpi_gap_profile_and_points_lost_map_share_location_and_operators():
     # City, Region and Cluster are always listed; those without results are disabled.
     assert "insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per')" in maps
     assert "option.disabled = !views.includes(option.value);" in maps
-    assert ".map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode, rank));" in maps
+    assert ".map(entry => pointsLossMapCard(entry, payload, savedScoringId, chosen.length > 1, mode, rank));" in maps
     # The Focus operators are chosen by default (every operator without them), as in the PowerPoint and Word, first in
     # the choice.
     assert "if (!chosen.length) chosen = focusChosen(operators);" in controls
@@ -1970,15 +1970,15 @@ def test_charts_maps_and_tables_open_larger_and_charts_zoom():
     # for the page hides the buttons on a tap elsewhere.
     assert "document.addEventListener" not in toolbar
     assert "for (const toolbar of document.querySelectorAll('.scoring-map-zoom.is-visible')) {" in script
-    # While the Points Lost Map is prepared, the light list of Saved Filters is checked, not the whole result.
-    assert 'const list = await requestJson(savedFiltersUrl);' in script and 'current.updated_at !== loadedAt' in script
+    # While the Points Lost Map is prepared, the light list of Saved Scorings is checked, not the whole result.
+    assert 'const list = await requestJson(savedScoringsUrl);' in script and 'current.updated_at !== loadedAt' in script
 
 
 def test_the_calculation_message_stays_while_the_selected_job_calculates():
     script = (Path(__file__).resolve().parents[2] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     # The status of the selected CDRs and filters is kept while the job list refreshes every few seconds.
     assert "text = `${verb} the scoring of the selected CDRs and filters…`;" in script
-    assert "const verb = recalculatingSavedFilters.has(String(savedFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';" in script
+    assert "const verb = recalculatingSavedScorings.has(String(savedScoringIdOf(existing))) ? 'Recalculating' : 'Calculating';" in script
     assert "} else if (selectionStatus.key && selectionStatus.key === JSON.stringify(calculationPayload())) {" in script
     assert 'already queued or running' not in script
 
@@ -1986,9 +1986,9 @@ def test_the_calculation_message_stays_while_the_selected_job_calculates():
 def test_a_calculating_job_shows_an_animated_progress_bar_instead_of_placeholders():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
-    load_job = _function_source(script, 'loadSavedFilter')
+    load_job = _function_source(script, 'loadSavedScoring')
     # The selected active job shows the bar at once and at every poll, never Loading… or the waiting message.
-    assert 'if (isActive(savedFilter)) renderCalculating(savedFilter);' in load_job
+    assert 'if (isActive(savedScoring)) renderCalculating(savedScoring);' in load_job
     # The results of a saved job load under the same striped bar, across its whole width.
     assert 'else renderLoadingResults();' in load_job
     assert 'Loading Scoring Results…' in _function_source(script, 'renderLoadingResults')
@@ -1997,27 +1997,27 @@ def test_a_calculating_job_shows_an_animated_progress_bar_instead_of_placeholder
     assert 'Calculating Scoring…' in calculating and "current.forEach(update);" in calculating
     assert '@keyframes scoring-calculating-stripes' in template
     # The job polling checks the selection again without toggling the buttons.
-    assert 'calculationMatchRefresh = true;' in _function_source(script, 'refreshSavedFilters')
+    assert 'calculationMatchRefresh = true;' in _function_source(script, 'refreshSavedScorings')
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
 def test_scoring_jobs_show_their_calculation_time_or_elapsed_time():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     program = r'''
-const valueOf = (savedFilter, keys, fallback) => keys.map(key => savedFilter[key]).find(value => value !== undefined && value !== null && value !== '') ?? fallback;
-const isActive = savedFilter => ['queued', 'processing'].includes(savedFilter.status);
-''' + _function_source(script, 'savedFilterDurationText') + r'''
+const valueOf = (savedScoring, keys, fallback) => keys.map(key => savedScoring[key]).find(value => value !== undefined && value !== null && value !== '') ?? fallback;
+const isActive = savedScoring => ['queued', 'processing'].includes(savedScoring.status);
+''' + _function_source(script, 'savedScoringDurationText') + r'''
 const now = Date.parse('2026-10-09T18:00:00+02:00');
 process.stdout.write(JSON.stringify([
-  savedFilterDurationText({status: 'completed', started_at: '2026-10-09T17:58:35+02:00', finished_at: '2026-10-09T17:59:20+02:00'}, now),
-  savedFilterDurationText({status: 'completed', started_at: '2026-10-09T17:55:00+02:00', finished_at: '2026-10-09T17:58:07+02:00'}, now),
-  savedFilterDurationText({status: 'processing', started_at: '2026-10-09T16:40:00+02:00'}, now),
-  savedFilterDurationText({status: 'queued', started_at: ''}, now),
-  savedFilterDurationText({status: 'failed', started_at: '2026-10-09T17:55:00+02:00'}, now),
+  savedScoringDurationText({status: 'completed', started_at: '2026-10-09T17:58:35+02:00', finished_at: '2026-10-09T17:59:20+02:00'}, now),
+  savedScoringDurationText({status: 'completed', started_at: '2026-10-09T17:55:00+02:00', finished_at: '2026-10-09T17:58:07+02:00'}, now),
+  savedScoringDurationText({status: 'processing', started_at: '2026-10-09T16:40:00+02:00'}, now),
+  savedScoringDurationText({status: 'queued', started_at: ''}, now),
+  savedScoringDurationText({status: 'failed', started_at: '2026-10-09T17:55:00+02:00'}, now),
 ]));
 '''
     assert _run_node_json(program, {}) == ['45 s', '3 min 07 s', '1 h 20 min', '', '']
-    assert "durationMeta.textContent = isActive(savedFilter) ? 'Elapsed: ' : 'Calculation time: ';" in script
+    assert "durationMeta.textContent = isActive(savedScoring) ? 'Elapsed: ' : 'Calculation time: ';" in script
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
@@ -2085,20 +2085,20 @@ process.stdout.write(JSON.stringify([rows, note, campaignComparisonRows({...comp
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
 def test_scoring_jobs_show_their_scoring_trends():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    cards = _function_source(script, 'renderSavedFilters')
+    cards = _function_source(script, 'renderSavedScorings')
     # As the panel: the Geographical Areas (Breakdown and Separate cities), then the campaigns and time split of the Scoring Trends.
     assert "areaMeta.textContent = 'Country Areas: ';" in cards
     assert "trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);" in cards
     assert cards.index('areaMeta') < cards.index('trendMeta')
     # Each value in its own colour, after its label.
-    assert "areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;" in cards
-    program = _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + r'''
+    assert "areaValue.className = `saved-scoring-area-summary saved-scoring-area-summary-${kind}`;" in cards
+    program = _function_source(script, 'savedScoringAreaSummaryParts') + _function_source(script, 'savedScoringTimeSplit') + r'''
 process.stdout.write(JSON.stringify([
-  savedFilterAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
-  savedFilterAreaSummaryParts({area_summary: {time_split: 'All', breakdown: null, cities: ['London', 'Leeds']}}),
-  savedFilterAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: null, cities: [], campaigns: ['@all-campaigns']}}),
-  savedFilterAreaSummaryParts({area_summary: null}),
-  savedFilterTimeSplit({area_summary: {time_split: 'All'}}), savedFilterTimeSplit({}),
+  savedScoringAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: 'Region', cities: ['London']}}),
+  savedScoringAreaSummaryParts({area_summary: {time_split: 'All', breakdown: null, cities: ['London', 'Leeds']}}),
+  savedScoringAreaSummaryParts({area_summary: {time_split: 'Campaign', breakdown: null, cities: [], campaigns: ['@all-campaigns']}}),
+  savedScoringAreaSummaryParts({area_summary: null}),
+  savedScoringTimeSplit({area_summary: {time_split: 'All'}}), savedScoringTimeSplit({}),
 ]));
 '''
     shown = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
@@ -2143,7 +2143,7 @@ def test_the_area_charts_take_the_height_of_the_table_and_tilt_crowded_labels():
 
 
 
-def test_an_opened_saved_filter_lists_only_its_cdrs_with_its_campaigns():
+def test_an_opened_saved_scoring_lists_only_its_cdrs_with_its_campaigns():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     program = f"""
 const payload = JSON.parse(require('fs').readFileSync(0, 'utf8'));
@@ -2248,32 +2248,32 @@ def test_operator_choices_stand_out_in_the_blue_of_the_operators():
     assert 'select[data-gap-summary-operator]):not(.scoring-loss-operator) {' in template
 
 
-def test_saved_filters_are_edited_in_a_dialog_with_the_calculation_panel():
+def test_saved_scorings_are_edited_in_a_dialog_with_the_calculation_panel():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
 
     # The pencil keeps Save Name and adds Edit Filters, which opens the Calculation panel in a dialog.
     assert "confirmLabel: 'Save Name'," in script and "secondaryLabel: 'Edit Filters'," in script
-    assert '<dialog class="scoring-edit-dialog" data-saved-filter-edit-dialog' in template
-    start = _function_source(script, 'startSavedFilterEdit')
-    assert "restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs: true});" in start
+    assert '<dialog class="scoring-edit-dialog" data-saved-scoring-edit-dialog' in template
+    start = _function_source(script, 'startSavedScoringEdit')
+    assert "restoreCalculationSelectionFromSavedScoring(savedScoring, {automaticCdrs: true});" in start
     assert 'editDialog.append(calculationPanel);' in start and 'editDialog.showModal();' in start
-    stop = _function_source(script, 'stopSavedFilterEdit')
+    stop = _function_source(script, 'stopSavedScoringEdit')
     assert 'editPanelPlaceholder.replaceWith(calculationPanel);' in stop
     assert 'applySavedCalculationSelection(before.selection);' in stop
     # Cancel Editing comes before Save Changes, at the foot of the blocks in the dialog (Calculate Scoring and
     # Recalculate, in the strip, hide while editing).
     actions = template[template.index('data-scoring-config-edit-foot'):]
-    assert actions.index('data-saved-filter-edit-cancel') < actions.index('data-saved-filter-edit-save')
+    assert actions.index('data-saved-scoring-edit-cancel') < actions.index('data-saved-scoring-edit-save')
     assert '<span>Cancel Editing</span>' in actions and '<span>Save Changes</span>' in actions
-    sync = _function_source(script, 'syncSavedFilterEditing')
+    sync = _function_source(script, 'syncSavedScoringEditing')
     assert 'calculateButton.hidden = editing;' in sync and 'if (editCancelButton) editCancelButton.hidden = !editing;' in sync
-    assert "createSavedFilter(false, {url: `${savedFiltersUrl}/${id}/edit`})" in script
-    # ⧉ edits a copy in the same dialog: Save as New Filter saves it as a new Saved Filter with the name given.
-    assert "createSavedFilter(false, {url: `${savedFiltersUrl}/${id}/duplicate`, extra: {name: duplicateName}})" in script
-    assert "duplicating ? 'Save as New Filter' : 'Save Changes'" in sync and 'Duplicating Saved Filter' in sync
+    assert "createSavedScoring(false, {url: `${savedScoringsUrl}/${id}/edit`})" in script
+    # ⧉ edits a copy in the same dialog: Save as New Filter saves it as a new Saved Scoring with the name given.
+    assert "createSavedScoring(false, {url: `${savedScoringsUrl}/${id}/duplicate`, extra: {name: duplicateName}})" in script
+    assert "duplicating ? 'Save as New Filter' : 'Save Changes'" in sync and 'Duplicating Saved Scoring' in sync
     assert "confirmLabel: 'Edit Filters of the Copy'," in script
-    assert 'startSavedFilterEdit(savedFilter, {duplicateName: String(name)});' in script
+    assert 'startSavedScoringEdit(savedScoring, {duplicateName: String(name)});' in script
 
 
 def test_chart_and_table_titles_name_their_area_operators_and_vendors():
@@ -2316,13 +2316,13 @@ process.stdout.write(JSON.stringify({scopes: context.scopes, tooltip: context.to
         ['Cities: Bristol, Cardiff & Leeds', *everything], ['Cities: Bristol, Cardiff & 3 more', *everything],
         ['Region: Wales', *everything], ['Cluster: Cardiff Bay', *everything], ['City: Leeds', *everything],
         ['City: London', *everything], ['Region: Wales', *everything],
-        # Vendors are named without their operator, as on the Saved Filter cards.
+        # Vendors are named without their operator, as on the Saved Scoring cards.
         ['National', 'Operator: EE', 'Vendors: Nokia & Ericsson'],
         ['National', 'Operators: EE, O2 UK & 2 more', 'Vendor: Samsung'],
     ]
     # The tooltip of a shortened list names every value.
     assert result['tooltip'] == 'Cities: Bristol, Cardiff, Leeds, London, York'
-    # The results take the filters of the Saved Filter they show.
+    # The results take the filters of the Saved Scoring they show.
     assert "resultScopeFilters = resultFilters && typeof resultFilters === 'object' ? resultFilters : {};" in script
     # Every chart and table title ends with its pills; the National & Areas card shows every area and has none.
     card = _function_source(script, 'makeExpandableChartCard')

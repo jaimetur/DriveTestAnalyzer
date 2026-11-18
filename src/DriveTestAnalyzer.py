@@ -109,24 +109,24 @@ from src.modules.cdr.cdr_stage import (
 from src.modules.scoring.scoring_themes import THEMES as SCORING_THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.scoring.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
 from src.modules.cdr.cdr_auto_selection import campaign_presets, is_flex_cdr
-from src.modules.scoring.saved_filters import (
+from src.modules.scoring.saved_scorings import (
     POINTS_LOSS_STOPPED,
-    calculate_saved_filter,
-    delete_saved_filter,
-    duplicate_saved_filter,
-    edit_saved_filter,
-    find_saved_filter,
-    get_saved_filter,
-    list_saved_filters,
-    mark_saved_filter_used,
-    prune_unpinned_saved_filters,
-    recover_interrupted_saved_filters,
-    refresh_saved_filter,
-    reorder_saved_filters,
-    save_saved_filter,
+    calculate_saved_scoring,
+    delete_saved_scoring,
+    duplicate_saved_scoring,
+    edit_saved_scoring,
+    find_saved_scoring,
+    get_saved_scoring,
+    list_saved_scorings,
+    mark_saved_scoring_used,
+    prune_unpinned_saved_scorings,
+    recover_interrupted_saved_scorings,
+    refresh_saved_scoring,
+    reorder_saved_scorings,
+    save_saved_scoring,
     select_all_complete_cdrs,
     select_latest_companion_cdrs,
-    update_saved_filter,
+    update_saved_scoring,
     use_newer_cdrs,
     validate_complete_scoring_cdr_selection,
 )
@@ -146,7 +146,7 @@ from src.modules.builders.query_builder import MAX_PREVIEW_ROWS, execute_query, 
 from src.runtime_logs import execution_log_entries
 from src.modules.core.workspaces import Workspace, WorkspaceRegistry
 from src.branding import APP_SLUG, BACKUP_FILE_PATTERNS, BACKUP_SCRATCH_PATTERNS, LEGACY_APP_SLUG, canonical_format
-from src.modules.mapping.mapping_renames import count_saved_filters, rename_saved_filters
+from src.modules.mapping.mapping_renames import count_saved_scorings, rename_saved_scorings
 from src.modules.core.module_labels import (
     ICONS as MODULE_LABEL_ICONS, MAIN_MODULES, MAX_LABEL_LENGTH as MAX_MODULE_LABEL_LENGTH, MAX_SHORT_TITLE_LENGTH,
     MAX_TITLE_LENGTH, MODULE_LABELS_STATE_KEY, MODULE_TABS, RETIRED_MODULES, SECTION_ICONS, TAB_ICONS, load_module_labels, module_label_badges,
@@ -2997,10 +2997,10 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                         'folders': moved_cache_folders, 'cache_folder': workspace_cache.CACHE_FOLDER,
                     })
                 _startup_step('Recovering the Scoring calculations the last run left unfinished…')
-                recovered_scoring_ids = recover_interrupted_saved_filters(repository)
+                recovered_scoring_ids = recover_interrupted_saved_scorings(repository)
                 if recovered_scoring_ids:
-                    repository.try_add_log('system', 'recover_interrupted_saved_filters', json.dumps({
-                        'saved_filters': recovered_scoring_ids,
+                    repository.try_add_log('system', 'recover_interrupted_saved_scorings', json.dumps({
+                        'saved_scorings': recovered_scoring_ids,
                     }))
                 _move_cdr_rows_to_copies(workspace)
                 # The CDRs the Scoring History does not hold yet are indexed in the background, and copied to the
@@ -3275,7 +3275,7 @@ PASSIVE_APPLICATION_REQUEST_PATHS = {
 
 
 # Requests sent by pages on their own with a method other than GET (the polling refresh of a Scoring calculation).
-PASSIVE_APPLICATION_MUTATIONS = {'/api/scoring/saved-filters/match'}
+PASSIVE_APPLICATION_MUTATIONS = {'/api/scoring/saved-scorings/match'}
 
 
 def is_interactive_request(method: str, path: str, accept: str, background_refresh: bool = False) -> bool:
@@ -7463,7 +7463,7 @@ APPLICATION_BACKUP_COMPONENTS = ('app_database', 'users_access', 'ticket_center'
 WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
     'workspace_database', 'input', 'output', 'designs', 'report_templates', 'mappings_reference_data',
     'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'main_cities',
-    'scoring_configuration', 'app_events', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters',
+    'scoring_configuration', 'app_events', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourite_scorings',
     'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'assistant_glossary',
 })
 # The components and elements of packages, backups and saved selections made when Bundle Report Templates had a former
@@ -7475,7 +7475,10 @@ LEGACY_ARCHIVE_NAMES = {'complete_report_favourites': 'bundle_report_template_fa
                         'bundle_reports_template_favourites': 'bundle_report_template_favourites',
                         'bundle-reports-template-favourites': 'bundle-report-template-favourites',
                         # PPT Designer was PPT Dashboards, whose PPT Designs were Dashboards.
-                        'dashboards': 'designs'}
+                        'dashboards': 'designs',
+                        # The Favourite Scorings were Favourites Filters until v0.12.7.
+                        'scoring_favourites_filters': 'scoring_favourite_scorings',
+                        'scoring-favourites-filters': 'scoring-favourite-scorings'}
 # Where a package or backup of before PPT Designer keeps the PPT Designs of a workspace (formerly Dashboards).
 LEGACY_DESIGNS_MEMBER = 'dashboards/dashboards.json'
 
@@ -7517,7 +7520,7 @@ ARCHIVE_KIND_COMPONENTS = {
 WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'ppt-templates', 'auto-calculated-fields', 'designs', 'mappings-reference-data', 'query-builder-queries',
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'main-cities', 'scoring-configuration',
-    'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
+    'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
     'assistant-glossary',
 })
 # The content a server can request from another one (receive_transfer_request): the workspace elements, the application
@@ -7533,7 +7536,7 @@ WORKSPACE_ELEMENT_MODULES = {
     'auto-calculated-fields': 'workspace-config', 'main-cities': 'workspace-config',
     'mappings-reference-data': 'workspace-config',
     'designs': 'ppt-designer', 'ppt-templates': 'ppt-designer',
-    'scoring-configuration': 'scoring', 'scoring-report-templates': 'scoring', 'scoring-favourites-filters': 'scoring',
+    'scoring-configuration': 'scoring', 'scoring-report-templates': 'scoring', 'scoring-favourite-scorings': 'scoring',
     'scoring-export-panels': 'scoring', 'scoring-excluded-calls': 'scoring',
     'network-insights-favourites': 'network-insights',
     'nq-call-tracking': 'non-qualified-calls', 'nq-calls-configuration': 'non-qualified-calls',
@@ -7560,8 +7563,8 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
      'network-insights-favourites'),
     ('bundle_report_template_favourites', 'Report Definitions (one JSON file with what each report of Reporting includes, with its schedule and email)',
      'bundle-report-template-favourites'),
-    ('scoring_favourites_filters', 'Scoring & GAP Favourite Scorings (one JSON file with the Favourite Scorings, without their results)',
-     'scoring-favourites-filters'),
+    ('scoring_favourite_scorings', 'Scoring & GAP Favourite Scorings (one JSON file with the Favourite Scorings, without their results)',
+     'scoring-favourite-scorings'),
     ('scoring_report_templates', 'Scoring & GAP Report Templates (one JSON file with the saved configurations of '
                                       'the Scoring report editor)', 'scoring-report-templates'),
     ('scoring_export_panels', 'Scoring Export Panels (one JSON file with the exportable Scoring panels and the operators of '
@@ -7631,7 +7634,7 @@ def archive_workspace_components(manifest: dict[str, Any]) -> list[str]:
         'query-builder-queries': ('query_builder_queries',),
         'network-insights-favourites': ('network_insights_favourites',),
         'bundle-report-template-favourites': ('bundle_report_template_favourites',),
-        'scoring-favourites-filters': ('scoring_favourites_filters',),
+        'scoring-favourite-scorings': ('scoring_favourite_scorings',),
         'scoring-report-templates': ('scoring_report_templates',),
         'scoring-export-panels': ('scoring_export_panels',),
         'scoring-excluded-calls': ('scoring_excluded_calls',),
@@ -7706,7 +7709,7 @@ def full_workspace_archive_components(*, include_input_files: bool = True, inclu
         components.append('input')
     if include_generated_outputs:
         components.append('output')
-    return [*components, 'designs', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'nq_call_tracking', 'assistant_glossary']
+    return [*components, 'designs', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourite_scorings', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'nq_call_tracking', 'assistant_glossary']
 
 
 def archive_workspace_components_for_target(
@@ -7733,8 +7736,8 @@ def archive_workspace_components_for_target(
         return ['assistant_glossary']
     if target == 'bundle-report-template-favourites':
         return ['bundle_report_template_favourites']
-    if target == 'scoring-favourites-filters':
-        return ['scoring_favourites_filters']
+    if target == 'scoring-favourite-scorings':
+        return ['scoring_favourite_scorings']
     if target == 'scoring-report-templates':
         return ['scoring_report_templates']
     if target == 'scoring-export-panels':
@@ -8210,7 +8213,7 @@ def create_recurring_database_backup(
         component for component in (
             'workspace_database', 'designs', 'input', 'output', 'report_templates',
             'mappings_reference_data', 'main_cities', 'auto_calculated_fields', 'query_builder_queries',
-            'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs',
+            'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourite_scorings', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs',
             'nq_call_tracking', 'nq_calls_configuration', 'scoring_configuration', 'app_events', 'assistant_glossary',
         )
         if component in components
@@ -8262,8 +8265,8 @@ def create_recurring_database_backup(
             total_bytes += len(_assistant_glossary_payload(workspace))
         if 'bundle_report_template_favourites' in components:
             total_bytes += len(_bundle_report_template_favourites_payload(workspace))
-        if 'scoring_favourites_filters' in components:
-            total_bytes += len(_favourites_filters_payload(workspace))
+        if 'scoring_favourite_scorings' in components:
+            total_bytes += len(_favourite_scorings_payload(workspace))
         if 'scoring_report_templates' in components:
             total_bytes += len(_scoring_report_templates_archive_payload(workspace))
         if 'scoring_export_panels' in components:
@@ -8366,9 +8369,9 @@ def create_recurring_database_backup(
                 if 'bundle_report_template_favourites' in components:
                     report_progress(f'Exporting Report Definitions for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_bundle_report_template_favourites(archive, workspace, archive_workspace_root, archived_bytes)
-                if 'scoring_favourites_filters' in components:
+                if 'scoring_favourite_scorings' in components:
                     report_progress(f'Exporting Scoring & GAP Favourite Scorings for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
-                    _archive_workspace_favourites_filters(archive, workspace, archive_workspace_root, archived_bytes)
+                    _archive_workspace_favourite_scorings(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'scoring_report_templates' in components:
                     report_progress(f'Exporting Scoring & GAP Report Templates for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_scoring_report_templates(archive, workspace, archive_workspace_root, archived_bytes)
@@ -8977,8 +8980,9 @@ def _backup_archive_components(archive_path: Path) -> list[str]:
     if any(name.startswith('workspaces/') and any(f'/{archive_name}' in name for archive_name in BRT_FAVOURITES_ARCHIVE_NAMES)
            for name in names):
         components.append('bundle_report_template_favourites')
-    if any(name.startswith('workspaces/') and f'/{FAVOURITES_FILTERS_ARCHIVE_NAME}' in name for name in names):
-        components.append('scoring_favourites_filters')
+    if any(name.startswith('workspaces/') and any(f'/{archive_name}' in name for archive_name in FAVOURITE_SCORINGS_ARCHIVE_NAMES)
+           for name in names):
+        components.append('scoring_favourite_scorings')
     if any(name.startswith('workspaces/') and f'/{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}' in name for name in names):
         components.append('scoring_report_templates')
     if any(name.startswith('workspaces/') and f'/{SCORING_EXPORT_PANELS_ARCHIVE_NAME}' in name for name in names):
@@ -9095,8 +9099,8 @@ def restore_database_backup(
                 total_steps += int(f'{prefix}{ASSISTANT_GLOSSARY_ARCHIVE_NAME}' in name_set)
             if 'bundle_report_template_favourites' in selected:
                 total_steps += int(any(f'{prefix}{archive_name}' in name_set for archive_name in BRT_FAVOURITES_ARCHIVE_NAMES))
-            if 'scoring_favourites_filters' in selected:
-                total_steps += int(f'{prefix}{FAVOURITES_FILTERS_ARCHIVE_NAME}' in name_set)
+            if 'scoring_favourite_scorings' in selected:
+                total_steps += int(any(f'{prefix}{archive_name}' in name_set for archive_name in FAVOURITE_SCORINGS_ARCHIVE_NAMES))
             if 'scoring_report_templates' in selected:
                 total_steps += int(f'{prefix}{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}' in name_set)
             if 'scoring_export_panels' in selected:
@@ -9214,8 +9218,8 @@ def restore_database_backup(
                     reports_member = _scoring_report_configurations_member(member)
                     _restore_workspace_scoring_report_configurations(
                         workspace, archive.read(reports_member) if reports_member in names else None)
-                    filters_member = _saved_filters_member(member)
-                    _restore_workspace_saved_filters(
+                    filters_member = _saved_scorings_member(member)
+                    _restore_workspace_saved_scorings(
                         workspace, archive.read(filters_member) if filters_member in names else None)
                     advance(f'Scoring & GAP Analysis Methodologies restored for {workspace_name}')
             if 'auto_calculated_fields' in selected:
@@ -9264,12 +9268,13 @@ def restore_database_backup(
                         progress_callback(f'Restoring Report Definitions for {workspace_name}', completed_steps, total_steps)
                     _restore_workspace_bundle_report_template_favourites(workspace, archive.read(member), importing_user)
                     advance(f'Report Definitions restored for {workspace_name}')
-            if 'scoring_favourites_filters' in selected:
-                member = f'{prefix}{FAVOURITES_FILTERS_ARCHIVE_NAME}'
-                if member in names:
+            if 'scoring_favourite_scorings' in selected:
+                member = next((f'{prefix}{archive_name}' for archive_name in FAVOURITE_SCORINGS_ARCHIVE_NAMES
+                               if f'{prefix}{archive_name}' in names), '')
+                if member:
                     if progress_callback:
                         progress_callback(f'Restoring Scoring & GAP Favourite Scorings for {workspace_name}', completed_steps, total_steps)
-                    _restore_workspace_favourites_filters(workspace, archive.read(member), importing_user)
+                    _restore_workspace_favourite_scorings(workspace, archive.read(member), importing_user)
                     advance(f'Scoring & GAP Favourite Scorings restored for {workspace_name}')
             if 'scoring_report_templates' in selected:
                 member = f'{prefix}{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}'
@@ -9860,28 +9865,28 @@ def _scoring_report_configurations_member(member: str) -> str:
     return member.rsplit('/', 1)[0] + '/' + SCORING_REPORT_CONFIGURATIONS_MEMBER
 
 
-# The Saved Filters that Scoring & GAP Analysis Methodologies packages carried before the Favourite Scorings travelled on
-# their own.
-SAVED_FILTERS_MEMBER = 'saved-filters.json'
+# The Saved Scorings (then Saved Filters) that Scoring & GAP Analysis Methodologies packages carried before the Favourite
+# Scorings travelled on their own.
+SAVED_SCORINGS_MEMBER = 'saved-filters.json'
 
 
-def _saved_filters_member(member: str) -> str:
-    return member.rsplit('/', 1)[0] + '/' + SAVED_FILTERS_MEMBER
+def _saved_scorings_member(member: str) -> str:
+    return member.rsplit('/', 1)[0] + '/' + SAVED_SCORINGS_MEMBER
 
 
-def _restore_workspace_saved_filters(workspace: Workspace, payload: bytes | None) -> None:
-    """Add the Saved Filters of a package to a workspace (they find their CDRs there by file); packages created
+def _restore_workspace_saved_scorings(workspace: Workspace, payload: bytes | None) -> None:
+    """Add the Saved Scorings of a package to a workspace (they find their CDRs there by file); packages created
     before they existed have none."""
     if payload is None:
         return
-    from src.modules.scoring.saved_filters import import_saved_filters
+    from src.modules.scoring.saved_scorings import import_saved_scorings
     try:
         task_repository = Repository(
             workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
         )
-        import_saved_filters(task_repository, json.loads(payload.decode('utf-8')))
+        import_saved_scorings(task_repository, json.loads(payload.decode('utf-8')))
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise ValueError(f'Scoring Saved Filters for "{workspace.name}" are invalid.') from exc
+        raise ValueError(f'Scoring Saved Scorings for "{workspace.name}" are invalid.') from exc
 
 
 def _restore_workspace_scoring_report_configurations(workspace: Workspace, payload: bytes | None) -> None:
@@ -10345,39 +10350,41 @@ def _restore_workspace_bundle_report_template_favourites(
         raise ValueError(f'Report Definitions for "{workspace.name}" are invalid: {exc}') from exc
 
 
-FAVOURITES_FILTERS_ARCHIVE_NAME = 'scoring-favourites-filters/scoring-favourites-filters.json'
+FAVOURITE_SCORINGS_ARCHIVE_NAME = 'scoring-favourite-scorings/scoring-favourite-scorings.json'
+# The names it is read from: this one, then that of the packages and backups made until v0.12.7 (Favourites Filters).
+FAVOURITE_SCORINGS_ARCHIVE_NAMES = (FAVOURITE_SCORINGS_ARCHIVE_NAME, 'scoring-favourites-filters/scoring-favourites-filters.json')
 
 
-def _favourites_filters_payload(workspace: Workspace) -> bytes:
+def _favourite_scorings_payload(workspace: Workspace) -> bytes:
     """The Favourite Scorings of a workspace without their results, their CDRs named by the SHA-256 of their files."""
-    from src.modules.scoring.saved_filters import saved_filters_document
+    from src.modules.scoring.saved_scorings import saved_scorings_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
-    return json.dumps(saved_filters_document(task_repository, favourites_only=True), ensure_ascii=False, indent=2).encode('utf-8')
+    return json.dumps(saved_scorings_document(task_repository, favourites_only=True), ensure_ascii=False, indent=2).encode('utf-8')
 
 
-def _archive_workspace_favourites_filters(
+def _archive_workspace_favourite_scorings(
     archive: zipfile.ZipFile, workspace: Workspace, archive_prefix: str,
     progress_callback: Callable[[int], None] | None = None,
 ) -> None:
-    payload = _favourites_filters_payload(workspace)
-    archive.writestr(f'{archive_prefix}/{FAVOURITES_FILTERS_ARCHIVE_NAME}', payload)
+    payload = _favourite_scorings_payload(workspace)
+    archive.writestr(f'{archive_prefix}/{FAVOURITE_SCORINGS_ARCHIVE_NAME}', payload)
     if progress_callback:
         progress_callback(len(payload))
 
 
-def _restore_workspace_favourites_filters(
+def _restore_workspace_favourite_scorings(
     workspace: Workspace, payload: bytes, importing_user: str = 'import',
     progress: Callable[[str, float], None] | None = None,
 ) -> int:
     """Add the Favourite Scorings of a package to a workspace (they find their CDRs there by file), each belonging to its
     creator when that user is active here (otherwise to ``importing_user``); one the workspace already has is replaced
     by the imported one, and ``progress(phase, share done)`` follows them. Returns how many were added."""
-    from src.modules.scoring.saved_filters import import_saved_filters
+    from src.modules.scoring.saved_scorings import import_saved_scorings
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
-        return import_saved_filters(task_repository, json.loads(payload.decode('utf-8')), progress=progress,
+        return import_saved_scorings(task_repository, json.loads(payload.decode('utf-8')), progress=progress,
                                     creator=lambda package, local: transfer_creator(package, local, importing_user))
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring & GAP Favourite Scorings for "{workspace.name}" are invalid: {exc}') from exc
@@ -10618,7 +10625,7 @@ def _archive_workspace(
     _archive_workspace_network_insights_favourites(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_assistant_glossary(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_bundle_report_template_favourites(archive, workspace, archive_prefix, progress_callback)
-    _archive_workspace_favourites_filters(archive, workspace, archive_prefix, progress_callback)
+    _archive_workspace_favourite_scorings(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_scoring_report_templates(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_scoring_export_panels(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_scoring_excluded_calls(archive, workspace, archive_prefix, progress_callback)
@@ -10676,9 +10683,9 @@ def export_archive_filename(target: str | Iterable[str]) -> str:
     if target == 'bundle-report-template-favourites':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_bundle-report-template-favourites_{generated_at}.zip'
-    if target == 'scoring-favourites-filters':
+    if target == 'scoring-favourite-scorings':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
-        return f'{workspace_name}_scoring-favourites-filters_{generated_at}.zip'
+        return f'{workspace_name}_scoring-favourite-scorings_{generated_at}.zip'
     if target == 'scoring-report-templates':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_scoring-report-templates_{generated_at}.zip'
@@ -10919,14 +10926,14 @@ def _build_single_export_archive_file(
             )
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
             _archive_workspace_assistant_glossary(archive, source_workspace, f'workspaces/{source_workspace.name}', progress_callback)
-        elif target in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
+        elif target in {'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels',
                        'scoring-excluded-calls'}:
             source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
             label, archive_name, write = {
                 'bundle-report-template-favourites': ('Report Definitions', BRT_FAVOURITES_ARCHIVE_NAME,
                                                _archive_workspace_bundle_report_template_favourites),
-                'scoring-favourites-filters': ('Scoring & GAP Favourite Scorings', FAVOURITES_FILTERS_ARCHIVE_NAME, _archive_workspace_favourites_filters),
+                'scoring-favourite-scorings': ('Scoring & GAP Favourite Scorings', FAVOURITE_SCORINGS_ARCHIVE_NAME, _archive_workspace_favourite_scorings),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME,
                                                   _archive_workspace_scoring_report_templates),
                 'scoring-export-panels': ('Scoring Export Panels', SCORING_EXPORT_PANELS_ARCHIVE_NAME,
@@ -11367,11 +11374,11 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
         return ('AI Assistant Glossary', [name] if name else [])
-    if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
+    if kind in {'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels',
                        'scoring-excluded-calls'}:
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
-        return ({'bundle-report-template-favourites': 'Report Definitions', 'scoring-favourites-filters': 'Scoring & GAP Favourite Scorings',
+        return ({'bundle-report-template-favourites': 'Report Definitions', 'scoring-favourite-scorings': 'Scoring & GAP Favourite Scorings',
                  'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels',
                  'scoring-excluded-calls': 'Scoring Excluded Calls'}[kind],
                 [name] if name else [])
@@ -11430,7 +11437,7 @@ def _recover_unimported_transfer_packages() -> None:
                 'config', 'users-access', 'ticket-center', 'workspace', 'full-environment', 'ppt-templates',
                 'auto-calculated-fields', 'designs', 'mappings-reference-data', 'main-cities',
                 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
+                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
                 'database-backup', 'bundle',
             }:
                 raise ValueError('Unsupported transfer package.')
@@ -12638,7 +12645,7 @@ ELEMENT_DOCUMENTS: dict[str, Callable[[Workspace], Any]] = {
     'network-insights-favourites': _network_insights_favourites_payload,
     'assistant-glossary': _assistant_glossary_payload,
     'bundle-report-template-favourites': _bundle_report_template_favourites_payload,
-    'scoring-favourites-filters': _favourites_filters_payload,
+    'scoring-favourite-scorings': _favourite_scorings_payload,
     'scoring-report-templates': _scoring_report_templates_archive_payload,
     'scoring-export-panels': _scoring_export_panels_archive_payload,
     'scoring-excluded-calls': _scoring_excluded_calls_archive_payload,
@@ -12933,7 +12940,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
                 if kind == 'bundle-report-template-favourites' and isinstance(values.get('schedule'), dict):
                     owner = str(values['schedule'].get('created_by') or '').strip()
                     values['schedule'] = {**values['schedule'], 'created_by': owner if owner and active_user_exists(owner) else importing_user}
-                return kept_postal_codes(values, previous) if kind == 'scoring-favourites-filters' else values
+                return kept_postal_codes(values, previous) if kind == 'scoring-favourite-scorings' else values
             changes = {workspace.id: predict(element_items(kind, _predicted_document(kind, workspace, package, includes_designs)),
                                              element_items(kind, before[workspace.id]), ELEMENT_LABELS.get(kind), creators,
                                              detailed=kind in DETAILED_ELEMENTS)
@@ -12943,7 +12950,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         added = [_new_items_section(f'Adds {plural} to "{workspace.name}"', changes[workspace.id].new)
                  for workspace in destinations if plural and changes[workspace.id].new]
         reordered = [workspace for workspace in destinations
-                     if kind == 'scoring-favourites-filters' and favourites_order_changes(package, before[workspace.id])]
+                     if kind == 'scoring-favourite-scorings' and favourites_order_changes(package, before[workspace.id])]
         order = [f'Favourite Scorings of "{workspace.name}" take the order of the package.' for workspace in reordered]
         return _preview_wording(message), [*added, *lines, *order], bool(reordered) or any(item.new or item.updated for item in changes.values())
     if kind == 'users-access':
@@ -13368,7 +13375,7 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
-            # The report configurations and Saved Filters that packages of earlier versions carried are left out: they
+            # The report configurations and Saved Scorings that packages of earlier versions carried are left out: they
             # travel as elements of their own (backups of earlier versions still restore them).
             renamed: list[str] = []
             before = _element_documents(kind, destinations)
@@ -13468,18 +13475,19 @@ def _apply_import_archive(
             message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
                                              imported_count)
             return told(message, [*renamed, *lines])
-        if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
+        if kind in {'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels',
                        'scoring-excluded-calls'}:
             favourites = kind == 'bundle-report-template-favourites'
             label, archive_name = {
                 'bundle-report-template-favourites': ('Report Definitions', BRT_FAVOURITES_ARCHIVE_NAME),
-                'scoring-favourites-filters': ('Scoring & GAP Favourite Scorings', FAVOURITES_FILTERS_ARCHIVE_NAME),
+                'scoring-favourite-scorings': ('Scoring & GAP Favourite Scorings', FAVOURITE_SCORINGS_ARCHIVE_NAME),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME),
                 'scoring-export-panels': ('Scoring Export Panels', SCORING_EXPORT_PANELS_ARCHIVE_NAME),
                 'scoring-excluded-calls': ('Scoring Excluded Calls', SCORING_EXCLUDED_CALLS_ARCHIVE_NAME),
             }[kind]
             member = str(manifest.get('archive_path') or '')
-            archive_names = BRT_FAVOURITES_ARCHIVE_NAMES if favourites else (archive_name,)
+            archive_names = (BRT_FAVOURITES_ARCHIVE_NAMES if favourites else FAVOURITE_SCORINGS_ARCHIVE_NAMES
+                             if kind == 'scoring-favourite-scorings' else (archive_name,))
             if member not in archive.namelist() or not any(re.fullmatch(r'workspaces/[^/]+/' + re.escape(name), member)
                                                            for name in archive_names):
                 raise ValueError(f'The package does not contain valid {label}.')
@@ -13504,8 +13512,8 @@ def _apply_import_archive(
                     f'{label} of "{destinations[position].name}": {phase}', 5.0 + 90.0 * (position + share) / len(destinations))
             imported_count = sum(
                 _restore_workspace_bundle_report_template_favourites(workspace, payload, importing_user, renamed) if favourites
-                else _restore_workspace_favourites_filters(workspace, payload, importing_user, workspace_progress(position))
-                if kind == 'scoring-favourites-filters'
+                else _restore_workspace_favourite_scorings(workspace, payload, importing_user, workspace_progress(position))
+                if kind == 'scoring-favourite-scorings'
                 else _restore_workspace_scoring_export_panels(workspace, payload) if kind == 'scoring-export-panels'
                 else _restore_workspace_scoring_excluded_calls(workspace, payload, importing_user, renamed) if kind == 'scoring-excluded-calls'
                 else _import_workspace_scoring_report_templates(workspace, payload, importing_user, renamed)
@@ -13515,7 +13523,7 @@ def _apply_import_archive(
             from src.modules.core.import_changes import favourites_order_changes
 
             order = [f'Favourite Scorings of "{workspace.name}" took the order of the package.' for workspace in destinations
-                     if kind == 'scoring-favourites-filters' and before is not None
+                     if kind == 'scoring-favourite-scorings' and before is not None
                      and favourites_order_changes(_json_document(payload), before[workspace.id])]
             return told(message, [*renamed, *lines, *order])
         if kind == 'reporting-jobs':
@@ -13851,7 +13859,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
         'network-insights-favourites': 'Network Insights Favourites',
         'assistant-glossary': 'AI Assistant Glossary',
         'bundle-report-template-favourites': 'Report Definitions',
-        'scoring-favourites-filters': 'Scoring & GAP Favourite Scorings',
+        'scoring-favourite-scorings': 'Scoring & GAP Favourite Scorings',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
         'scoring-export-panels': 'Scoring Export Panels',
         'scoring-excluded-calls': 'Scoring Excluded Calls',
@@ -14838,7 +14846,7 @@ def require_import_export_permission(user: SessionUser, target: str) -> None:
     if user.role == 'super-admin' or target in {
         'ppt-templates', 'auto-calculated-fields', 'designs', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
+        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
     }:
         return
     raise HTTPException(
@@ -14872,7 +14880,7 @@ def require_export_permission(user: SessionUser, target: str) -> None:
     """Authorize exports and transfers without exposing other workspaces."""
     if user.role == 'super-admin':
         return
-    if target in {'auto-calculated-fields', 'ppt-templates', 'designs', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary'}:
+    if target in {'auto-calculated-fields', 'ppt-templates', 'designs', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary'}:
         if active_workspace and repository.user_has_workspace_access(user.username, active_workspace.id):
             return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Open a workspace you can access first.')
@@ -14976,7 +14984,7 @@ def render_admin_template(
         'dataset_profiles': 'Dataset Profiles',
         'dataset_source_columns': 'Dataset Source Columns',
         'datasets': 'Datasets',
-        'saved_filters': 'Scoring Saved Filters',
+        'saved_scorings': 'Scoring Saved Scorings',
         'scoring_history': 'Scoring History',
         'scoring_history_sources': 'Scoring History Sources',
         'scoring_history_files': 'Scoring History Files',
@@ -15059,7 +15067,7 @@ def render_admin_template(
         {'value': 'query-builder-queries', 'label': 'Query Builder Queries (from active workspace)', 'disabled': not active_workspace},
         {'value': 'network-insights-favourites', 'label': 'Network Insights Favourites (from active workspace)', 'disabled': not active_workspace},
         {'value': 'bundle-report-template-favourites', 'label': 'Report Definitions (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'scoring-favourites-filters', 'label': 'Scoring & GAP Favourite Scorings (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'scoring-favourite-scorings', 'label': 'Scoring & GAP Favourite Scorings (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-report-templates', 'label': 'Scoring & GAP Report Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-export-panels', 'label': 'Scoring Export Panels (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-excluded-calls', 'label': 'Scoring Excluded Calls (from active workspace)', 'disabled': not active_workspace},
@@ -15083,7 +15091,7 @@ def render_admin_template(
             option for option in export_options
             if option['value'] in {
                 'ppt-templates', 'auto-calculated-fields', 'designs', 'mappings-reference-data', 'main-cities', 'scoring-configuration',
-                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
+                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
             } or option['value'].startswith('workspace:')
         ]
     export_option_groups = [
@@ -17060,18 +17068,18 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                         'progress': max(0, min(100, int(row['progress'] or 0))),
                         **timestamps,
                     })
-            if 'saved_filters' in tables:
-                # The Scoring & GAP Analysis calculations of the Saved Filters run in the background too, with their
+            if 'saved_scorings' in tables:
+                # The Scoring & GAP Analysis calculations of the Saved Scorings run in the background too, with their
                 # elapsed time.
                 recent = (datetime.now().astimezone() - timedelta(seconds=5)).isoformat()
                 # Asked for apart: those in progress by their status, and those that have just finished by the index of
-                # their date. The dates are stored after the result of each Saved Filter (megabytes), so one query for
-                # both read the results of every Saved Filter, seconds on each poll of every page open.
+                # their date. The dates are stored after the result of each Saved Scoring (megabytes), so one query for
+                # both read the results of every Saved Scoring, seconds on each poll of every page open.
                 columns = 'id, nr_mode, status, progress, message, updated_at AS created_at, started_at, finished_at'
                 found = {int(row['id']): row for row in connection.execute(
-                    f"SELECT {columns} FROM saved_filters WHERE status IN ('queued', 'processing')")}
+                    f"SELECT {columns} FROM saved_scorings WHERE status IN ('queued', 'processing')")}
                 found.update({int(row['id']): row for row in connection.execute(
-                    f'SELECT {columns} FROM saved_filters WHERE finished_at >= ?', (recent,))})
+                    f'SELECT {columns} FROM saved_scorings WHERE finished_at >= ?', (recent,))})
                 for row in (found[row_id] for row_id in sorted(found)):
                     timestamps = {}
                     for key, column in (('queued_at', 'created_at'), ('started_at', 'started_at'), ('completed_at', 'finished_at')):
@@ -17079,7 +17087,7 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                         timestamps[key] = moment.timestamp() if moment else None
                     status = str(row['status'] or 'queued')
                     tasks.append({
-                        'id': f'saved-filter:{workspace.id}:{row["id"]}',
+                        'id': f'saved-scoring:{workspace.id}:{row["id"]}',
                         'label': f'Scoring calculation #{row["id"]} ({nr_mode_label(row["nr_mode"])})',
                         'detail': str(row['message'] or '').strip() or ('Waiting to calculate scoring' if status == 'queued' else 'Calculating'),
                         'status': {'completed': 'ready', 'failed': 'failed', 'stopped': 'failed'}.get(status, status),
@@ -17106,15 +17114,15 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
 BACKGROUND_TASK_PROVIDERS: list[Callable[[Workspace], list[dict[str, Any]]]] = []
 
 
-def _saved_filter_points_loss_tasks(workspace: Workspace) -> list[dict[str, Any]]:
-    """The Points Lost Maps of the Saved Filters waiting or being drawn."""
-    from src.modules.scoring.saved_filters import points_loss_tasks
+def _saved_scoring_points_loss_tasks(workspace: Workspace) -> list[dict[str, Any]]:
+    """The Points Lost Maps of the Saved Scorings waiting or being drawn."""
+    from src.modules.scoring.saved_scorings import points_loss_tasks
     # Each can be stopped from the card (see stop_background_task).
     return [{**task, 'stop_task_id': task['id'], 'stop_url': f'/api/background-tasks/{workspace.id}/stop'}
             for task in points_loss_tasks(workspace.database_path)]
 
 
-BACKGROUND_TASK_PROVIDERS.append(_saved_filter_points_loss_tasks)
+BACKGROUND_TASK_PROVIDERS.append(_saved_scoring_points_loss_tasks)
 
 
 def _map_area_fill_tasks(workspace: Workspace) -> list[dict[str, Any]]:
@@ -17502,15 +17510,15 @@ def stop_background_task(
     prefix, _, raw_identifier = str(task_id).partition(':')
     if not raw_identifier:
         raise HTTPException(status_code=400, detail='Invalid background task.')
-    if prefix == 'saved-filter-map':
-        from src.modules.scoring.saved_filters import request_points_loss_stop
+    if prefix == 'saved-scoring-map':
+        from src.modules.scoring.saved_scorings import request_points_loss_stop
         try:
             filter_id = int(raw_identifier)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail='Invalid Points Lost Map task.') from exc
         if not request_points_loss_stop(workspace.database_path, filter_id):
             raise HTTPException(status_code=409, detail='This Points Lost Map can no longer be stopped.')
-        task_repository.try_add_log(user.username, 'stop_points_loss_map', json.dumps({'saved_filter_id': filter_id}))
+        task_repository.try_add_log(user.username, 'stop_points_loss_map', json.dumps({'saved_scoring_id': filter_id}))
     elif prefix == 'dataset':
         try:
             dataset_id = int(raw_identifier)
@@ -17771,7 +17779,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
         kind_type = 'Ticket Center'
     elif name.startswith('nq_'):
         kind_type = 'Non-Qualified Calls'
-    elif name.startswith(('scoring_', 'saved_filters')):
+    elif name.startswith(('scoring_', 'saved_scorings')):
         kind_type = 'Scoring & GAP Analysis'
     elif name.startswith('report_task') or name == 'bundle_report_templates':
         kind_type = 'Reporting'
@@ -20963,7 +20971,7 @@ async def chart_builder_preview(request: Request, user: SessionUser = Depends(cu
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-class SavedFilterRequest(BaseModel):
+class SavedScoringRequest(BaseModel):
     dataset_ids: list[int]
     aggregation_levels: list[str] = ['Operator']
     nr_mode: str = 'NSA'
@@ -21162,9 +21170,9 @@ def scoring_page(request: Request, user: SessionUser = Depends(current_user)) ->
     })
 
 
-@app.get('/api/scoring/saved-filters')
-def saved_filters_list(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    return {'saved_filters': list_saved_filters(scoring_repository(user))}
+@app.get('/api/scoring/saved-scorings')
+def saved_scorings_list(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    return {'saved_scorings': list_saved_scorings(scoring_repository(user))}
 
 
 @app.get('/api/scoring/theme')
@@ -21243,36 +21251,36 @@ def scoring_cdr_selection(payload: ScoringCdrSelectionRequest, user: SessionUser
 
 @app.get('/api/scoring/postal-maps')
 def scoring_postal_maps(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    """The maps of the Postal Codes a Saved Filter can choose, with the countries the workspace has each of them for."""
+    """The maps of the Postal Codes a Saved Scoring can choose, with the countries the workspace has each of them for."""
     from src.modules.network.postal_areas import map_choices
     return {'maps': map_choices(scoring_repository(user))}
 
 
-@app.post('/api/scoring/saved-filters/match')
-def saved_filters_match(payload: SavedFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    """The Saved Filter of the selection being made, if it was used before, and whether its result is up to date."""
+@app.post('/api/scoring/saved-scorings/match')
+def saved_scorings_match(payload: SavedScoringRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """The Saved Scoring of the selection being made, if it was used before, and whether its result is up to date."""
     task_repository = scoring_repository(user)
     # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
-    # The page asks again while any Saved Filter calculates: its many reads share one connection to answer at once.
+    # The page asks again while any Saved Scoring calculates: its many reads share one connection to answer at once.
     try:
         with task_repository.shared_connection():
             selected_ids = validate_complete_scoring_cdr_selection(
                 task_repository, payload.dataset_ids, payload.nr_mode,
                 context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
             )
-            saved_filter = find_saved_filter(
+            saved_scoring = find_saved_scoring(
                 task_repository, selected_ids, payload.aggregation_levels, payload.nr_mode,
                 baseline_operator=payload.baseline_operator, context_filters=payload.context_filters,
                 scoring_profile_id=payload.scoring_profile_id, area_summary=payload.area_summary,
             )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {'saved_filter': saved_filter}
+    return {'saved_scoring': saved_scoring}
 
 
-@app.post('/api/scoring/saved-filters')
-def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    """Use a selection: its Saved Filter with its saved result, calculated in the background when needed."""
+@app.post('/api/scoring/saved-scorings')
+def saved_scorings_save(payload: SavedScoringRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """Use a selection: its Saved Scoring with its saved result, calculated in the background when needed."""
     task_repository = scoring_repository(user)
     # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
     try:
@@ -21280,7 +21288,7 @@ def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(
             task_repository, payload.dataset_ids, payload.nr_mode,
             context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
         )
-        saved_filter, cached = save_saved_filter(
+        saved_scoring, cached = save_saved_scoring(
             task_repository, selected_ids, payload.aggregation_levels, payload.nr_mode,
             force=payload.force, username=user.username, baseline_operator=payload.baseline_operator,
             context_filters=payload.context_filters,
@@ -21289,46 +21297,46 @@ def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not cached:
-        _queue_saved_filter_calculation(task_repository, saved_filter['id'])
+        _queue_saved_scoring_calculation(task_repository, saved_scoring['id'])
     # The selection calculated (filters, Split by, reference and methodology), to know what a result was asked for.
     task_repository.try_add_log(user.username, 'scoring_calculation_requested', json.dumps({
-        'saved_filter_id': saved_filter['id'], 'starred': bool(saved_filter.get('pinned')), 'name': saved_filter.get('name') or '',
+        'saved_scoring_id': saved_scoring['id'], 'starred': bool(saved_scoring.get('pinned')), 'name': saved_scoring.get('name') or '',
         'datasets': len(selected_ids), 'nr_mode': payload.nr_mode, 'force': payload.force, 'cached': cached,
         'dataset_ids': selected_ids, 'aggregation_levels': payload.aggregation_levels,
         'baseline_operator': payload.baseline_operator, 'scoring_profile_id': payload.scoring_profile_id or '',
         'context_filters': {field: values for field, values in payload.context_filters.items() if values},
     }, ensure_ascii=False))
-    _prioritize_saved_filter(task_repository, saved_filter['id'])
-    # Only the starred Saved Filters are kept: the user's other unstarred ones go.
-    prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
-    return {'saved_filter': saved_filter, 'cached': cached}
+    _prioritize_saved_scoring(task_repository, saved_scoring['id'])
+    # Only the starred Saved Scorings are kept: the user's other unstarred ones go.
+    prune_unpinned_saved_scorings(task_repository, saved_scoring['id'], user.username)
+    return {'saved_scoring': saved_scoring, 'cached': cached}
 
 
-# The Saved Filter being looked at goes first among the queued calculations and Points Lost Maps of its workspace,
+# The Saved Scoring being looked at goes first among the queued calculations and Points Lost Maps of its workspace,
 # the latest one opened before the others.
-SAVED_FILTER_PRIORITY_ORDER = itertools.count(1)
+SAVED_SCORING_PRIORITY_ORDER = itertools.count(1)
 
 
-def _queue_saved_filter_calculation(task_repository: Repository, filter_id: int) -> None:
-    """Queue the calculation of a Saved Filter; its Points Lost Map follows as a job of its own, after the calculations
+def _queue_saved_scoring_calculation(task_repository: Repository, filter_id: int) -> None:
+    """Queue the calculation of a Saved Scoring; its Points Lost Map follows as a job of its own, after the calculations
     waiting, and gives way to the work of the workspace queued before it while it is drawn (such as the calculation of
-    another Saved Filter), so they do not wait for it."""
+    another Saved Scoring), so they do not wait for it."""
     submit_points_loss, work_waiting = _points_loss_submitters(task_repository, filter_id)
-    _submit_workspace_job(task_repository, calculate_saved_filter, task_repository, filter_id, submit_points_loss,
+    _submit_workspace_job(task_repository, calculate_saved_scoring, task_repository, filter_id, submit_points_loss,
                           work_waiting, phase=4)
     # Its result as served is then built and kept, so it opens at once (ticket #168).
-    _submit_workspace_job(task_repository, _keep_saved_filter_result, task_repository, filter_id, phase=5)
+    _submit_workspace_job(task_repository, _keep_saved_scoring_result, task_repository, filter_id, phase=5)
 
 
 def _points_loss_submitters(task_repository: Repository, filter_id: int):
-    """How the Points Lost Map of a Saved Filter is queued (a workspace job after the calculations), and whether work
+    """How the Points Lost Map of a Saved Scoring is queued (a workspace job after the calculations), and whether work
     of the workspace waits before it (it then gives way)."""
     scheduler = _dataset_processing_executor(task_repository)
     workspace_key = str(task_repository.db_path.resolve())
 
     def submit_points_loss(callback: Callable[[], None]) -> None:
         _submit_workspace_job(task_repository, callback, phase=5)
-        _prioritize_saved_filter(task_repository, filter_id, only_if_selected=True)
+        _prioritize_saved_scoring(task_repository, filter_id, only_if_selected=True)
 
     def work_waiting() -> bool:
         return scheduler.has_waiting_before(workspace_key, scheduler.current_priority() or workspace_dataset_job_priority(5, 0))
@@ -21339,46 +21347,46 @@ def _points_loss_submitters(task_repository: Repository, filter_id: int):
 # CDRs, methodology or Operator Maps (such as those of Latest campaign once a new campaign arrives), or that have none
 # yet, are calculated one after another with their Points Lost Maps, so they open at once (after the Scoring History
 # indexing of the idle server, which their calculations read).
-FAVOURITES_FILTERS_IDLE_SECONDS = 3 * 60
+FAVOURITE_SCORINGS_IDLE_SECONDS = 3 * 60
 # The results of the Favourite Scorings kept as served each time the application is idle (about 20 s each on the server).
 FAVOURITE_RESULTS_KEPT_PER_ROUND = 6
 
 
-def _calculate_favourites_filters_when_idle() -> None:
+def _calculate_favourite_scorings_when_idle() -> None:
     workspace = active_workspace
     if not workspace:
         return
     task_repository = Repository(workspace.database_path, global_db_path=repository.global_db_path,
                                  workspace_registry_db_path=workspace_registry.registry_path)
     not_kept: list[int] = []
-    for saved_filter in list_saved_filters(task_repository):
-        if not saved_filter['pinned'] or saved_filter['status'] in ('queued', 'processing'):
+    for saved_scoring in list_saved_scorings(task_repository):
+        if not saved_scoring['pinned'] or saved_scoring['status'] in ('queued', 'processing'):
             continue
-        queued, unavailable = refresh_saved_filter(task_repository, saved_filter['id'], 'system')
+        queued, unavailable = refresh_saved_scoring(task_repository, saved_scoring['id'], 'system')
         if queued:
-            _queue_saved_filter_calculation(task_repository, saved_filter['id'])
+            _queue_saved_scoring_calculation(task_repository, saved_scoring['id'])
             task_repository.try_add_log('system', 'scoring_calculation_requested', json.dumps({
-                'saved_filter_id': saved_filter['id'], 'starred': True, 'name': saved_filter['name'],
-                'datasets': len(saved_filter['dataset_ids']), 'nr_mode': saved_filter['nr_mode'], 'idle': True,
+                'saved_scoring_id': saved_scoring['id'], 'starred': True, 'name': saved_scoring['name'],
+                'datasets': len(saved_scoring['dataset_ids']), 'nr_mode': saved_scoring['nr_mode'], 'idle': True,
             }))
             # One at a time: the next one is queued once the application is idle again.
             return
-        if len(not_kept) < FAVOURITE_RESULTS_KEPT_PER_ROUND and saved_filter['status'] == 'completed' \
-                and not saved_filter_result_kept(task_repository, saved_filter, unavailable):
-            not_kept.append(saved_filter['id'])
+        if len(not_kept) < FAVOURITE_RESULTS_KEPT_PER_ROUND and saved_scoring['status'] == 'completed' \
+                and not saved_scoring_result_kept(task_repository, saved_scoring, unavailable):
+            not_kept.append(saved_scoring['id'])
     # Every Favourite Scoring up to date: the results not kept as served yet (calculated before ticket #168, or their
     # cache deleted) are built and kept, a few each time the application is idle.
     for filter_id in not_kept:
-        _submit_workspace_job(task_repository, _keep_saved_filter_result, task_repository, filter_id, phase=5)
+        _submit_workspace_job(task_repository, _keep_saved_scoring_result, task_repository, filter_id, phase=5)
 
 
-register_idle_task(_calculate_favourites_filters_when_idle, FAVOURITES_FILTERS_IDLE_SECONDS)
+register_idle_task(_calculate_favourite_scorings_when_idle, FAVOURITE_SCORINGS_IDLE_SECONDS)
 
 
 def _resume_stopped_points_loss_maps_when_idle() -> None:
     """Draw again, one at a time, the Points Lost Maps of the open workspace a user stopped, once nobody uses the
     application."""
-    from src.modules.scoring.saved_filters import queue_points_loss, resume_stopped_points_loss, stopped_points_loss_ids
+    from src.modules.scoring.saved_scorings import queue_points_loss, resume_stopped_points_loss, stopped_points_loss_ids
     workspace = active_workspace
     if not workspace:
         return
@@ -21387,58 +21395,58 @@ def _resume_stopped_points_loss_maps_when_idle() -> None:
     for filter_id in stopped_points_loss_ids(task_repository):
         if resume_stopped_points_loss(task_repository, filter_id):
             queue_points_loss(task_repository, filter_id, *_points_loss_submitters(task_repository, filter_id))
-            task_repository.try_add_log('system', 'points_loss_map_resumed', json.dumps({'saved_filter_id': filter_id,
+            task_repository.try_add_log('system', 'points_loss_map_resumed', json.dumps({'saved_scoring_id': filter_id,
                                                                                          'idle': True}))
             return
 
 
-register_idle_task(_resume_stopped_points_loss_maps_when_idle, FAVOURITES_FILTERS_IDLE_SECONDS)
+register_idle_task(_resume_stopped_points_loss_maps_when_idle, FAVOURITE_SCORINGS_IDLE_SECONDS)
 
 
-SELECTED_SAVED_FILTERS: dict[str, int] = {}
+SELECTED_SAVED_SCORINGS: dict[str, int] = {}
 
 
-def _prioritize_saved_filter(task_repository: Repository, filter_id: int, *, only_if_selected: bool = False) -> None:
-    """Move the queued calculation and Points Lost Map of the Saved Filter being looked at before the others."""
-    from src.modules.scoring.saved_filters import is_saved_filter_work
+def _prioritize_saved_scoring(task_repository: Repository, filter_id: int, *, only_if_selected: bool = False) -> None:
+    """Move the queued calculation and Points Lost Map of the Saved Scoring being looked at before the others."""
+    from src.modules.scoring.saved_scorings import is_saved_scoring_work
     key = str(task_repository.db_path.resolve())
-    if only_if_selected and SELECTED_SAVED_FILTERS.get(key) != int(filter_id):
+    if only_if_selected and SELECTED_SAVED_SCORINGS.get(key) != int(filter_id):
         return
-    SELECTED_SAVED_FILTERS[key] = int(filter_id)
+    SELECTED_SAVED_SCORINGS[key] = int(filter_id)
     _dataset_processing_executor(task_repository).promote(
-        lambda callback, args: is_saved_filter_work(callback, args, filter_id),
-        (4, -1, -next(SAVED_FILTER_PRIORITY_ORDER)),
+        lambda callback, args: is_saved_scoring_work(callback, args, filter_id),
+        (4, -1, -next(SAVED_SCORING_PRIORITY_ORDER)),
     )
 
 
 
-@app.post('/api/scoring/saved-filters/{filter_id}/use')
-def scoring_saved_filters_use(filter_id: int, source: str = '',
+@app.post('/api/scoring/saved-scorings/{filter_id}/use')
+def scoring_saved_scorings_use(filter_id: int, source: str = '',
                               user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    """Count the opening of a Saved Filter from its card (or, with ``source=navigator``, from the Filter Navigator) as a
+    """Count the opening of a Saved Scoring from its card (or, with ``source=navigator``, from the Filter Navigator) as a
     use."""
     task_repository = scoring_repository(user)
-    saved_filter = mark_saved_filter_used(task_repository, filter_id)
-    if saved_filter is None:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    task_repository.try_add_log(user.username, 'open_saved_filter', json.dumps({
-        'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '', 'starred': bool(saved_filter.get('pinned')),
-        'status': saved_filter.get('status'), 'use_count': saved_filter.get('use_count'),
+    saved_scoring = mark_saved_scoring_used(task_repository, filter_id)
+    if saved_scoring is None:
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    task_repository.try_add_log(user.username, 'open_saved_scoring', json.dumps({
+        'saved_scoring_id': filter_id, 'name': saved_scoring.get('name') or '', 'starred': bool(saved_scoring.get('pinned')),
+        'status': saved_scoring.get('status'), 'use_count': saved_scoring.get('use_count'),
         **({'source': 'Filter Navigator'} if source == 'navigator' else {}),
     }, ensure_ascii=False))
-    prune_unpinned_saved_filters(task_repository, filter_id, user.username)
-    return {'saved_filter': saved_filter}
+    prune_unpinned_saved_scorings(task_repository, filter_id, user.username)
+    return {'saved_scoring': saved_scoring}
 
 
 class UseNewerCdrsRequest(BaseModel):
-    # False for the Saved Filters updated together from the Saved Filters panel: the one being looked at stays.
+    # False for the Saved Scorings updated together from the Saved Scorings panel: the one being looked at stays.
     select: bool = True
 
 
-@app.post('/api/scoring/saved-filters/{filter_id}/use-newer-cdrs')
-def scoring_saved_filters_use_newer_cdrs(filter_id: int, payload: UseNewerCdrsRequest | None = None,
+@app.post('/api/scoring/saved-scorings/{filter_id}/use-newer-cdrs')
+def scoring_saved_scorings_use_newer_cdrs(filter_id: int, payload: UseNewerCdrsRequest | None = None,
                                          user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    """Update a Saved Filter with the CDRs that replace its older ones and calculate it again in the background."""
+    """Update a Saved Scoring with the CDRs that replace its older ones and calculate it again in the background."""
     select = payload.select if payload is not None else True
     task_repository = scoring_repository(user)
     try:
@@ -21446,26 +21454,26 @@ def scoring_saved_filters_use_newer_cdrs(filter_id: int, payload: UseNewerCdrsRe
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if updated is None:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    saved_filter = updated['saved_filter']
-    _queue_saved_filter_calculation(task_repository, saved_filter['id'])
-    task_repository.try_add_log(user.username, 'saved_filter_use_newer_cdrs', json.dumps({
-        'saved_filter_id': saved_filter['id'], 'name': saved_filter.get('name') or '',
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    saved_scoring = updated['saved_scoring']
+    _queue_saved_scoring_calculation(task_repository, saved_scoring['id'])
+    task_repository.try_add_log(user.username, 'saved_scoring_use_newer_cdrs', json.dumps({
+        'saved_scoring_id': saved_scoring['id'], 'name': saved_scoring.get('name') or '',
         'replaced': [{'dataset_id': item['id'], 'file': item['name'], 'replaced_by_dataset_id': item['replaced_by'],
                       'replaced_by_file': item['replaced_by_name']} for item in updated['replaced']],
-        'merged_saved_filter_id': updated['merged_filter_id'], 'datasets': len(saved_filter['dataset_ids']),
+        'merged_saved_scoring_id': updated['merged_filter_id'], 'datasets': len(saved_scoring['dataset_ids']),
         'opened': select,
     }, ensure_ascii=False))
     if select:
-        _prioritize_saved_filter(task_repository, saved_filter['id'])
-        prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
-    return {'saved_filter': saved_filter, 'cached': False, 'replaced': updated['replaced']}
+        _prioritize_saved_scoring(task_repository, saved_scoring['id'])
+        prune_unpinned_saved_scorings(task_repository, saved_scoring['id'], user.username)
+    return {'saved_scoring': saved_scoring, 'cached': False, 'replaced': updated['replaced']}
 
 
-@app.post('/api/scoring/saved-filters/{filter_id}/edit')
-def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
+@app.post('/api/scoring/saved-scorings/{filter_id}/edit')
+def scoring_saved_scorings_edit(filter_id: int, payload: SavedScoringRequest,
                                user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    """Give a Saved Filter another selection and calculate it again in the background, keeping its name, star and
+    """Give a Saved Scoring another selection and calculate it again in the background, keeping its name, star and
     place."""
     task_repository = scoring_repository(user)
     # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
@@ -21474,7 +21482,7 @@ def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
             task_repository, payload.dataset_ids, payload.nr_mode,
             context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
         )
-        edited = edit_saved_filter(
+        edited = edit_saved_scoring(
             task_repository, filter_id, selected_ids, payload.aggregation_levels, payload.nr_mode,
             baseline_operator=payload.baseline_operator, username=user.username,
             context_filters=payload.context_filters, scoring_profile_id=payload.scoring_profile_id,
@@ -21483,33 +21491,33 @@ def scoring_saved_filters_edit(filter_id: int, payload: SavedFilterRequest,
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if edited is None:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    saved_filter = edited['saved_filter']
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    saved_scoring = edited['saved_scoring']
     if edited['changed']:
-        _queue_saved_filter_calculation(task_repository, saved_filter['id'])
-    task_repository.try_add_log(user.username, 'edit_saved_filter', json.dumps({
-        'saved_filter_id': saved_filter['id'], 'name': saved_filter.get('name') or '', 'changed': edited['changed'],
+        _queue_saved_scoring_calculation(task_repository, saved_scoring['id'])
+    task_repository.try_add_log(user.username, 'edit_saved_scoring', json.dumps({
+        'saved_scoring_id': saved_scoring['id'], 'name': saved_scoring.get('name') or '', 'changed': edited['changed'],
         'previous': edited['previous'],
         'selection': {
             'nr_mode': payload.nr_mode, 'dataset_ids': selected_ids, 'levels': payload.aggregation_levels,
             'baseline_operator': payload.baseline_operator, 'context_filters': payload.context_filters,
             'scoring_profile_id': payload.scoring_profile_id, 'area_summary': payload.area_summary,
         },
-        'merged_saved_filter_id': edited['merged_filter_id'],
+        'merged_saved_scoring_id': edited['merged_filter_id'],
     }, ensure_ascii=False))
-    _prioritize_saved_filter(task_repository, saved_filter['id'])
-    prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
-    return {'saved_filter': saved_filter, 'cached': not edited['changed'], 'changed': edited['changed']}
+    _prioritize_saved_scoring(task_repository, saved_scoring['id'])
+    prune_unpinned_saved_scorings(task_repository, saved_scoring['id'], user.username)
+    return {'saved_scoring': saved_scoring, 'cached': not edited['changed'], 'changed': edited['changed']}
 
 
-class SavedFilterDuplicateRequest(SavedFilterRequest):
+class SavedScoringDuplicateRequest(SavedScoringRequest):
     name: str = ''
 
 
-@app.post('/api/scoring/saved-filters/{filter_id}/duplicate')
-def scoring_saved_filters_duplicate(filter_id: int, payload: SavedFilterDuplicateRequest,
+@app.post('/api/scoring/saved-scorings/{filter_id}/duplicate')
+def scoring_saved_scorings_duplicate(filter_id: int, payload: SavedScoringDuplicateRequest,
                                     user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    """Save a copy of a Saved Filter with the selection it was given as a new starred Saved Filter, calculated in the
+    """Save a copy of a Saved Scoring with the selection it was given as a new starred Saved Scoring, calculated in the
     background; the copied one stays as it was."""
     task_repository = scoring_repository(user)
     # An automatic Campaign choice (Latest campaign…) is kept as such; it is checked with the campaigns it stands for now.
@@ -21518,7 +21526,7 @@ def scoring_saved_filters_duplicate(filter_id: int, payload: SavedFilterDuplicat
             task_repository, payload.dataset_ids, payload.nr_mode,
             context_filters=expand_scoring_context_filters(task_repository, payload.nr_mode, payload.context_filters),
         )
-        saved_filter = duplicate_saved_filter(
+        saved_scoring = duplicate_saved_scoring(
             task_repository, filter_id, selected_ids, payload.aggregation_levels, payload.nr_mode,
             name=payload.name, baseline_operator=payload.baseline_operator, username=user.username,
             context_filters=payload.context_filters, scoring_profile_id=payload.scoring_profile_id,
@@ -21526,70 +21534,70 @@ def scoring_saved_filters_duplicate(filter_id: int, payload: SavedFilterDuplicat
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if saved_filter is None:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    _queue_saved_filter_calculation(task_repository, saved_filter['id'])
-    task_repository.try_add_log(user.username, 'duplicate_saved_filter', json.dumps({
-        'saved_filter_id': saved_filter['id'], 'source_filter_id': filter_id, 'name': saved_filter.get('name') or '',
+    if saved_scoring is None:
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    _queue_saved_scoring_calculation(task_repository, saved_scoring['id'])
+    task_repository.try_add_log(user.username, 'duplicate_saved_scoring', json.dumps({
+        'saved_scoring_id': saved_scoring['id'], 'source_filter_id': filter_id, 'name': saved_scoring.get('name') or '',
         'selection': {
             'nr_mode': payload.nr_mode, 'dataset_ids': selected_ids, 'levels': payload.aggregation_levels,
             'baseline_operator': payload.baseline_operator, 'context_filters': payload.context_filters,
             'scoring_profile_id': payload.scoring_profile_id, 'area_summary': payload.area_summary,
         },
     }, ensure_ascii=False))
-    _prioritize_saved_filter(task_repository, saved_filter['id'])
-    prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)
-    return {'saved_filter': saved_filter, 'cached': False}
+    _prioritize_saved_scoring(task_repository, saved_scoring['id'])
+    prune_unpinned_saved_scorings(task_repository, saved_scoring['id'], user.username)
+    return {'saved_scoring': saved_scoring, 'cached': False}
 
 
-class SavedFilterOrder(BaseModel):
+class SavedScoringOrder(BaseModel):
     filter_ids: list[int]
 
 
-@app.post('/api/scoring/saved-filters/order')
-def saved_filters_order(payload: SavedFilterOrder, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    """Keep the starred Saved Filters in the order they were dragged to in their list."""
+@app.post('/api/scoring/saved-scorings/order')
+def saved_scorings_order(payload: SavedScoringOrder, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+    """Keep the starred Saved Scorings in the order they were dragged to in their list."""
     task_repository = scoring_repository(user)
-    previous = [int(item['id']) for item in list_saved_filters(task_repository) if item['pinned']]
-    order = reorder_saved_filters(task_repository, payload.filter_ids)
+    previous = [int(item['id']) for item in list_saved_scorings(task_repository) if item['pinned']]
+    order = reorder_saved_scorings(task_repository, payload.filter_ids)
     if order != previous:
-        task_repository.try_add_log(user.username, 'reorder_saved_filters', json.dumps({
+        task_repository.try_add_log(user.username, 'reorder_saved_scorings', json.dumps({
             'previous_order': previous, 'order': order,
         }))
     return {'order': order}
 
 
-class SavedFilterUpdate(BaseModel):
+class SavedScoringUpdate(BaseModel):
     name: str | None = None
     pinned: bool | None = None
 
 
-@app.patch('/api/scoring/saved-filters/{filter_id}')
-def saved_filters_update(filter_id: int, payload: SavedFilterUpdate,
+@app.patch('/api/scoring/saved-scorings/{filter_id}')
+def saved_scorings_update(filter_id: int, payload: SavedScoringUpdate,
                                     user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    """Rename a Saved Filter or pin it at the top of the list."""
+    """Rename a Saved Scoring or pin it at the top of the list."""
     from src.modules.core.deletion_rights import can_delete
     task_repository = scoring_repository(user)
     # Unstarred, it goes once another one is used: only admins, super-admins and the user who starred it unstar it.
     if payload.pinned is False:
-        current = get_saved_filter(task_repository, filter_id)
+        current = get_saved_scoring(task_repository, filter_id)
         if current is not None and current.get('pinned') and not can_delete(user, current.get('created_by')):
             raise HTTPException(status_code=403, detail='Only admins and super-admins, or the user who starred it, '
-                                                        'can unstar this Saved Filter.')
+                                                        'can unstar this Saved Scoring.')
     try:
-        saved_filter = update_saved_filter(task_repository, filter_id, name=payload.name, pinned=payload.pinned,
+        saved_scoring = update_saved_scoring(task_repository, filter_id, name=payload.name, pinned=payload.pinned,
                                            username=user.username)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if saved_filter is None:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    task_repository.try_add_log(user.username, 'update_saved_filter', json.dumps({
+    if saved_scoring is None:
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    task_repository.try_add_log(user.username, 'update_saved_scoring', json.dumps({
         'filter_id': filter_id, 'name': payload.name, 'pinned': payload.pinned,
     }, ensure_ascii=False))
-    return {'saved_filter': saved_filter}
+    return {'saved_scoring': saved_scoring}
 
 
-# The results of the Saved Filters, as served (JSON compressed with gzip), so opening one again does not build its
+# The results of the Saved Scorings, as served (JSON compressed with gzip), so opening one again does not build its
 # views again. A recalculation or a change of the Operator or Vendor Maps gives another key.
 SCORING_RESULTS_CACHE: OrderedDict[tuple, bytes] = OrderedDict()
 SCORING_RESULTS_CACHE_SIZE = 6
@@ -21600,48 +21608,52 @@ SCORING_RESULTS_CACHE_LOCK = Lock()
 SCORING_RESULTS_FOLDER = 'results'
 
 
-def _saved_filter_result_key(task_repository: Repository, saved_filter: dict[str, Any], operator_groups: list[dict],
+def _saved_scoring_result_key(task_repository: Repository, saved_scoring: dict[str, Any], operator_groups: list[dict],
                              vendor_groups: list[dict], fallback: dict[str, Any] | None) -> tuple | None:
-    """The key of the result of a Saved Filter as served (None without a completed result)."""
-    if str(saved_filter.get('status') or '') != 'completed':
+    """The key of the result of a Saved Scoring as served (None without a completed result)."""
+    if str(saved_scoring.get('status') or '') != 'completed':
         return None
     fingerprint = hashlib.sha1(json.dumps([operator_groups, vendor_groups, fallback], sort_keys=True,
                                           default=str).encode('utf-8')).hexdigest()
     # (With why a result is shown as it was: its CDRs or methodology are gone.)
-    return (str(task_repository.db_path), int(saved_filter['id']), saved_filter.get('updated_at'),
-            saved_filter.get('finished_at'), fingerprint, json.dumps(saved_filter.get('unavailable') or '', default=str))
+    return (str(task_repository.db_path), int(saved_scoring['id']), saved_scoring.get('updated_at'),
+            saved_scoring.get('finished_at'), fingerprint, json.dumps(saved_scoring.get('unavailable') or '', default=str))
 
 
-def _saved_filter_result_file(task_repository: Repository, key: tuple) -> Path:
-    digest = hashlib.sha1(json.dumps(list(key[1:]), default=str).encode('utf-8')).hexdigest()[:20]
+# The version of the results kept as served: another one builds them again (2: Saved Filters renamed Saved Scorings).
+SCORING_RESULTS_VERSION = 2
+
+
+def _saved_scoring_result_file(task_repository: Repository, key: tuple) -> Path:
+    digest = hashlib.sha1(json.dumps([SCORING_RESULTS_VERSION, *key[1:]], default=str).encode('utf-8')).hexdigest()[:20]
     return workspace_cache.of_database(task_repository.db_path, workspace_cache.SCORING) / SCORING_RESULTS_FOLDER / f'{key[1]}-{digest}.json.gz'
 
 
-def _packed_saved_filter_result(task_repository: Repository, saved_filter: dict[str, Any]) -> bytes:
-    """The result of a Saved Filter as served: kept in memory, else on disk, else built (and kept in both)."""
+def _packed_saved_scoring_result(task_repository: Repository, saved_scoring: dict[str, Any]) -> bytes:
+    """The result of a Saved Scoring as served: kept in memory, else on disk, else built (and kept in both)."""
     operator_groups = task_repository.list_operator_mapping_groups()
     vendor_groups = task_repository.list_vendor_mapping_groups()
     fallback = (task_repository.get_scoring_configuration()
-                if not (saved_filter.get('result') or {}).get('configuration') and not saved_filter.get('configuration') else None)
-    key = _saved_filter_result_key(task_repository, saved_filter, operator_groups, vendor_groups, fallback)
+                if not (saved_scoring.get('result') or {}).get('configuration') and not saved_scoring.get('configuration') else None)
+    key = _saved_scoring_result_key(task_repository, saved_scoring, operator_groups, vendor_groups, fallback)
     with SCORING_RESULTS_CACHE_LOCK:
         packed = SCORING_RESULTS_CACHE.get(key) if key else None
         if packed is not None:
             SCORING_RESULTS_CACHE.move_to_end(key)
             return packed
     # (A result without its own methodology, shown with the one of the workspace, is not kept on disk.)
-    path = _saved_filter_result_file(task_repository, key) if key and fallback is None else None
+    path = _saved_scoring_result_file(task_repository, key) if key and fallback is None else None
     if path is not None:
         try:
             packed = path.read_bytes()
         except OSError:
             packed = None
     if packed is None:
-        payload = _saved_filter_payload(saved_filter, operator_groups, vendor_groups, fallback)
+        payload = _saved_scoring_payload(saved_scoring, operator_groups, vendor_groups, fallback)
         packed = gzip.compress(json.dumps(jsonable_encoder(payload), ensure_ascii=False, allow_nan=False,
                                           separators=(',', ':')).encode('utf-8'), 5)
         if path is not None:
-            _store_saved_filter_result(path, packed)
+            _store_saved_scoring_result(path, packed)
     if key:
         with SCORING_RESULTS_CACHE_LOCK:
             SCORING_RESULTS_CACHE[key] = packed
@@ -21650,8 +21662,8 @@ def _packed_saved_filter_result(task_repository: Repository, saved_filter: dict[
     return packed
 
 
-def _store_saved_filter_result(path: Path, packed: bytes) -> None:
-    """Keep a result on disk (written aside, then moved in place), the older ones of its Saved Filter removed."""
+def _store_saved_scoring_result(path: Path, packed: bytes) -> None:
+    """Keep a result on disk (written aside, then moved in place), the older ones of its Saved Scoring removed."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         for older in path.parent.glob(f'{path.name.split("-", 1)[0]}-*.json.gz'):
@@ -21661,59 +21673,59 @@ def _store_saved_filter_result(path: Path, packed: bytes) -> None:
             handle.write(packed)
         os.replace(handle.name, path)
     except OSError:  # The cache is optional: the result is built again next time.
-        logger.warning('The result of a Saved Filter could not be kept in the Scoring cache.', exc_info=True)
+        logger.warning('The result of a Saved Scoring could not be kept in the Scoring cache.', exc_info=True)
 
 
-def saved_filter_result_kept(task_repository: Repository, saved_filter: dict[str, Any], unavailable: Any = '') -> bool:
-    """Whether the result of a completed Saved Filter is kept on disk as served (``unavailable``: what
-    refresh_saved_filter gave for it)."""
-    key = _saved_filter_result_key(task_repository, {**saved_filter, 'unavailable': unavailable},
+def saved_scoring_result_kept(task_repository: Repository, saved_scoring: dict[str, Any], unavailable: Any = '') -> bool:
+    """Whether the result of a completed Saved Scoring is kept on disk as served (``unavailable``: what
+    refresh_saved_scoring gave for it)."""
+    key = _saved_scoring_result_key(task_repository, {**saved_scoring, 'unavailable': unavailable},
                                    task_repository.list_operator_mapping_groups(), task_repository.list_vendor_mapping_groups(),
                                    None)
-    return key is None or _saved_filter_result_file(task_repository, key).is_file()
+    return key is None or _saved_scoring_result_file(task_repository, key).is_file()
 
 
-def _keep_saved_filter_result(task_repository: Repository, filter_id: int) -> None:
-    """Build and keep the result of a Saved Filter as served once its calculation ended (a background job), so it
+def _keep_saved_scoring_result(task_repository: Repository, filter_id: int) -> None:
+    """Build and keep the result of a Saved Scoring as served once its calculation ended (a background job), so it
     opens at once."""
-    queued, unavailable = refresh_saved_filter(task_repository, filter_id, 'system')
+    queued, unavailable = refresh_saved_scoring(task_repository, filter_id, 'system')
     if queued:  # (Its CDRs or methodology changed meanwhile: it is calculated again, then kept.)
-        _queue_saved_filter_calculation(task_repository, filter_id)
+        _queue_saved_scoring_calculation(task_repository, filter_id)
         return
-    saved_filter = get_saved_filter(task_repository, filter_id, include_result=True)
-    if not saved_filter or str(saved_filter.get('status') or '') != 'completed':
+    saved_scoring = get_saved_scoring(task_repository, filter_id, include_result=True)
+    if not saved_scoring or str(saved_scoring.get('status') or '') != 'completed':
         return
-    saved_filter['unavailable'] = unavailable
+    saved_scoring['unavailable'] = unavailable
     started = time_module.monotonic()
-    _packed_saved_filter_result(task_repository, saved_filter)
+    _packed_saved_scoring_result(task_repository, saved_scoring)
     task_repository.try_add_log('system', 'scoring_result_kept', json.dumps({
-        'saved_filter_id': int(filter_id), 'name': saved_filter.get('name') or '', 'seconds': round(time_module.monotonic() - started, 1)},
+        'saved_scoring_id': int(filter_id), 'name': saved_scoring.get('name') or '', 'seconds': round(time_module.monotonic() - started, 1)},
         ensure_ascii=False))
 
 
-@app.get('/api/scoring/saved-filters/{filter_id}')
-def saved_filters_result(filter_id: int, request: Request, user: SessionUser = Depends(current_user)) -> Response:
-    """A Saved Filter with its result. A result saved before its CDRs, methodology or Operator Maps changed (or a
-    Saved Filter without one yet) is calculated again in the background."""
+@app.get('/api/scoring/saved-scorings/{filter_id}')
+def saved_scorings_result(filter_id: int, request: Request, user: SessionUser = Depends(current_user)) -> Response:
+    """A Saved Scoring with its result. A result saved before its CDRs, methodology or Operator Maps changed (or a
+    Saved Scoring without one yet) is calculated again in the background."""
     task_repository = scoring_repository(user)
-    queued, unavailable = refresh_saved_filter(task_repository, filter_id, user.username)
+    queued, unavailable = refresh_saved_scoring(task_repository, filter_id, user.username)
     if queued:
-        _queue_saved_filter_calculation(task_repository, filter_id)
-    _prioritize_saved_filter(task_repository, filter_id)
-    saved_filter = get_saved_filter(task_repository, filter_id, include_result=True)
-    if not saved_filter:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
+        _queue_saved_scoring_calculation(task_repository, filter_id)
+    _prioritize_saved_scoring(task_repository, filter_id)
+    saved_scoring = get_saved_scoring(task_repository, filter_id, include_result=True)
+    if not saved_scoring:
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
     # Why a saved result is shown as it was (its CDRs or methodology are gone).
-    saved_filter['unavailable'] = unavailable
-    packed = _packed_saved_filter_result(task_repository, saved_filter)
+    saved_scoring['unavailable'] = unavailable
+    packed = _packed_saved_scoring_result(task_repository, saved_scoring)
     if 'gzip' in request.headers.get('accept-encoding', '').lower():
         return Response(packed, media_type='application/json', headers={'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding'})
     return Response(gzip.decompress(packed), media_type='application/json')
 
 
-def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[dict], vendor_groups: list[dict],
+def _saved_scoring_payload(saved_scoring: dict[str, Any], operator_groups: list[dict], vendor_groups: list[dict],
                              fallback: dict[str, Any] | None) -> dict[str, Any]:
-    """The saved result of a Saved Filter with the views of both scorings and their National & area summaries.
+    """The saved result of a Saved Scoring with the views of both scorings and their National & area summaries.
 
     NSA vs SA also gives the results of each NR Mode on their own (``nr_mode_parts``, NSA then SA), which the page shows
     one below the other in every tab."""
@@ -21727,16 +21739,16 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
         pairs = [f"{pair['nr_mode']} · {pair['operator']}" for pair in out_of_scope_pairs(operator_groups) if pair['nr_mode'] in modes]
         return {'out_of_scope': pairs} if pairs else {}
 
-    result = normalize_scoring_vendor_result(normalize_result_gaps(saved_filter.get('result') or {}), operator_groups)
-    payload = {**_scoring_result_payload(saved_filter, result, operator_groups, vendor_groups, fallback),
-               **out_of_scope(saved_filter.get('nr_mode'))}
-    if normalize_scoring_nr_mode(saved_filter.get('nr_mode')) == NSA_VS_SA and payload['views']:
+    result = normalize_scoring_vendor_result(normalize_result_gaps(saved_scoring.get('result') or {}), operator_groups)
+    payload = {**_scoring_result_payload(saved_scoring, result, operator_groups, vendor_groups, fallback),
+               **out_of_scope(saved_scoring.get('nr_mode'))}
+    if normalize_scoring_nr_mode(saved_scoring.get('nr_mode')) == NSA_VS_SA and payload['views']:
         parts = []
         for mode in NR_MODES:
             part_result = nr_mode_result(result, mode)
             if not part_result.get('totals'):
                 continue
-            part_filter = {**nr_mode_result({key: value for key, value in saved_filter.items() if key != 'result'}, mode),
+            part_filter = {**nr_mode_result({key: value for key, value in saved_scoring.items() if key != 'result'}, mode),
                            'nr_mode': mode}
             parts.append({'nr_mode': mode, **_scoring_result_payload(part_filter, part_result, operator_groups,
                                                                       vendor_groups, fallback), **out_of_scope(mode)})
@@ -21745,7 +21757,7 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
     return payload
 
 
-def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any], operator_groups: list[dict],
+def _scoring_result_payload(saved_scoring: dict[str, Any], result: dict[str, Any], operator_groups: list[dict],
                             vendor_groups: list[dict], fallback: dict[str, Any] | None) -> dict[str, Any]:
     """A result with the views of both scorings and their National & area summaries."""
     from src.modules.scoring.scoring_views import build_scoring_views, refresh_baseline_warning, scoring_coverage_notes
@@ -21754,30 +21766,30 @@ def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any]
     if result.get('scoring') or result.get('score_rows'):
         from src.modules.scoring.scoring import most_reliable_result
         from src.modules.scoring.scoring_config import MOST_RELIABLE_SCORING, SCORING_LABELS
-        baseline = str(saved_filter.get('baseline_operator') or 'EE')
+        baseline = str(saved_scoring.get('baseline_operator') or 'EE')
         try:
             views = build_scoring_views(
-                saved_filter, result, operator_groups, fallback,
+                saved_scoring, result, operator_groups, fallback,
                 vendor_mapping_groups=vendor_groups,
             )
             refresh_baseline_warning(result, views, baseline)
-            # The National & Geographical Areas Trends of the Saved Filter, shown in Scoring Trends.
+            # The National & Geographical Areas Trends of the Saved Scoring, shown in Scoring Trends.
             from src.modules.scoring.scoring_area_summary import build_area_summary
             views.setdefault('insights', {})['area_summaries'] = build_area_summary(
-                saved_filter if saved_filter.get('configuration') or result.get('configuration') else {**saved_filter, 'configuration': fallback},
+                saved_scoring if saved_scoring.get('configuration') or result.get('configuration') else {**saved_scoring, 'configuration': fallback},
                 result, operator_groups,
                 vendor_mapping_groups=vendor_groups,
             )
             # The Most Reliable scoring is derived from the same saved KPI scores and filters.
-            reliable = most_reliable_result(result, baseline, saved_filter.get('configuration') or fallback)
+            reliable = most_reliable_result(result, baseline, saved_scoring.get('configuration') or fallback)
             if reliable is not None:
                 reliable_views = build_scoring_views(
-                    saved_filter, reliable, operator_groups,
+                    saved_scoring, reliable, operator_groups,
                     vendor_mapping_groups=vendor_groups,
                 )
                 refresh_baseline_warning(reliable, reliable_views, baseline)
                 reliable_views.setdefault('insights', {})['area_summaries'] = build_area_summary(
-                    {**saved_filter, 'configuration': reliable['configuration']}, reliable,
+                    {**saved_scoring, 'configuration': reliable['configuration']}, reliable,
                     operator_groups,
                     vendor_mapping_groups=vendor_groups,
                 )
@@ -21793,7 +21805,7 @@ def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any]
     result['coverage_notes'] = scoring_coverage_notes(result)
     # The points-lost shares and polygons reach the page through the views' insights and the boundaries endpoint.
     points_loss = result.get('points_loss')
-    return {'saved_filter': {key: value for key, value in saved_filter.items() if key != 'result'},
+    return {'saved_scoring': {key: value for key, value in saved_scoring.items() if key != 'result'},
             **{key: value for key, value in result.items() if key not in {'points_loss', 'area_summary'}},
             # A result from the Scoring History gets its Points Lost Map once the rows of the tests are read.
             'points_loss_pending': bool(isinstance(points_loss, dict) and points_loss.get('pending')),
@@ -21803,12 +21815,12 @@ def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any]
             'views': views, 'scorings': scorings}
 
 
-def _scoring_impact_saved_filter(user: SessionUser, filter_id: int) -> tuple[Repository, dict[str, Any]]:
+def _scoring_impact_saved_scoring(user: SessionUser, filter_id: int) -> tuple[Repository, dict[str, Any]]:
     task_repository = scoring_repository(user)
-    saved_filter = get_saved_filter(task_repository, filter_id, include_internal_snapshot=True)
-    if not saved_filter:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    return task_repository, saved_filter
+    saved_scoring = get_saved_scoring(task_repository, filter_id, include_internal_snapshot=True)
+    if not saved_scoring:
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    return task_repository, saved_scoring
 
 
 def _scoring_impact_selection(mode: str, nr_mode: str, campaign_a: str, campaign_b: str, methodology_a: str,
@@ -21817,28 +21829,28 @@ def _scoring_impact_selection(mode: str, nr_mode: str, campaign_a: str, campaign
             'methodology_a': methodology_a, 'methodology_b': methodology_b, 'campaign': campaign}
 
 
-@app.get('/api/scoring/saved-filters/{filter_id}/impact/options')
+@app.get('/api/scoring/saved-scorings/{filter_id}/impact/options')
 def scoring_impact_options(filter_id: int, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    """The campaigns and methodologies the Methodology Impact of a Saved Filter can compare."""
+    """The campaigns and methodologies the Methodology Impact of a Saved Scoring can compare."""
     from src.modules.scoring.scoring_impact import impact_options
-    task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    task_repository, saved_scoring = _scoring_impact_saved_scoring(user, filter_id)
     try:
-        return impact_options(task_repository, saved_filter)
+        return impact_options(task_repository, saved_scoring)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.get('/api/scoring/saved-filters/{filter_id}/impact')
+@app.get('/api/scoring/saved-scorings/{filter_id}/impact')
 def scoring_impact(filter_id: int, request: Request, mode: str = '', nr_mode: str = '', campaign_a: str = '', campaign_b: str = '',
                    methodology_a: str = '', methodology_b: str = '', campaign: str = '', retry: bool = False,
                    user: SessionUser = Depends(current_user)) -> Response:
     """A comparison of the Methodology Impact with its panels; one not calculated yet (or calculated before its CDRs,
     methodologies or Operator Maps changed) is calculated in the background, and this says how it goes."""
     from src.modules.scoring.scoring_impact import impact_state, prepare_impact, queue_impact
-    task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    task_repository, saved_scoring = _scoring_impact_saved_scoring(user, filter_id)
     selection = _scoring_impact_selection(mode, nr_mode, campaign_a, campaign_b, methodology_a, methodology_b, campaign)
     try:
-        prepared = prepare_impact(task_repository, saved_filter, selection)
+        prepared = prepare_impact(task_repository, saved_scoring, selection)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     state = impact_state(task_repository, prepared)
@@ -21847,7 +21859,7 @@ def scoring_impact(filter_id: int, request: Request, mode: str = '', nr_mode: st
             _submit_workspace_job(task_repository, callback, *args, phase=4)
         if queue_impact(task_repository, prepared, submit, user.username):
             task_repository.try_add_log(user.username, 'scoring_methodology_impact_requested', json.dumps({
-                'saved_filter_id': filter_id, 'starred': bool(saved_filter.get('pinned')), 'name': saved_filter.get('name') or '',
+                'saved_scoring_id': filter_id, 'starred': bool(saved_scoring.get('pinned')), 'name': saved_scoring.get('name') or '',
                 **prepared['selection'], 'before': prepared['runs']['before']['profile_name'],
                 'after': prepared['runs']['after']['profile_name'], 'campaign': prepared['runs']['before']['campaign'],
             }))
@@ -21872,16 +21884,16 @@ def _scoring_impact_key(key: str) -> str:
     return key
 
 
-@app.get('/api/scoring/saved-filters/{filter_id}/impact/status')
+@app.get('/api/scoring/saved-scorings/{filter_id}/impact/status')
 def scoring_impact_status(filter_id: int, request: Request, key: str, user: SessionUser = Depends(current_user)) -> Response:
     """How the calculation of a comparison goes, by its key: asked again and again while it is calculated."""
     from src.modules.scoring.scoring_impact import state_of
-    task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    task_repository, _saved_scoring = _scoring_impact_saved_scoring(user, filter_id)
     state = state_of(task_repository, _scoring_impact_key(key)) or {'key': key, 'status': 'queued', 'progress': 0, 'message': '', 'error': ''}
     return _scoring_impact_json(request, state)
 
 
-@app.get('/api/scoring/saved-filters/{filter_id}/impact/map')
+@app.get('/api/scoring/saved-scorings/{filter_id}/impact/map')
 def scoring_impact_map(filter_id: int, request: Request, key: str, field: str = '', environment: str = 'Combined', measure: str = 'national',
                        scoring: str = 'best_network', user: SessionUser = Depends(current_user)) -> Response:
     """The values of a map of a comparison calculated before (one methodology against the other), with how they spread."""
@@ -21889,7 +21901,7 @@ def scoring_impact_map(filter_id: int, request: Request, key: str, field: str = 
     from src.modules.scoring.scoring_impact_maps import MEASURES, impact_map
     if measure not in MEASURES:
         raise HTTPException(status_code=400, detail='Unknown measure of the Methodology Impact.')
-    task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    task_repository, _saved_scoring = _scoring_impact_saved_scoring(user, filter_id)
     impact = read_impact(task_repository, _scoring_impact_key(key))
     if not impact or not impact.get('scorings'):
         raise HTTPException(status_code=409, detail='The Methodology Impact must finish calculating before its maps.')
@@ -21897,16 +21909,16 @@ def scoring_impact_map(filter_id: int, request: Request, key: str, field: str = 
     return _scoring_impact_json(request, impact_map(read_maps(task_repository, key), impact['scorings'][scoring], scoring, field, environment, measure))
 
 
-@app.get('/api/scoring/saved-filters/{filter_id}/impact/boundaries/{field}')
+@app.get('/api/scoring/saved-scorings/{filter_id}/impact/boundaries/{field}')
 def scoring_impact_boundaries(filter_id: int, field: str, request: Request, key: str, user: SessionUser = Depends(current_user)) -> Response:
     """The polygons of a map of a comparison calculated before."""
     from src.modules.scoring.scoring_impact import read_maps
     from src.modules.scoring.scoring_impact_maps import map_geometry
-    task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    task_repository, _saved_scoring = _scoring_impact_saved_scoring(user, filter_id)
     return _scoring_impact_json(request, map_geometry(read_maps(task_repository, _scoring_impact_key(key)), field))
 
 
-@app.get('/scoring/saved-filters/{filter_id}/impact/export/{export_kind}')
+@app.get('/scoring/saved-scorings/{filter_id}/impact/export/{export_kind}')
 def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_mode: str = '', campaign_a: str = '', campaign_b: str = '',
                           methodology_a: str = '', methodology_b: str = '', campaign: str = '', environment: str = 'Combined',
                           scoring: str = 'best_network', theme: str | None = None, operators: str | None = None,
@@ -21918,10 +21930,10 @@ def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_m
         raise HTTPException(status_code=400, detail='Scoring must be best_network or most_reliable.')
     from src.modules.scoring.scoring_impact import impact_state, prepare_impact, read_maps
     from src.modules.scoring.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, impact_filename
-    task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    task_repository, saved_scoring = _scoring_impact_saved_scoring(user, filter_id)
     selection = _scoring_impact_selection(mode, nr_mode, campaign_a, campaign_b, methodology_a, methodology_b, campaign)
     try:
-        prepared = prepare_impact(task_repository, saved_filter, selection)
+        prepared = prepare_impact(task_repository, saved_scoring, selection)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     state = impact_state(task_repository, prepared)
@@ -21955,86 +21967,86 @@ def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_m
                       else 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
         filename = impact_filename(impact, stamp, 'docx' if export_kind == 'word' else 'pptx')
     task_repository.try_add_log(user.username, f'export_scoring_impact_{export_kind}', json.dumps({
-        'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '', **prepared['selection'], 'environment': environment,
+        'saved_scoring_id': filter_id, 'name': saved_scoring.get('name') or '', **prepared['selection'], 'environment': environment,
         'scoring': scoring, 'before': impact['before']['profile_name'], 'after': impact['after']['profile_name'],
         **({'theme': export_theme} if export_kind != 'csv' else {}), **({'operators': chosen} if chosen else {}),
     }))
     return Response(content, media_type=media_type, headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"})
 
 
-@app.get('/api/scoring/saved-filters/{filter_id}/boundaries/{field}')
-def saved_filters_boundaries(filter_id: int, field: str, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+@app.get('/api/scoring/saved-scorings/{filter_id}/boundaries/{field}')
+def saved_scorings_boundaries(filter_id: int, field: str, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """Polygons of a points-lost map layer: the map areas (with the outlines of their countries) or the job's
     Clusters or Region Mapping."""
     from src.modules.scoring.scoring_points_loss import MAP_FIELDS, map_background, map_boundaries
     if field not in MAP_FIELDS:
         raise HTTPException(status_code=404, detail='Unknown points-lost map layer.')
-    saved_filter = get_saved_filter(scoring_repository(user), filter_id, include_result=True)
-    if not saved_filter:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    result = saved_filter.get('result') or {}
+    saved_scoring = get_saved_scoring(scoring_repository(user), filter_id, include_result=True)
+    if not saved_scoring:
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    result = saved_scoring.get('result') or {}
     return {'field': field, 'boundaries': map_boundaries(result, field), 'background': map_background(result, field)}
 
 
-@app.delete('/api/scoring/saved-filters/{filter_id}')
-def saved_filters_delete(filter_id: int, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
+@app.delete('/api/scoring/saved-scorings/{filter_id}')
+def saved_scorings_delete(filter_id: int, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
     from src.modules.core.deletion_rights import can_delete, deletion_refusal
     task_repository = scoring_repository(user)
-    saved_filter = get_saved_filter(task_repository, filter_id)
-    if saved_filter is not None and not can_delete(user, saved_filter.get('created_by')):
-        raise HTTPException(status_code=403, detail=deletion_refusal('Saved Filter'))
-    if not delete_saved_filter(task_repository, filter_id):
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    task_repository.try_add_log(user.username, 'delete_saved_filter', json.dumps({'filter_id': filter_id}))
+    saved_scoring = get_saved_scoring(task_repository, filter_id)
+    if saved_scoring is not None and not can_delete(user, saved_scoring.get('created_by')):
+        raise HTTPException(status_code=403, detail=deletion_refusal('Saved Scoring'))
+    if not delete_saved_scoring(task_repository, filter_id):
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    task_repository.try_add_log(user.username, 'delete_saved_scoring', json.dumps({'filter_id': filter_id}))
     return {'deleted': filter_id}
 
 
-class SavedFiltersDeleteRequest(BaseModel):
+class SavedScoringsDeleteRequest(BaseModel):
     ids: list[int] = Field(default_factory=list)
 
 
-@app.post('/api/scoring/saved-filters/delete')
-def saved_filters_delete_many(payload: SavedFiltersDeleteRequest,
+@app.post('/api/scoring/saved-scorings/delete')
+def saved_scorings_delete_many(payload: SavedScoringsDeleteRequest,
                               user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    """Delete the Saved Filters checked in the Favourite Scorings panel, with their results; their CDRs and the
+    """Delete the Saved Scorings checked in the Favourite Scorings panel, with their results; their CDRs and the
     Scoring History stay."""
     from src.modules.core.deletion_rights import can_delete, deletion_refusal
     task_repository = scoring_repository(user)
     # Nothing is deleted while one of them belongs to another user (for the roles below admin).
-    refused = [saved_filter.get('name') or f"#{saved_filter.get('id')}" for saved_filter in (
-        get_saved_filter(task_repository, int(value)) for value in dict.fromkeys(payload.ids))
-        if saved_filter is not None and not can_delete(user, saved_filter.get('created_by'))]
+    refused = [saved_scoring.get('name') or f"#{saved_scoring.get('id')}" for saved_scoring in (
+        get_saved_scoring(task_repository, int(value)) for value in dict.fromkeys(payload.ids))
+        if saved_scoring is not None and not can_delete(user, saved_scoring.get('created_by'))]
     if refused:
-        raise HTTPException(status_code=403, detail=deletion_refusal('Saved Filter', refused))
+        raise HTTPException(status_code=403, detail=deletion_refusal('Saved Scoring', refused))
     deleted: list[dict[str, Any]] = []
     missing: list[int] = []
     for filter_id in dict.fromkeys(int(value) for value in payload.ids):
-        saved_filter = get_saved_filter(task_repository, filter_id)
-        if saved_filter is not None and delete_saved_filter(task_repository, filter_id):
-            deleted.append({'filter_id': filter_id, 'name': saved_filter.get('name') or '', 'status': saved_filter.get('status') or ''})
+        saved_scoring = get_saved_scoring(task_repository, filter_id)
+        if saved_scoring is not None and delete_saved_scoring(task_repository, filter_id):
+            deleted.append({'filter_id': filter_id, 'name': saved_scoring.get('name') or '', 'status': saved_scoring.get('status') or ''})
         else:
             missing.append(filter_id)
-    task_repository.try_add_log(user.username, 'delete_saved_filters', json.dumps(
+    task_repository.try_add_log(user.username, 'delete_saved_scorings', json.dumps(
         {'deleted': deleted, 'missing': missing}, ensure_ascii=False))
     return {'deleted': [item['filter_id'] for item in deleted], 'missing': missing}
 
 
-def build_saved_filter_powerpoint(task_repository: Repository, filter_id: int) -> tuple[bytes, str, dict[str, Any]]:
-    """PowerPoint of the result of a Saved Filter with the default export options (all environments)."""
+def build_saved_scoring_powerpoint(task_repository: Repository, filter_id: int) -> tuple[bytes, str, dict[str, Any]]:
+    """PowerPoint of the result of a Saved Scoring with the default export options (all environments)."""
     from src.modules.scoring.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
     from src.modules.scoring.scoring_views import normalize_result_gaps
     from src.modules.cdr.cdr_report_filenames import build_scoring_report_filename
 
-    saved_filter = get_saved_filter(task_repository, filter_id, include_result=True)
-    if not saved_filter:
-        raise ValueError(f'Saved Filter {filter_id} was not found.')
-    if saved_filter['status'] != 'completed':
-        raise ValueError(f'The scoring of Saved Filter {filter_id} has not completed ({saved_filter["status"]}).')
+    saved_scoring = get_saved_scoring(task_repository, filter_id, include_result=True)
+    if not saved_scoring:
+        raise ValueError(f'Saved Scoring {filter_id} was not found.')
+    if saved_scoring['status'] != 'completed':
+        raise ValueError(f'The scoring of Saved Scoring {filter_id} has not completed ({saved_scoring["status"]}).')
     operator_mapping_groups = task_repository.list_operator_mapping_groups()
-    result = normalize_scoring_vendor_result(normalize_result_gaps(saved_filter.get('result') or {}), operator_mapping_groups)
-    if not saved_filter.get('configuration') and not result.get('configuration'):
-        saved_filter['configuration'] = task_repository.get_scoring_configuration()
-    export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_filter)
+    result = normalize_scoring_vendor_result(normalize_result_gaps(saved_scoring.get('result') or {}), operator_mapping_groups)
+    if not saved_scoring.get('configuration') and not result.get('configuration'):
+        saved_scoring['configuration'] = task_repository.get_scoring_configuration()
+    export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_scoring)
     template = settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa']
     export_job['_scoring_display_selections'] = prepare_scoring_display_selections(export_job, result, template)
     content = export_scoring_powerpoint(
@@ -22049,7 +22061,7 @@ def build_saved_filter_powerpoint(task_repository: Repository, filter_id: int) -
 
 
 class ScoringImageExportRequest(BaseModel):
-    saved_filter_id: int | None = None
+    saved_scoring_id: int | None = None
     tab: str = ''
     kind: str = ''
     title: str = ''
@@ -22070,11 +22082,11 @@ def scoring_image_export(payload: ScoringImageExportRequest, user: SessionUser =
     """Record a chart, table or panel of Scoring & GAP Results downloaded as an image or copied to the clipboard as one (the
     browser draws it), or why it could not be."""
     task_repository = scoring_repository(user)
-    saved_filter = get_saved_filter(task_repository, payload.saved_filter_id) if payload.saved_filter_id else None
+    saved_scoring = get_saved_scoring(task_repository, payload.saved_scoring_id) if payload.saved_scoring_id else None
     task_repository.try_add_log(
         user.username, 'export_scoring_image_failed' if payload.error else 'export_scoring_image', json.dumps({
-            'saved_filter_id': payload.saved_filter_id, 'name': (saved_filter or {}).get('name') or '',
-            'starred': bool((saved_filter or {}).get('pinned')), 'tab': payload.tab[:80], 'kind': payload.kind[:20],
+            'saved_scoring_id': payload.saved_scoring_id, 'name': (saved_scoring or {}).get('name') or '',
+            'starred': bool((saved_scoring or {}).get('pinned')), 'tab': payload.tab[:80], 'kind': payload.kind[:20],
             'title': payload.title[:300], 'environment': payload.environment[:120], 'theme': payload.theme[:40],
             'file_name': payload.file_name[:200], 'format': payload.format[:10], 'width': payload.width,
             'height': payload.height,
@@ -22086,7 +22098,7 @@ def scoring_image_export(payload: ScoringImageExportRequest, user: SessionUser =
 
 
 # The modules whose charts, maps, tables and panels download as images or copy as screenshots (image_buttons.js), with
-# the action App Events records for each (Scoring & GAP Analysis records its own, with its Saved Filter).
+# the action App Events records for each (Scoring & GAP Analysis records its own, with its Saved Scoring).
 IMAGE_EXPORT_ACTIONS = {
     'network-insights': 'export_network_insights_image', 'non-qualified-calls': 'export_nq_calls_image',
     'builders': 'export_chart_builder_image', 'ppt-designer': 'export_design_image',
@@ -22132,8 +22144,8 @@ def image_export(payload: ImageExportRequest, user: SessionUser = Depends(curren
     return {'recorded': True}
 
 
-@app.get('/scoring/saved-filters/{filter_id}/export/{export_kind}')
-def scoring_saved_filter_export(
+@app.get('/scoring/saved-scorings/{filter_id}/export/{export_kind}')
+def scoring_saved_scoring_export(
     filter_id: int,
     export_kind: str,
     table_mode: str | None = None,
@@ -22177,7 +22189,7 @@ def scoring_saved_filter_export(
     if scoring not in {'best_network', 'most_reliable'}:
         raise HTTPException(status_code=400, detail='Scoring must be best_network or most_reliable.')
     # The PowerPoint and Word take the scorings and environments ticked in the export dialog; without them, every
-    # scoring and environment of the Saved Filter.
+    # scoring and environment of the Saved Scoring.
     export_scorings = list(dict.fromkeys(str(item).strip() for item in scorings or [] if str(item).strip())) or None
     if export_scorings and not set(export_scorings) <= {'best_network', 'most_reliable'}:
         raise HTTPException(status_code=400, detail='Scorings must be best_network or most_reliable.')
@@ -22188,18 +22200,18 @@ def scoring_saved_filter_export(
     if gap_layout is not None and gap_layout not in {'end', 'adjacent'}:
         raise HTTPException(status_code=400, detail='GAP layout must be end or adjacent.')
     task_repository = scoring_repository(user)
-    saved_filter = get_saved_filter(task_repository, filter_id, include_result=True)
-    if not saved_filter:
-        raise HTTPException(status_code=404, detail='Saved Filter not found.')
-    if saved_filter['status'] != 'completed':
-        raise HTTPException(status_code=409, detail='The Saved Filter must finish calculating before export.')
+    saved_scoring = get_saved_scoring(task_repository, filter_id, include_result=True)
+    if not saved_scoring:
+        raise HTTPException(status_code=404, detail='Saved Scoring not found.')
+    if saved_scoring['status'] != 'completed':
+        raise HTTPException(status_code=409, detail='The Saved Scoring must finish calculating before export.')
 
     # The PowerPoint and Word take the theme of the page, else the one the user chose.
     export_theme = normalize_theme(theme) if theme else load_user_theme(task_repository, user.username)
 
     def logged_export(response: Response) -> Response:
         task_repository.try_add_log(user.username, f'export_scoring_{export_kind}', json.dumps({
-            'saved_filter_id': filter_id, 'starred': bool(saved_filter.get('pinned')), 'name': saved_filter.get('name') or '',
+            'saved_scoring_id': filter_id, 'starred': bool(saved_scoring.get('pinned')), 'name': saved_scoring.get('name') or '',
             'environment': environment, **({'theme': export_theme} if export_kind in {'ppt', 'word'} else {}),
             **({'scorings': export_scorings} if export_kind in {'ppt', 'word'} and export_scorings else {}),
             **({'environments': export_environments} if export_kind in {'ppt', 'word'} and export_environments else {}),
@@ -22211,11 +22223,11 @@ def scoring_saved_filter_export(
         return response
     from src.modules.scoring.scoring_views import normalize_result_gaps
     result = normalize_scoring_vendor_result(
-        normalize_result_gaps(saved_filter.get('result') or {}), task_repository.list_operator_mapping_groups(),
+        normalize_result_gaps(saved_scoring.get('result') or {}), task_repository.list_operator_mapping_groups(),
     )
     operator_mapping_groups = task_repository.list_operator_mapping_groups()
     vendor_mapping_groups = task_repository.list_vendor_mapping_groups()
-    export_configuration = saved_filter.get('configuration') or result.get('configuration')
+    export_configuration = saved_scoring.get('configuration') or result.get('configuration')
     selected_environment = str(environment or 'all').strip() or 'all'
     if selected_environment.casefold() == 'all':
         selected_environment = 'all'
@@ -22230,7 +22242,7 @@ def scoring_saved_filter_export(
             export_configuration = workspace_configuration
         try:
             saved_views = build_scoring_views(
-                saved_filter, result, operator_mapping_groups, workspace_configuration,
+                saved_scoring, result, operator_mapping_groups, workspace_configuration,
                 vendor_mapping_groups=vendor_mapping_groups,
             )
         except ValueError as exc:
@@ -22242,27 +22254,27 @@ def scoring_saved_filter_export(
             and str(matrix['context']['environment']).casefold() != 'combined'
         }
         if selected_environment not in valid_environments:
-            raise HTTPException(status_code=400, detail='The selected scoring environment is not available for this Saved Filter.')
+            raise HTTPException(status_code=400, detail='The selected scoring environment is not available for this Saved Scoring.')
     if export_kind in {'scoring', 'gap'}:
         if scoring == 'most_reliable':
             # The CSV keeps its schema; it carries the Most Reliable points instead of the Best Network ones.
             from src.modules.scoring.scoring import most_reliable_result
-            reliable = most_reliable_result(result, str(saved_filter.get('baseline_operator') or 'EE'), export_configuration)
+            reliable = most_reliable_result(result, str(saved_scoring.get('baseline_operator') or 'EE'), export_configuration)
             if reliable is None:
-                raise HTTPException(status_code=400, detail='This Saved Filter has no Most Reliable scoring.')
+                raise HTTPException(status_code=400, detail='This Saved Scoring has no Most Reliable scoring.')
             result = reliable
         if table_mode is not None:
             from src.modules.scoring.scoring_exports import export_scoring_csv
             try:
                 content = export_scoring_csv(
-                    saved_filter, result, export_kind, table_mode,
+                    saved_scoring, result, export_kind, table_mode,
                     operator_mapping_groups,
                     environment=selected_environment, vendor_mapping_groups=vendor_mapping_groups,
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             return logged_export(Response(content.encode('utf-8-sig'), media_type='text/csv', headers={
-                'Content-Disposition': f'attachment; filename="saved-filter-{filter_id}-{export_kind}.csv"',
+                'Content-Disposition': f'attachment; filename="saved-scoring-{filter_id}-{export_kind}.csv"',
             }))
         rows = result.get(export_kind, [])
         summaries = result.get('totals' if export_kind == 'scoring' else 'gap_totals', [])
@@ -22282,15 +22294,15 @@ def scoring_saved_filter_export(
                     + [{'row_type': 'kpi', **row} for row in rows])
         content = pd.DataFrame(rows).to_csv(index=False)
         return logged_export(Response(content.encode('utf-8-sig'), media_type='text/csv', headers={
-            'Content-Disposition': f'attachment; filename="saved-filter-{filter_id}-{export_kind}.csv"',
+            'Content-Disposition': f'attachment; filename="saved-scoring-{filter_id}-{export_kind}.csv"',
         }))
     if export_kind in {'ppt', 'word'}:
         from src.modules.scoring.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
         from src.modules.cdr.cdr_report_filenames import build_scoring_report_filename
         try:
-            if not saved_filter.get('configuration') and not result.get('configuration'):
-                saved_filter['configuration'] = export_configuration or task_repository.get_scoring_configuration()
-            export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_filter)
+            if not saved_scoring.get('configuration') and not result.get('configuration'):
+                saved_scoring['configuration'] = export_configuration or task_repository.get_scoring_configuration()
+            export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_scoring)
             export_job['_operator_choices'] = operator_choices
             export_job['_gap_kpi_order'] = gap_kpi_order or 'category'
             # The panels the workspace exports and their operators; every operator in the Focus Operators panels when
@@ -22334,9 +22346,9 @@ def scoring_saved_filter_export(
 _SCENARIO_CALCULATION_WAIT_SECONDS = 15 * 60
 
 
-def _scenario_saved_filter(task_repository: Repository, base: dict[str, Any], scenario: dict[str, Any],
+def _scenario_saved_scoring(task_repository: Repository, base: dict[str, Any], scenario: dict[str, Any],
                               username: str) -> dict[str, Any]:
-    """The Saved Filter of a report scenario with its result: one used before, or a new calculation.
+    """The Saved Scoring of a report scenario with its result: one used before, or a new calculation.
 
     Aggregation levels with a single value in the selected CDRs (for example one Campaign)
     split nothing, so the scenario is calculated again without them.
@@ -22353,27 +22365,27 @@ def _scenario_saved_filter(task_repository: Repository, base: dict[str, Any], sc
         )
     except ValueError as exc:
         raise ValueError(f'Scenario "{scenario["name"]}": {exc}') from exc
-    matching = (_matching_saved_filter(task_repository, base, selected, context_filters, (area_summary or {}).get('campaigns'))
-                if base.get('reuse_saved_filters') else None)
+    matching = (_matching_saved_scoring(task_repository, base, selected, context_filters, (area_summary or {}).get('campaigns'))
+                if base.get('reuse_saved_scorings') else None)
     if matching is not None:
-        # A Saved Filter of the same CDRs, filters, methodology and GAP reference (a starred one first) is used with its
+        # A Saved Scoring of the same CDRs, filters, methodology and GAP reference (a starred one first) is used with its
         # own Split by and National & Geographical Areas Trends, so its result is not calculated again.
         return _completed_scenario_calculation(task_repository, base, scenario, matching['dataset_ids'], matching['levels'],
                                                matching['context_filters'], username, matching['area_summary'])
     levels = list(scenario['aggregation_levels'])
-    saved_filter = _completed_scenario_calculation(task_repository, base, scenario, selected, levels,
+    saved_scoring = _completed_scenario_calculation(task_repository, base, scenario, selected, levels,
                                                       context_filters, username, area_summary)
-    single = single_value_levels(levels, saved_filter.get('result') or {})
+    single = single_value_levels(levels, saved_scoring.get('result') or {})
     if single:
         levels = [level for level in levels if level not in single]
-        saved_filter = _completed_scenario_calculation(task_repository, base, scenario, selected, levels,
+        saved_scoring = _completed_scenario_calculation(task_repository, base, scenario, selected, levels,
                                                           context_filters, username, area_summary)
-    return saved_filter
+    return saved_scoring
 
 
-def _matching_saved_filter(task_repository: Repository, base: dict[str, Any], dataset_ids: Any,
+def _matching_saved_scoring(task_repository: Repository, base: dict[str, Any], dataset_ids: Any,
                            context_filters: dict[str, Any], trend_campaigns: list[str] | None = None) -> dict[str, Any] | None:
-    """The Saved Filter that scores the same CDRs with the same filters (its Campaigns are its CDRs), NR Mode,
+    """The Saved Scoring that scores the same CDRs with the same filters (its Campaigns are its CDRs), NR Mode,
     methodology and GAP reference, whatever its Split by (and, with ``trend_campaigns``, whose Scoring Trends have those
     campaigns): a starred one first, then the latest used; None without one (or when it failed)."""
     def comparable(filters: dict[str, Any]) -> dict[str, list[str]]:
@@ -22384,7 +22396,7 @@ def _matching_saved_filter(task_repository: Repository, base: dict[str, Any], da
     wanted_filters = comparable(context_filters)
     methodology = str(base.get('scoring_profile_id') or '')
     baseline = str(base.get('baseline_operator') or 'EE').casefold()
-    for item in list_saved_filters(task_repository):
+    for item in list_saved_scorings(task_repository):
         if (item['status'] != 'failed' and sorted(item['dataset_ids']) == wanted_ids
                 and str(item['nr_mode'] or '').upper() == str(base['nr_mode']).upper()
                 and str(item['baseline_operator'] or '').casefold() == baseline
@@ -22404,7 +22416,7 @@ def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]
     breakdown = summary.get('breakdown')
     request = {'breakdown': None if breakdown in (None, '', 'None') else breakdown, 'cities': list(summary.get('cities') or []),
                'time_split': summary.get('time_split') or 'Campaign'}
-    # Main Cities stay as such in its Saved Filter: those of the workspace when it is calculated.
+    # Main Cities stay as such in its Saved Scoring: those of the workspace when it is calculated.
     if summary.get('main_cities'):
         request['main_cities'] = True
     campaigns = list(summary.get('campaigns') or [])
@@ -22417,37 +22429,37 @@ def _completed_scenario_calculation(task_repository: Repository, base: dict[str,
                                    selected: Any, levels: list[str], context_filters: dict[str, Any],
                                    username: str, area_summary: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        saved_filter, cached = save_saved_filter(
+        saved_scoring, cached = save_saved_scoring(
             task_repository, selected, levels, base['nr_mode'], username=username,
             baseline_operator=base.get('baseline_operator') or 'EE', context_filters=context_filters,
             scoring_profile_id=base.get('scoring_profile_id') or None, area_summary=area_summary,
         )
     except ValueError as exc:
         raise ValueError(f'Scenario "{scenario["name"]}": {exc}') from exc
-    if saved_filter['status'] != 'completed' and not cached:
-        calculate_saved_filter(task_repository, int(saved_filter['id']))
+    if saved_scoring['status'] != 'completed' and not cached:
+        calculate_saved_scoring(task_repository, int(saved_scoring['id']))
     deadline = time_module.monotonic() + _SCENARIO_CALCULATION_WAIT_SECONDS
     while True:
-        saved_filter = get_saved_filter(task_repository, int(saved_filter['id']), include_result=True)
-        points_loss = ((saved_filter or {}).get('result') or {}).get('points_loss')
+        saved_scoring = get_saved_scoring(task_repository, int(saved_scoring['id']), include_result=True)
+        points_loss = ((saved_scoring or {}).get('result') or {}).get('points_loss')
         map_pending = isinstance(points_loss, dict) and points_loss.get('pending')
-        if (saved_filter is None or saved_filter['status'] == 'failed'
-                or (saved_filter['status'] == 'completed' and not map_pending) or time_module.monotonic() > deadline):
+        if (saved_scoring is None or saved_scoring['status'] == 'failed'
+                or (saved_scoring['status'] == 'completed' and not map_pending) or time_module.monotonic() > deadline):
             break
         # An identical calculation (or its Points Lost Map) is still running: wait for it (unless the Reporting Job run
         # generating the report is stopped).
         from src.modules.reporting.report_tasks import check_run_stopped
         check_run_stopped()
         time_module.sleep(2)
-    if saved_filter is None or saved_filter['status'] != 'completed':
-        detail = (saved_filter or {}).get('error') or 'the calculation did not finish'
+    if saved_scoring is None or saved_scoring['status'] != 'completed':
+        detail = (saved_scoring or {}).get('error') or 'the calculation did not finish'
         raise ValueError(f'Scenario "{scenario["name"]}" could not be calculated: {detail}.')
-    return saved_filter
+    return saved_scoring
 
 
 def build_scoring_report_document(task_repository: Repository, base: dict[str, Any], configuration: Any,
                                   username: str, *, split_charts: bool = True) -> tuple[bytes, str, dict[str, Any]]:
-    """PowerPoint of a scoring report: every scenario of the configuration, from its own Saved Filter.
+    """PowerPoint of a scoring report: every scenario of the configuration, from its own Saved Scoring.
 
     ``base`` gives the CDRs, NR Mode, GAP reference and methodology shared by the scenarios.
     """
@@ -22462,12 +22474,12 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
     export_panels = load_export_panels(task_repository)
     entries = []
     for scenario in report['scenarios']:
-        saved_filter = _scenario_saved_filter(task_repository, base, scenario, username)
-        result = normalize_scoring_vendor_result(normalize_result_gaps(saved_filter.get('result') or {}),
+        saved_scoring = _scenario_saved_scoring(task_repository, base, scenario, username)
+        result = normalize_scoring_vendor_result(normalize_result_gaps(saved_scoring.get('result') or {}),
                                                  operator_mapping_groups)
-        if not saved_filter.get('configuration') and not result.get('configuration'):
-            saved_filter['configuration'] = task_repository.get_scoring_configuration()
-        export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_filter)
+        if not saved_scoring.get('configuration') and not result.get('configuration'):
+            saved_scoring['configuration'] = task_repository.get_scoring_configuration()
+        export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_scoring)
         export_job['_scoring_display_selections'] = prepare_scoring_display_selections(export_job, result, template)
         # The panels the workspace exports and their operators (every operator in the Focus Operators panels with
         # all_operators).
@@ -25835,7 +25847,7 @@ async def receive_transfer_offer(request: Request) -> JSONResponse:
             'config', 'users-access', 'ticket-center', 'workspace', 'full-environment', 'ppt-templates',
             'auto-calculated-fields', 'designs', 'dashboards', 'mappings-reference-data', 'main-cities',
             'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-            'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
+            'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
                 'database-backup', 'bundle',
     }:
         raise HTTPException(status_code=400, detail='The offered export type is not supported.')
@@ -27069,7 +27081,7 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser,
         'config', 'users-access', 'ticket-center', 'workspace', 'full-environment', 'ppt-templates',
         'auto-calculated-fields', 'designs', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
+        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourite-scorings', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
                 'database-backup', 'bundle',
     }:
         raise ValueError('The export package type is not supported.')
@@ -27436,7 +27448,7 @@ def save_admin_operator_mapping_group(
                 'operator', original, canonical, mapping_settings,
             )
             # Reporting Jobs, Scoring report configurations and the other saved filters follow the new name.
-            renamed_filters = rename_saved_filters(repository, 'operator', original, canonical, mapping_settings)
+            renamed_filters = rename_saved_scorings(repository, 'operator', original, canonical, mapping_settings)
     except (ValueError, sqlite3.IntegrityError) as exc:
         return RedirectResponse(
             f'/workspace-config?{urlencode({"operator_mapping_error": str(exc)})}',
@@ -27568,7 +27580,7 @@ def preview_mapping_assignments(
         mapping_type, assignments, [row['value'] for row in rows], settings[f'{mapping_type}_mappings'],
         [group['canonical'] for group in settings[f'{mapping_type}_mapping_groups']],
         rename=(old_name, new_name) if old_name and new_name and old_name != new_name else None,
-        saved_filters=lambda label: count_saved_filters(repository, mapping_type, label, settings),
+        saved_scorings=lambda label: count_saved_scorings(repository, mapping_type, label, settings),
         campaigns=campaigns,
     )
 
@@ -27854,7 +27866,7 @@ def save_admin_vendor_mapping_group(
                 'vendor', original, canonical, mapping_settings,
             )
             # Reporting Jobs, Scoring report configurations and the other saved filters follow the new name.
-            renamed_filters = rename_saved_filters(repository, 'vendor', original, canonical, mapping_settings)
+            renamed_filters = rename_saved_scorings(repository, 'vendor', original, canonical, mapping_settings)
     except (ValueError, sqlite3.IntegrityError) as exc:
         return RedirectResponse(
             f'/workspace-config?{urlencode({"vendor_mapping_error": str(exc)})}',

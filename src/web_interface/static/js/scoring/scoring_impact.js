@@ -736,7 +736,7 @@
   async function loadGeometry(ctx, doc, field) {
     const key = `${doc.key}|${field}`;
     if (!geometry.has(key)) {
-      geometry.set(key, ctx.requestJson(`/api/scoring/saved-filters/${encodeURIComponent(ctx.savedFilterId)}/impact/boundaries/${encodeURIComponent(field)}?key=${doc.key}`)
+      geometry.set(key, ctx.requestJson(`/api/scoring/saved-scorings/${encodeURIComponent(ctx.savedScoringId)}/impact/boundaries/${encodeURIComponent(field)}?key=${doc.key}`)
         .catch(() => ({boundaries: {}, outlines: []})));
     }
     return geometry.get(key);
@@ -754,7 +754,7 @@
       let payload = mapData.get(cacheKey);
       if (!payload) {
         try {
-          payload = await ctx.requestJson(`/api/scoring/saved-filters/${encodeURIComponent(ctx.savedFilterId)}/impact/map?${new URLSearchParams(query)}`);
+          payload = await ctx.requestJson(`/api/scoring/saved-scorings/${encodeURIComponent(ctx.savedScoringId)}/impact/map?${new URLSearchParams(query)}`);
           mapData.set(cacheKey, payload);
         } catch (error) {
           box.replaceChildren(element('div', 'scoring-empty', error.message || 'The maps could not be read.'));
@@ -1001,7 +1001,7 @@
         if (link.getAttribute('aria-disabled') === 'true') return;
         const extra = {environment: ctx.environment || 'Combined', scoring: ctx.scoring, theme: ctx.theme?.id || ''};
         if (chosenOperators) extra.operators = JSON.stringify(chosenOperators);
-        ctx.download(`/scoring/saved-filters/${encodeURIComponent(ctx.savedFilterId)}/impact/export/${kind}?${queryOf(selection, extra)}`, label);
+        ctx.download(`/scoring/saved-scorings/${encodeURIComponent(ctx.savedScoringId)}/impact/export/${kind}?${queryOf(selection, extra)}`, label);
       });
       exports.append(link);
     }
@@ -1022,9 +1022,9 @@
 
   async function load(pane, body, bar, selection, ctx, token, retry = false, statusKey = null) {
     window.clearTimeout(pollTimer);
-    // (Another Saved Filter is shown, or the results are being calculated again.)
+    // (Another Saved Scoring is shown, or the results are being calculated again.)
     if (!pane.contains(body)) return;
-    const cacheKey = `${ctx.savedFilterId}|${queryOf(selection)}`;
+    const cacheKey = `${ctx.savedScoringId}|${queryOf(selection)}`;
     const setExports = enabled => bar.querySelectorAll('[data-impact-export]').forEach((link) => {
       link.setAttribute('aria-disabled', String(!enabled));
     });
@@ -1038,8 +1038,8 @@
     try {
       // While it is calculated, only how it goes (its key does not have to be worked out again).
       state = await ctx.requestJson(statusKey
-        ? `/api/scoring/saved-filters/${encodeURIComponent(ctx.savedFilterId)}/impact/status?key=${statusKey}`
-        : `/api/scoring/saved-filters/${encodeURIComponent(ctx.savedFilterId)}/impact?${queryOf(selection, retry ? {retry: 'true'} : {})}`);
+        ? `/api/scoring/saved-scorings/${encodeURIComponent(ctx.savedScoringId)}/impact/status?key=${statusKey}`
+        : `/api/scoring/saved-scorings/${encodeURIComponent(ctx.savedScoringId)}/impact?${queryOf(selection, retry ? {retry: 'true'} : {})}`);
     } catch (error) {
       if (token === renderToken) showError(body, error.message || 'The Methodology Impact could not be calculated.');
       return;
@@ -1065,26 +1065,26 @@
   async function render(pane, ctx) {
     const token = ++renderToken;
     window.clearTimeout(pollTimer);
-    if (!ctx.savedFilterId) {
-      pane.replaceChildren(element('div', 'scoring-empty', 'No Saved Filter is selected.'));
+    if (!ctx.savedScoringId) {
+      pane.replaceChildren(element('div', 'scoring-empty', 'No Saved Scoring is selected.'));
       return;
     }
-    let offered = options.get(ctx.savedFilterId);
+    let offered = options.get(ctx.savedScoringId);
     if (!offered) {
       pane.replaceChildren(element('div', 'scoring-empty', 'Loading the Methodology Impact…'));
       try {
-        offered = await ctx.requestJson(`/api/scoring/saved-filters/${encodeURIComponent(ctx.savedFilterId)}/impact/options`);
+        offered = await ctx.requestJson(`/api/scoring/saved-scorings/${encodeURIComponent(ctx.savedScoringId)}/impact/options`);
       } catch (error) {
         if (token === renderToken) pane.replaceChildren(element('div', 'scoring-empty', error.message || 'The Methodology Impact could not be opened.'));
         return;
       }
       if (token !== renderToken) return;
-      options.set(ctx.savedFilterId, offered);
+      options.set(ctx.savedScoringId, offered);
     }
     // (Its cards are styled as those of the panes.)
     const body = element('div', 'scoring-impact-body scoring-nr-mode-body');
     const open = (selection) => {
-      rememberSelection(ctx.savedFilterId, selection);
+      rememberSelection(ctx.savedScoringId, selection);
       const current = renderToken;
       const bar = controlsBar(offered, selection, ctx, (next) => {
         renderToken += 1;
@@ -1094,7 +1094,7 @@
       progressCard(body, {progress: 2, message: 'Looking for this comparison'});
       load(pane, body, bar, selection, ctx, current);
     };
-    open(selectionOf(ctx.savedFilterId, offered));
+    open(selectionOf(ctx.savedScoringId, offered));
   }
 
   window.ScoringImpact = {render};

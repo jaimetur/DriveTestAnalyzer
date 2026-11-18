@@ -212,7 +212,7 @@ Auto-calculated Fields apply to their declared CDR types. They are materialized 
 | **Apply Filters** | Scope, vendor comparison, dates and filters | No |
 | **Save Filters** | Scope, vendor comparison, dates, filters, additional and hidden fields, and applies them | Yes |
 | **Clear Filters** | Removes every restriction but the Campaign, which returns to its default (Latest 2 campaigns) | No |
-| **Reload Saved Filters** | Restores the saved Scope, dates and filters | No |
+| **Reload Saved Scorings** | Restores the saved Scope, dates and filters | No |
 
 **Apply Filters** and **Save Filters** are enabled as soon as a filter changes, also while the Design is being prepared (when it opens, after its NR Mode changes or while other filters are applied): the new preparation replaces the one running.
 

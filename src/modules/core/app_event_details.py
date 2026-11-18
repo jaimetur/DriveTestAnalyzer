@@ -102,13 +102,13 @@ def changes_text(changes: Any, labels: dict[str, str] | None = None) -> str:
 def fields_text(details: dict[str, Any], skip: tuple[str, ...] = ()) -> str:
     """``username EUSER01, role user-editor, active yes``: every recorded value but the empty ones."""
     parts = []
-    # Only the starred Saved Filters are kept: the others are named unsaved.
-    starred = details.get('starred') if isinstance(details.get('starred'), bool) and 'saved_filter_id' in details else None
+    # Only the starred Saved Scorings are kept: the others are named unsaved.
+    starred = details.get('starred') if isinstance(details.get('starred'), bool) and 'saved_scoring_id' in details else None
     for key, value in details.items():
         if key in skip or _empty(value) or (key == 'starred' and starred is not None):
             continue
-        if key == 'saved_filter_id' and starred is not None:
-            parts.append(f'saved filter ID {value} (favourite)' if starred else f'unsaved filter ID {value}')
+        if key == 'saved_scoring_id' and starred is not None:
+            parts.append(f'saved scoring ID {value} (favourite)' if starred else f'unsaved scoring ID {value}')
         elif key == 'changes':
             parts.append(changes_text(value))
         else:
@@ -443,7 +443,7 @@ _NQ_DESCRIBERS: dict[str, Callable[[Any], str]] = {
         f"Non-Qualified Calls indexing stopped after {details.get('seconds')} s, the indexed calls kept as they were"
         + ('; the Reindex is done at night once the server is idle' if details.get('reindex') else '') + '.'),
     'scoring_result_kept': lambda details: (
-        f"Result of the Saved Filter {details.get('name') or details.get('saved_filter_id')} prepared and kept, so it opens at once, "
+        f"Result of the Saved Scoring {details.get('name') or details.get('saved_scoring_id')} prepared and kept, so it opens at once, "
         f"in {details.get('seconds')} s."),
     'nq_population_indexes_restored': lambda details: (
         f"Non-Qualified Calls population put right after an unfinished Reindex: indexes "
@@ -632,10 +632,32 @@ _DESCRIBERS: dict[str, Callable[[Any], str]] = {
 }
 
 
+# The names of the events recorded until v0.12.7, when the Saved Scorings were Saved Filters and the Favourite Scorings
+# Favourites Filters, in their current names.
+_LEGACY_EVENT_NAMES = (('saved_filters', 'saved_scorings'), ('saved_filter', 'saved_scoring'),
+                       ('favourites_filters', 'favourite_scorings'))
+
+
+def current_event_name(name: Any) -> str:
+    """An action or detail recorded with an earlier name, in its current name."""
+    name = str(name or '')
+    for earlier, current in _LEGACY_EVENT_NAMES:
+        name = name.replace(earlier, current)
+    return name
+
+
+def current_event_details(details: Any) -> Any:
+    """The details of an event with their current names (those recorded before keep their values)."""
+    if not isinstance(details, dict):
+        return details
+    return {current_event_name(key): value for key, value in details.items()}
+
+
 def describe_app_event(action: str, details: Any) -> str:
     """One readable sentence for an App Event: its own wording for the actions that have one, otherwise the action and
-    every recorded value (``Delete saved filter: filter ID 9.``); plain-text details are already a sentence."""
-    action = str(action or '')
+    every recorded value (``Delete saved scoring: filter ID 9.``); plain-text details are already a sentence."""
+    action = current_event_name(action)
+    details = current_event_details(details)
     describer = _DESCRIBERS.get(action)
     if describer and (isinstance(details, (dict, list)) or action in {'create_user', 'logout'}):
         try:
@@ -661,7 +683,7 @@ _SERVER_ACTIONS = {
     'scheduler': {'reporting_scheduler_error'},
     'idle': {'precompute_design_charts', 'prewarm_design_cache', 'prewarm_design_cache_failed', 'nq_calls_reindexed',
              'map_area_fill_failed', 'ca_appendix_fields_filled', 'ca_appendix_fill_failed'},
-    'startup': {'application_started', 'recover_interrupted_background_jobs', 'recover_interrupted_saved_filters',
+    'startup': {'application_started', 'recover_interrupted_background_jobs', 'recover_interrupted_saved_scorings',
                 'recover_inconsistent_datasets', 'resume_interrupted_dataset', 'migrate_app_event_users', 'nq_call_keys_upgraded',
                 'assign_unknown_creators', 'assign_unknown_creators_failed', 'resume_reporting_job_run',
                 'stop_interrupted_reporting_job_run', 'fail_interrupted_reporting_job_run', 'workspace_cache_folders_moved',
@@ -726,8 +748,8 @@ _MODULE_ACTIONS = (
 def app_event_origin(action: str, details: Any, stored: str = '', triggered_by: str = '') -> str:
     """Where an App Event ran: the server's own work and transfers by their action; otherwise the page it came from (as
     recorded with the event, or by its action for the events of earlier versions)."""
-    action = str(action or '')
-    details = details if isinstance(details, dict) else {}
+    action = current_event_name(action)
+    details = current_event_details(details) if isinstance(details, dict) else {}
     if action == 'reporting_job_run' and details.get('trigger') == 'schedule':
         return 'server:scheduler'
     for kind, actions in _SERVER_ACTIONS.items():

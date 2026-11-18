@@ -6,9 +6,9 @@ its points (Voronoi cells cut to its country). They are approximate, not the off
 have a point shared with others (the centre of a city, in the UK) are one area named after all of them.
 
 A workspace keeps up to three maps per country: its full postcodes (where GeoNames publishes them), one point per place,
-both downloaded from GeoNames, and a file of its own, a GeoJSON or a zipped Shapefile such as a licensed map. A Saved Filter
+both downloaded from GeoNames, and a file of its own, a GeoJSON or a zipped Shapefile such as a licensed map. A Saved Scoring
 that asks for Postal Codes chooses one of them (its ``postal_map``, not part of its identity: with another map it is the
-same Saved Filter, whose result is replaced) and downloads it when the workspace lacks it. The copy of the full postcodes
+same Saved Scoring, whose result is replaced) and downloads it when the workspace lacks it. The copy of the full postcodes
 shipped with the application in ``assets/map-areas/postal`` stands in until then, also on a server that cannot reach
 GeoNames. The maps travel with the Mappings & Reference Data in Import / Export, transfers and backups. Tests are placed
 while the map is drawn, so the CDRs do not change.
@@ -71,15 +71,15 @@ _UNREACHED: dict[tuple[str, str], float] = {}
 _DOWNLOADS = threading.Lock()
 
 
-def wanted(saved_filter: dict[str, Any] | None) -> bool:
-    """Whether a Saved Filter asks for Postal Codes (an option of its Geographical Areas)."""
-    summary = (saved_filter or {}).get('area_summary') or (saved_filter or {}).get('geographical_areas')
+def wanted(saved_scoring: dict[str, Any] | None) -> bool:
+    """Whether a Saved Scoring asks for Postal Codes (an option of its Geographical Areas)."""
+    summary = (saved_scoring or {}).get('area_summary') or (saved_scoring or {}).get('geographical_areas')
     return bool(isinstance(summary, dict) and summary.get('postal_codes'))
 
 
-def chosen_map(saved_filter: dict[str, Any] | None) -> str:
-    """The map of the Postal Codes a Saved Filter uses: the full postcodes unless it chooses another one."""
-    summary = (saved_filter or {}).get('area_summary') or (saved_filter or {}).get('geographical_areas')
+def chosen_map(saved_scoring: dict[str, Any] | None) -> str:
+    """The map of the Postal Codes a Saved Scoring uses: the full postcodes unless it chooses another one."""
+    summary = (saved_scoring or {}).get('area_summary') or (saved_scoring or {}).get('geographical_areas')
     chosen = summary.get('postal_map') if isinstance(summary, dict) else None
     return chosen if chosen in MAP_LABELS else FULL
 
@@ -215,7 +215,7 @@ def import_postal_layers_document(repository: Any, document: Any, username: str)
 
 
 def map_choices(repository: Any) -> list[dict[str, Any]]:
-    """The maps a Saved Filter can choose, with the countries the workspace has each of them for."""
+    """The maps a Saved Scoring can choose, with the countries the workspace has each of them for."""
     layers = list_postal_layers(repository)
     return [{'key': key, 'label': label, 'countries': [layer['country_name'] for layer in layers if layer['map_key'] == key]}
             for key, label in MAP_LABELS.items()]
@@ -245,7 +245,7 @@ def bundled_rings(country_code: str) -> dict[str, list]:
 
 
 def _map_of_country(saved: dict[str, dict[str, Any]], included: bool, map_key: str) -> str | None:
-    """The map of a country a Saved Filter uses, among those saved: the one it chooses, else its full postcodes, and else
+    """The map of a country a Saved Scoring uses, among those saved: the one it chooses, else its full postcodes, and else
     any other unless the application includes a copy of them (``None``: that copy)."""
     if map_key in saved:
         return map_key

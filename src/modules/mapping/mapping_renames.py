@@ -1,5 +1,5 @@
 """Renaming an Operator or a Vendor in the Operator Maps or Vendor Maps renames it in every saved filter: the Reporting
-Jobs, the workspace settings that keep filters, the Saved Filters of Scoring & GAP Analysis (their GAP reference and
+Jobs, the workspace settings that keep filters, the Saved Scorings of Scoring & GAP Analysis (their GAP reference and
 filters) and the favourites of the Bundle Report Templates and Network Insights.
 
 Saved filters keep the mapped labels (see ``value_maps``), so a renamed label would no longer match
@@ -106,7 +106,7 @@ def rename_in_query(query: str, rename: Callable[[str, str], str]) -> str:
     return urlencode(renamed) if renamed != pairs else query
 
 
-def rename_saved_filters(repository: Any, mapping_type: str, old_name: str, new_name: str,
+def rename_saved_scorings(repository: Any, mapping_type: str, old_name: str, new_name: str,
                          mapping_settings: dict[str, Any], write: bool = True) -> int:
     """Rename an Operator or Vendor in the Reporting Jobs and workspace settings; returns how many changed.
 
@@ -116,7 +116,7 @@ def rename_saved_filters(repository: Any, mapping_type: str, old_name: str, new_
 
     rename = value_renamer(mapping_type, old_name, new_name, mapping_settings)
     changed = rename_definition_values(repository, lambda definition: rename_in_document(definition, rename), write)
-    changed += rename_scoring_saved_filters(repository, rename, write)
+    changed += rename_scoring_saved_scorings(repository, rename, write)
     changed += rename_favourites(repository, rename, write)
     for state_key in FILTER_STATE_KEYS:
         stored = repository.get_workspace_state(state_key)
@@ -145,24 +145,24 @@ def rename_saved_filters(repository: Any, mapping_type: str, old_name: str, new_
     return changed
 
 
-def rename_scoring_saved_filters(repository: Any, rename: Callable[[str, str], str], write: bool = True) -> int:
-    """The Saved Filters of Scoring & GAP Analysis with the renamed label in their GAP reference and filters, and the
-    selection they are found by again; returns how many changed. A Saved Filter whose renamed selection is that of
+def rename_scoring_saved_scorings(repository: Any, rename: Callable[[str, str], str], write: bool = True) -> int:
+    """The Saved Scorings of Scoring & GAP Analysis with the renamed label in their GAP reference and filters, and the
+    selection they are found by again; returns how many changed. A Saved Scoring whose renamed selection is that of
     another one keeps its own. Their results are calculated again when opened (the Operator Maps changed)."""
     from src.modules.cdr.cdr_auto_selection import campaign_presets
-    from src.modules.scoring.saved_filters import SAVED_FILTERS_TABLE, saved_filter_key
+    from src.modules.scoring.saved_scorings import SAVED_SCORINGS_TABLE, saved_scoring_key
 
     def selection_key(row: Any, baseline: str, snapshot: dict[str, Any]) -> str:
         filters = snapshot.get('context_filters') or {}
         ids = [] if campaign_presets(filters.get('Campaign') or []) else json.loads(row['dataset_ids_json'] or '[]')
-        return saved_filter_key(ids, json.loads(row['levels_json'] or '[]'), row['nr_mode'], baseline, filters,
+        return saved_scoring_key(ids, json.loads(row['levels_json'] or '[]'), row['nr_mode'], baseline, filters,
                                 str(snapshot.get('scoring_profile_id') or ''), snapshot.get('area_summary'))
 
     changed = 0
     with repository.connection() as connection:
         try:
             rows = connection.execute(f'SELECT id, selection_key, baseline_operator, source_metadata_json, levels_json, nr_mode, '
-                                      f'dataset_ids_json FROM {SAVED_FILTERS_TABLE}').fetchall()
+                                      f'dataset_ids_json FROM {SAVED_SCORINGS_TABLE}').fetchall()
         except sqlite3.OperationalError:
             return 0
         keys = {row['selection_key'] for row in rows}
@@ -180,14 +180,14 @@ def rename_scoring_saved_filters(repository: Any, rename: Callable[[str, str], s
             if renamed == snapshot and baseline == row['baseline_operator']:
                 continue
             key = row['selection_key']
-            # (A Saved Filter saved with another form of selection keeps the one it has.)
+            # (A Saved Scoring saved with another form of selection keeps the one it has.)
             if selection_key(row, str(row['baseline_operator'] or ''), snapshot) == key:
                 key = selection_key(row, baseline, renamed)
                 if key != row['selection_key'] and key in keys:
                     continue
             changed += 1
             if write:
-                connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET selection_key = ?, baseline_operator = ?, '
+                connection.execute(f'UPDATE {SAVED_SCORINGS_TABLE} SET selection_key = ?, baseline_operator = ?, '
                                    'source_metadata_json = ? WHERE id = ?',
                                    (key, baseline, json.dumps(renamed, ensure_ascii=False, separators=(',', ':')), row['id']))
                 keys.discard(row['selection_key'])
@@ -235,6 +235,6 @@ def rename_favourites(repository: Any, rename: Callable[[str, str], str], write:
     return changed
 
 
-def count_saved_filters(repository: Any, mapping_type: str, label: str, mapping_settings: dict[str, Any]) -> int:
+def count_saved_scorings(repository: Any, mapping_type: str, label: str, mapping_settings: dict[str, Any]) -> int:
     """How many Reporting Jobs and saved filters use an Operator or Vendor label (nothing is changed)."""
-    return rename_saved_filters(repository, mapping_type, label, f'{label}\u0000', mapping_settings, write=False)
+    return rename_saved_scorings(repository, mapping_type, label, f'{label}\u0000', mapping_settings, write=False)

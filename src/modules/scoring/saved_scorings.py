@@ -1,4 +1,4 @@
-"""Saved Filters of Scoring & GAP Analysis: every selection used (CDRs, filters, Split by, GAP reference,
+"""Saved Scorings of Scoring & GAP Analysis: every selection used (CDRs, filters, Split by, GAP reference,
 methodology and National & area summary), reusable, with its result calculated in the background and saved until
 its CDRs, methodology or Operator Maps change."""
 
@@ -51,7 +51,7 @@ from src.modules.scoring.scoring_config import (
 CDR_DATASET_KINDS = frozenset({'data', 'voice', 'speech'})
 DEFAULT_BASELINE_OPERATOR = 'EE'
 DEFAULT_LEVELS = ('Operator',)
-SAVED_FILTERS_TABLE = 'saved_filters'
+SAVED_SCORINGS_TABLE = 'saved_scorings'
 INTERRUPTED_CALCULATION_MESSAGE = 'Interrupted because the application restarted. Calculate it again.'
 AGGREGATION_CONTRACT_VERSION = 2
 # The Geographical Areas of a result: those of the Breakdown and Separate cities of its Geographical Areas & Scoring
@@ -582,12 +582,12 @@ def _normalize_levels(
     return resolved_levels
 
 
-def saved_filter_key(
+def saved_scoring_key(
     dataset_ids: Iterable[int], levels: Iterable[str], nr_mode: str, baseline_operator: str,
     context_filters: dict[str, list[str]] | None, scoring_profile_id: str, area_summary: dict[str, Any] | None,
 ) -> str:
     """The identity of a selection: its CDRs, Split by, NR Mode, GAP reference, filters, methodology and National &
-    area summary. The same selection is one Saved Filter, whatever its CDRs or methodology hold today, and whatever map of
+    area summary. The same selection is one Saved Scoring, whatever its CDRs or methodology hold today, and whatever map of
     its Postal Codes it uses: another one replaces its result."""
     area_summary = {key: value for key, value in (area_summary or {}).items() if key != 'postal_map'}
     payload = {
@@ -647,12 +647,12 @@ def _result_key(
     return hashlib.sha256(canonical.encode('utf-8')).hexdigest(), canonical
 
 
-def _row_to_saved_filter(
+def _row_to_saved_scoring(
     row: Any, *, include_result: bool = False, include_snapshot: bool = True,
     include_internal_snapshot: bool = False,
 ) -> dict[str, Any]:
     if row is None:
-        raise ValueError('The Saved Filter was not found.')
+        raise ValueError('The Saved Scoring was not found.')
     source_metadata_payload = _decode_json(row['source_metadata_json'], {})
     dataset_ids = _decode_json(row['dataset_ids_json'], [])
     levels = _decode_json(row['levels_json'], [])
@@ -703,12 +703,12 @@ def _row_to_saved_filter(
     baseline_aliases = list(dict.fromkeys(
         [baseline, *(str(alias).strip() for alias in baseline_aliases if str(alias).strip())]
     )) if include_snapshot else []
-    saved_filter = {
+    saved_scoring = {
         'id': int(row['id']),
         'selection_key': str(row['selection_key'] or ''),
         'name': str(row['name'] or ''),
         'pinned': bool(row['pinned']),
-        # The place of a starred Saved Filter in its list (moved by dragging it), None for the others.
+        # The place of a starred Saved Scoring in its list (moved by dragging it), None for the others.
         'position': row['position'] if 'position' in row.keys() else None,
         'use_count': max(1, int(row['use_count'] or 1)),
         'calculation_count': max(0, int(row['calculation_count'] or 0)),
@@ -717,7 +717,7 @@ def _row_to_saved_filter(
         'method_version': str(row['method_version'] or ''),
         'source_fingerprint': str(row['source_fingerprint'] or ''),
         'dataset_ids': [int(value) for value in dataset_ids if str(value).strip().lstrip('-').isdigit()],
-        # The CDRs of a Saved Filter imported from another workspace until they are found here (by file).
+        # The CDRs of a Saved Scoring imported from another workspace until they are found here (by file).
         'missing_cdrs': [str(item.get('name') or '') for item in cdr_refs if isinstance(item, dict)]
         if not dataset_ids else [],
         'source_metadata': metadata_list,
@@ -759,28 +759,28 @@ def _row_to_saved_filter(
                             if str(value).strip()] if isinstance(source_metadata_payload.get('area_trends'), dict) else [],
     }
     if include_snapshot:
-        saved_filter['configuration'] = configuration
-        saved_filter['baseline_aliases'] = baseline_aliases
+        saved_scoring['configuration'] = configuration
+        saved_scoring['baseline_aliases'] = baseline_aliases
     if include_internal_snapshot:
-        saved_filter['resolved_context_filters'] = {
+        saved_scoring['resolved_context_filters'] = {
             str(field): [str(value) for value in values if str(value).strip()]
             for field, values in resolved_context_filters.items()
             if isinstance(values, (list, tuple, set))
         }
-        saved_filter['operator_mappings'] = {
+        saved_scoring['operator_mappings'] = {
             str(alias).strip().casefold(): str(canonical).strip()
             for alias, canonical in operator_mappings.items()
             if str(alias).strip() and str(canonical).strip()
         }
         groups = source_metadata_payload.get('methodology_groups')
-        saved_filter['methodology_groups'] = groups if isinstance(groups, list) else []
+        saved_scoring['methodology_groups'] = groups if isinstance(groups, list) else []
         trends = source_metadata_payload.get('area_trends')
-        saved_filter['area_trends'] = trends if isinstance(trends, dict) else None
-    return saved_filter
+        saved_scoring['area_trends'] = trends if isinstance(trends, dict) else None
+    return saved_scoring
 
 
 def _shared(cache: dict[Any, Any] | None, key: Any, compute: Callable[[], Any]) -> Any:
-    """``compute()``, done once for all the Saved Filters prepared together (``cache``: those of one import or listing),
+    """``compute()``, done once for all the Saved Scorings prepared together (``cache``: those of one import or listing),
     each one with its own copy of the result."""
     if cache is None:
         return compute()
@@ -789,14 +789,14 @@ def _shared(cache: dict[Any, Any] | None, key: Any, compute: Callable[[], Any]) 
     return copy.deepcopy(cache[key])
 
 
-def _prepare_saved_filter(*args: Any, **kwargs: Any) -> dict[str, Any]:
-    """_prepare_saved_filter_once with the inclusion of the CDRs in the combined tables worked out once: its campaign
+def _prepare_saved_scoring(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """_prepare_saved_scoring_once with the inclusion of the CDRs in the combined tables worked out once: its campaign
     choices, trends and sources each asked for it, a dozen times on every check of a Favourite Scoring (ticket #168)."""
     with remembered_inclusion():
-        return _prepare_saved_filter_once(*args, **kwargs)
+        return _prepare_saved_scoring_once(*args, **kwargs)
 
 
-def _prepare_saved_filter_once(
+def _prepare_saved_scoring_once(
     repository: Repository,
     dataset_ids: list[int],
     levels: list[str],
@@ -812,7 +812,7 @@ def _prepare_saved_filter_once(
 
     A Campaign filter with an automatic choice (Latest campaign, Previous campaign, Latest 2 campaigns or All available
     campaigns) is kept as such: the selection is that choice, and its campaigns and CDRs are those it stands for now,
-    so the Saved Filter follows the campaigns and CDRs that arrive later. Saved Filters prepared together share
+    so the Saved Scoring follows the campaigns and CDRs that arrive later. Saved Scorings prepared together share
     ``cache``, where what they read alike (methodologies, CDRs, catalogues, campaigns, Operator Maps) is read once.
     """
     normalized_context_filters = _normalize_context_filters(context_filters)
@@ -949,7 +949,7 @@ def _prepare_saved_filter_once(
         snapshot['methodology_groups'] = groups
     return {
         # With an automatic Campaign choice the selection is that choice, whatever CDRs it stands for today.
-        'selection_key': saved_filter_key([] if campaign_choice else normalized_ids, normalized_levels, selected_mode, baseline,
+        'selection_key': saved_scoring_key([] if campaign_choice else normalized_ids, normalized_levels, selected_mode, baseline,
                                           normalized_context_filters, profile_id, normalized_area_summary),
         'result_key': result_key, 'method_version': version, 'source_fingerprint': source_fingerprint,
         'dataset_ids': normalized_ids, 'snapshot': snapshot, 'nr_mode': selected_mode, 'levels': normalized_levels,
@@ -1018,21 +1018,21 @@ def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, A
     return trends
 
 
-def _prepare_saved_selection(repository: Repository, saved_filter: dict[str, Any]) -> dict[str, Any]:
-    """The identity of the result of a saved Saved Filter with today's CDRs, methodology and Operator Maps."""
-    return _prepare_saved_filter(
-        repository, saved_filter['dataset_ids'], saved_filter['levels'], saved_filter['nr_mode'],
-        baseline_operator=saved_filter['baseline_operator'], context_filters=saved_filter['context_filters'],
-        scoring_profile_id=saved_filter['scoring_profile_id'] or None, area_summary=saved_filter['area_summary'],
+def _prepare_saved_selection(repository: Repository, saved_scoring: dict[str, Any]) -> dict[str, Any]:
+    """The identity of the result of a saved Saved Scoring with today's CDRs, methodology and Operator Maps."""
+    return _prepare_saved_scoring(
+        repository, saved_scoring['dataset_ids'], saved_scoring['levels'], saved_scoring['nr_mode'],
+        baseline_operator=saved_scoring['baseline_operator'], context_filters=saved_scoring['context_filters'],
+        scoring_profile_id=saved_scoring['scoring_profile_id'] or None, area_summary=saved_scoring['area_summary'],
     )
 
 
 def _queue_calculation(connection: Any, filter_id: int, prepared: dict[str, Any], username: str, now: str) -> None:
-    """Queue the calculation of a Saved Filter with today's CDRs and methodology. A starred one keeps the user who
+    """Queue the calculation of a Saved Scoring with today's CDRs and methodology. A starred one keeps the user who
     starred it; the others belong to the user who calculates them (the application, ``system``, keeps their owner)."""
     snapshot = prepared['snapshot']
     connection.execute(
-        f"""UPDATE {SAVED_FILTERS_TABLE} SET status = 'queued', progress = 0,
+        f"""UPDATE {SAVED_SCORINGS_TABLE} SET status = 'queued', progress = 0,
            message = 'Waiting to calculate scoring', result_json = NULL, last_error = NULL, started_at = NULL,
            finished_at = NULL, updated_at = ?, created_by = CASE WHEN pinned = 1 OR ? = 'system' THEN created_by ELSE ? END,
            source_metadata_json = ?, result_key = ?,
@@ -1050,29 +1050,29 @@ def _is_up_to_date(row: Any, result_key: str) -> bool:
     return row['status'] == 'completed' and row['result_key'] == result_key and bool(row['result_json'])
 
 
-def find_saved_filter(
+def find_saved_scoring(
     repository: Repository, dataset_ids: list[int], levels: list[str], nr_mode: str | None,
     *, baseline_operator: str = DEFAULT_BASELINE_OPERATOR,
     context_filters: dict[str, list[str]] | None = None,
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """The Saved Filter of a selection, without changing it, and whether its saved result is up to date."""
-    prepared = _prepare_saved_filter(
+    """The Saved Scoring of a selection, without changing it, and whether its saved result is up to date."""
+    prepared = _prepare_saved_scoring(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
         context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
     )
     with repository.connection() as connection:
-        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
+        row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
                                  (prepared['selection_key'],)).fetchone()
     if row is None:
         return None
-    saved_filter = _row_to_saved_filter(row, include_snapshot=False)
-    saved_filter['up_to_date'] = _is_up_to_date(row, prepared['result_key'])
-    return saved_filter
+    saved_scoring = _row_to_saved_scoring(row, include_snapshot=False)
+    saved_scoring['up_to_date'] = _is_up_to_date(row, prepared['result_key'])
+    return saved_scoring
 
 
-def save_saved_filter(
+def save_saved_scoring(
     repository: Repository,
     dataset_ids: list[int],
     levels: list[str],
@@ -1085,39 +1085,39 @@ def save_saved_filter(
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool]:
-    """Use a selection: its Saved Filter (saved the first time it is used) with its result.
+    """Use a selection: its Saved Scoring (saved the first time it is used) with its result.
 
-    Returns the Saved Filter and whether its result is ready or already being calculated (``True``), or must be
+    Returns the Saved Scoring and whether its result is ready or already being calculated (``True``), or must be
     calculated (``False``): the first time, when its CDRs, methodology or Operator Maps changed since its result was
     saved, after a failure, or with ``force``. ``area_summary`` (a breakdown level, chosen cities and a time split)
     adds the National & Geographical Areas Trends (and, with campaigns, the Scoring Trends of those campaigns) to a selection.
     """
-    prepared = _prepare_saved_filter(
+    prepared = _prepare_saved_scoring(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
         context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
     )
     now = local_now_iso()
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
-        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
+        row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
                                  (prepared['selection_key'],)).fetchone()
         if row is not None:
             connection.execute(
-                f'UPDATE {SAVED_FILTERS_TABLE} SET use_count = use_count + 1, last_used_at = ? WHERE id = ?',
+                f'UPDATE {SAVED_SCORINGS_TABLE} SET use_count = use_count + 1, last_used_at = ? WHERE id = ?',
                 (now, row['id']),
             )
             if row['status'] in ('queued', 'processing'):
-                row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
-                return _row_to_saved_filter(row), True
+                row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+                return _row_to_saved_scoring(row), True
             if not force and _is_up_to_date(row, prepared['result_key']):
-                row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
-                return _row_to_saved_filter(row, include_result=True), True
+                row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+                return _row_to_saved_scoring(row, include_result=True), True
             _queue_calculation(connection, int(row['id']), prepared, username, now)
-            row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
-            return _row_to_saved_filter(row), False
+            row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+            return _row_to_saved_scoring(row), False
         cursor = connection.execute(
             f"""
-            INSERT INTO {SAVED_FILTERS_TABLE} (
+            INSERT INTO {SAVED_SCORINGS_TABLE} (
                 selection_key, last_used_at, result_key, method_version, source_fingerprint, dataset_ids_json,
                 source_metadata_json, nr_mode, levels_json, baseline_operator,
                 status, progress, message, created_by, created_at, updated_at
@@ -1131,31 +1131,31 @@ def save_saved_filter(
                 str(username or 'system'), now, now,
             ),
         )
-        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+        row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?',
                                  (int(cursor.lastrowid),)).fetchone()
-    return _row_to_saved_filter(row), False
+    return _row_to_saved_scoring(row), False
 
 
-def refresh_saved_filter(repository: Repository, filter_id: int, username: str = 'system') -> tuple[bool, str]:
-    """Queue the calculation of an opened Saved Filter whose saved result no longer matches its CDRs, methodology
+def refresh_saved_scoring(repository: Repository, filter_id: int, username: str = 'system') -> tuple[bool, str]:
+    """Queue the calculation of an opened Saved Scoring whose saved result no longer matches its CDRs, methodology
     or Operator Maps (or that has none yet).
 
     Returns whether it was queued, and why it cannot be calculated (its CDRs or methodology are gone) otherwise.
     """
     _resolve_imported_filters(repository)
-    saved_filter = get_saved_filter(repository, filter_id)
-    if saved_filter is None or saved_filter['status'] in ('queued', 'processing'):
+    saved_scoring = get_saved_scoring(repository, filter_id)
+    if saved_scoring is None or saved_scoring['status'] in ('queued', 'processing'):
         return False, ''
-    if not saved_filter['dataset_ids']:
-        names = ', '.join(saved_filter['missing_cdrs']) or 'its CDRs'
-        return False, f'The CDRs of this Saved Filter are not in this workspace: {names}.'
+    if not saved_scoring['dataset_ids']:
+        names = ', '.join(saved_scoring['missing_cdrs']) or 'its CDRs'
+        return False, f'The CDRs of this Saved Scoring are not in this workspace: {names}.'
     try:
-        prepared = _prepare_saved_selection(repository, saved_filter)
+        prepared = _prepare_saved_selection(repository, saved_scoring)
     except ValueError as exc:
         return False, str(exc)
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
-        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
         if row is None or row['status'] in ('queued', 'processing') or _is_up_to_date(row, prepared['result_key']):
             return False, ''
         # A failed calculation is not repeated on its own until something it uses changes.
@@ -1165,8 +1165,8 @@ def refresh_saved_filter(repository: Repository, filter_id: int, username: str =
     return True, ''
 
 
-def list_saved_filters(repository: Repository) -> list[dict[str, Any]]:
-    """Every Saved Filter, the starred ones first in their place and then the latest used, without their results.
+def list_saved_scorings(repository: Repository) -> list[dict[str, Any]]:
+    """Every Saved Scoring, the starred ones first in their place and then the latest used, without their results.
 
     Each one lists its CDRs that have been replaced by newer ones (``newer_cdrs``): a Final CDR of the same
     campaign, or a newer cumulative Weekly or Daily CDR.
@@ -1178,17 +1178,17 @@ def list_saved_filters(repository: Repository) -> list[dict[str, Any]]:
             'method_version, '
             'source_fingerprint, dataset_ids_json, source_metadata_json, nr_mode, levels_json, baseline_operator, '
             'status, progress, message, NULL AS result_json, last_error, created_by, created_at, started_at, '
-            f'updated_at, finished_at FROM {SAVED_FILTERS_TABLE} '
+            f'updated_at, finished_at FROM {SAVED_SCORINGS_TABLE} '
             'ORDER BY pinned DESC, position IS NULL, position, julianday(last_used_at) DESC, id DESC'
         ).fetchall()
-    saved_filters = [_row_to_saved_filter(row, include_snapshot=False) for row in rows]
-    replacements = _replaced_cdrs(repository) if saved_filters else {}
-    for saved_filter in saved_filters:
+    saved_scorings = [_row_to_saved_scoring(row, include_snapshot=False) for row in rows]
+    replacements = _replaced_cdrs(repository) if saved_scorings else {}
+    for saved_scoring in saved_scorings:
         # One with an automatic Campaign choice takes the newer CDRs on its own the next time it is opened.
-        follows = bool(campaign_presets(saved_filter['context_filters'].get('Campaign') or []))
-        saved_filter['newer_cdrs'] = [] if follows else [replacements[dataset_id] for dataset_id in saved_filter['dataset_ids']
+        follows = bool(campaign_presets(saved_scoring['context_filters'].get('Campaign') or []))
+        saved_scoring['newer_cdrs'] = [] if follows else [replacements[dataset_id] for dataset_id in saved_scoring['dataset_ids']
                                                          if dataset_id in replacements]
-    return saved_filters
+    return saved_scorings
 
 
 def _replaced_cdrs(repository: Repository) -> dict[int, dict[str, Any]]:
@@ -1196,7 +1196,7 @@ def _replaced_cdrs(repository: Repository) -> dict[int, dict[str, Any]]:
     from src.modules.cdr.cdr_stage import combined_inclusion
     try:
         inclusion = combined_inclusion(repository)
-    except Exception:  # The notice is optional: without it the Saved Filters are still listed.
+    except Exception:  # The notice is optional: without it the Saved Scorings are still listed.
         return {}
     names = {int(row['id']): str(row['file_name'] or '') for row in repository.list_datasets()}
     replacements = {}
@@ -1212,33 +1212,33 @@ def _replaced_cdrs(repository: Repository) -> dict[int, dict[str, Any]]:
 
 
 def use_newer_cdrs(repository: Repository, filter_id: int, username: str = 'system') -> dict[str, Any] | None:
-    """Replace the CDRs of a Saved Filter that newer ones replace and calculate it again, keeping its name, star and
-    place. A Saved Filter that already had that selection is merged into it (its name and star are kept when this one
+    """Replace the CDRs of a Saved Scoring that newer ones replace and calculate it again, keeping its name, star and
+    place. A Saved Scoring that already had that selection is merged into it (its name and star are kept when this one
     has none).
 
-    Returns ``None`` when the Saved Filter does not exist; otherwise the Saved Filter, the CDRs replaced
-    (``replaced``) and the merged Saved Filter (``merged_filter_id``).
+    Returns ``None`` when the Saved Scoring does not exist; otherwise the Saved Scoring, the CDRs replaced
+    (``replaced``) and the merged Saved Scoring (``merged_filter_id``).
     """
-    saved_filter = get_saved_filter(repository, filter_id)
-    if saved_filter is None:
+    saved_scoring = get_saved_scoring(repository, filter_id)
+    if saved_scoring is None:
         return None
-    if saved_filter['status'] in ('queued', 'processing'):
-        raise ValueError('Wait until this Saved Filter is calculated to use its newer CDRs.')
+    if saved_scoring['status'] in ('queued', 'processing'):
+        raise ValueError('Wait until this Saved Scoring is calculated to use its newer CDRs.')
     replacements = _replaced_cdrs(repository)
-    replaced = [replacements[dataset_id] for dataset_id in saved_filter['dataset_ids'] if dataset_id in replacements]
+    replaced = [replacements[dataset_id] for dataset_id in saved_scoring['dataset_ids'] if dataset_id in replacements]
     if not replaced:
-        raise ValueError('This Saved Filter already uses the newest CDRs.')
+        raise ValueError('This Saved Scoring already uses the newest CDRs.')
     dataset_ids = list(dict.fromkeys(
         replacements[dataset_id]['replaced_by'] if dataset_id in replacements else dataset_id
-        for dataset_id in saved_filter['dataset_ids']))
-    prepared = _prepare_saved_selection(repository, {**saved_filter, 'dataset_ids': dataset_ids})
+        for dataset_id in saved_scoring['dataset_ids']))
+    prepared = _prepare_saved_selection(repository, {**saved_scoring, 'dataset_ids': dataset_ids})
     updated, merged_filter_id = _replace_selection(repository, filter_id, prepared, username)
     if updated is None:
         return None
-    return {'saved_filter': updated, 'replaced': replaced, 'merged_filter_id': merged_filter_id}
+    return {'saved_scoring': updated, 'replaced': replaced, 'merged_filter_id': merged_filter_id}
 
 
-def edit_saved_filter(
+def edit_saved_scoring(
     repository: Repository,
     filter_id: int,
     dataset_ids: list[int],
@@ -1251,36 +1251,36 @@ def edit_saved_filter(
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Give a Saved Filter another selection (its NR Mode, CDRs, filters, Split by, GAP reference, methodology or
-    National & area summary) and calculate it again, keeping its name, star and place. A Saved Filter that already had
+    """Give a Saved Scoring another selection (its NR Mode, CDRs, filters, Split by, GAP reference, methodology or
+    National & area summary) and calculate it again, keeping its name, star and place. A Saved Scoring that already had
     that selection is merged into it, as with its newer CDRs.
 
-    Returns ``None`` when the Saved Filter does not exist; otherwise the Saved Filter, whether its selection changed
-    (``changed``; an unchanged one keeps its result), its selection before (``previous``) and the merged Saved Filter
+    Returns ``None`` when the Saved Scoring does not exist; otherwise the Saved Scoring, whether its selection changed
+    (``changed``; an unchanged one keeps its result), its selection before (``previous``) and the merged Saved Scoring
     (``merged_filter_id``).
     """
-    saved_filter = get_saved_filter(repository, filter_id)
-    if saved_filter is None:
+    saved_scoring = get_saved_scoring(repository, filter_id)
+    if saved_scoring is None:
         return None
-    if saved_filter['status'] in ('queued', 'processing'):
-        raise ValueError('Wait until this Saved Filter is calculated to edit it.')
-    prepared = _prepare_saved_filter(
+    if saved_scoring['status'] in ('queued', 'processing'):
+        raise ValueError('Wait until this Saved Scoring is calculated to edit it.')
+    prepared = _prepare_saved_scoring(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
         context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
     )
-    previous = {key: saved_filter[key] for key in (
+    previous = {key: saved_scoring[key] for key in (
         'nr_mode', 'dataset_ids', 'levels', 'baseline_operator', 'context_filters', 'scoring_profile_id', 'area_summary')}
     # (Another map of its Postal Codes is the same selection, with another result.)
-    if prepared['selection_key'] == saved_filter['selection_key'] and postal_areas.chosen_map(prepared['snapshot']) == postal_areas.chosen_map(saved_filter):
-        return {'saved_filter': saved_filter, 'changed': False,
+    if prepared['selection_key'] == saved_scoring['selection_key'] and postal_areas.chosen_map(prepared['snapshot']) == postal_areas.chosen_map(saved_scoring):
+        return {'saved_scoring': saved_scoring, 'changed': False,
                 'previous': previous, 'merged_filter_id': None}
     updated, merged_filter_id = _replace_selection(repository, filter_id, prepared, username)
     if updated is None:
         return None
-    return {'saved_filter': updated, 'changed': True, 'previous': previous, 'merged_filter_id': merged_filter_id}
+    return {'saved_scoring': updated, 'changed': True, 'previous': previous, 'merged_filter_id': merged_filter_id}
 
 
-def duplicate_saved_filter(
+def duplicate_saved_scoring(
     repository: Repository,
     filter_id: int,
     dataset_ids: list[int],
@@ -1294,45 +1294,45 @@ def duplicate_saved_filter(
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Save a copy of a Saved Filter, with the selection it was given, as a new starred Saved Filter queued to be
+    """Save a copy of a Saved Scoring, with the selection it was given, as a new starred Saved Scoring queued to be
     calculated; the copied one stays as it was, and the copy goes right after it among the Favourite Scorings (first
     when the copied one is not starred).
 
-    Returns ``None`` when the copied Saved Filter does not exist. A selection that is already a Saved Filter (the copied
+    Returns ``None`` when the copied Saved Scoring does not exist. A selection that is already a Saved Scoring (the copied
     one included) is not saved again.
     """
-    source = get_saved_filter(repository, filter_id)
+    source = get_saved_scoring(repository, filter_id)
     if source is None:
         return None
     text = ' '.join(str(name or '').split())
     if len(text) > 120:
-        raise ValueError('The name of a Saved Filter can have up to 120 characters.')
-    prepared = _prepare_saved_filter(
+        raise ValueError('The name of a Saved Scoring can have up to 120 characters.')
+    prepared = _prepare_saved_scoring(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
         context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
     )
     now = local_now_iso()
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
-        existing = connection.execute(f'SELECT id FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
+        existing = connection.execute(f'SELECT id FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
                                       (prepared['selection_key'],)).fetchone()
         if existing is not None and int(existing['id']) == int(filter_id):
-            raise ValueError('The copy still has the filters of the Saved Filter: change them to save it as a new one.')
+            raise ValueError('The copy still has the filters of the Saved Scoring: change them to save it as a new one.')
         if existing is not None:
-            raise ValueError(f'Saved Filter {existing["id"]} already has these filters: change them to save the copy.')
-        row = connection.execute(f'SELECT pinned, position FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+            raise ValueError(f'Saved Scoring {existing["id"]} already has these filters: change them to save the copy.')
+        row = connection.execute(f'SELECT pinned, position FROM {SAVED_SCORINGS_TABLE} WHERE id = ?',
                                  (int(filter_id),)).fetchone()
         if row is not None and row['pinned'] and row['position'] is not None:
             position = int(row['position']) + 1
-            connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET position = position + 1 '
+            connection.execute(f'UPDATE {SAVED_SCORINGS_TABLE} SET position = position + 1 '
                                'WHERE pinned = 1 AND position >= ?', (position,))
         else:
             first = connection.execute(
-                f'SELECT MIN(position) FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1 AND position IS NOT NULL').fetchone()[0]
+                f'SELECT MIN(position) FROM {SAVED_SCORINGS_TABLE} WHERE pinned = 1 AND position IS NOT NULL').fetchone()[0]
             position = (int(first) - 1) if first is not None else 1
         cursor = connection.execute(
             f"""
-            INSERT INTO {SAVED_FILTERS_TABLE} (
+            INSERT INTO {SAVED_SCORINGS_TABLE} (
                 selection_key, name, pinned, position, last_used_at, result_key, method_version, source_fingerprint,
                 dataset_ids_json, source_metadata_json, nr_mode, levels_json, baseline_operator,
                 status, progress, message, created_by, created_at, updated_at
@@ -1346,27 +1346,27 @@ def duplicate_saved_filter(
                 str(username or 'system'), now, now,
             ),
         )
-        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+        row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?',
                                  (int(cursor.lastrowid),)).fetchone()
-    return _row_to_saved_filter(row)
+    return _row_to_saved_scoring(row)
 
 
 def _replace_selection(repository: Repository, filter_id: int, prepared: dict[str, Any],
                        username: str) -> tuple[dict[str, Any] | None, int | None]:
-    """Give a Saved Filter the prepared selection and queue its calculation, keeping its name, star and place.
+    """Give a Saved Scoring the prepared selection and queue its calculation, keeping its name, star and place.
 
-    A Saved Filter that already had that selection is merged into it (its name and star are kept when this one has
-    none). Returns the Saved Filter (``None`` when it does not exist) and the id of the merged one.
+    A Saved Scoring that already had that selection is merged into it (its name and star are kept when this one has
+    none). Returns the Saved Scoring (``None`` when it does not exist) and the id of the merged one.
     """
     now = local_now_iso()
     merged_filter_id = None
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
-        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
         if row is None:
             return None, None
         duplicate = connection.execute(
-            f'SELECT id, name, pinned, position FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ? AND id != ?',
+            f'SELECT id, name, pinned, position FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ? AND id != ?',
             (prepared['selection_key'], int(filter_id))).fetchone()
         name, pinned, position = row['name'], row['pinned'], row['position']
         if duplicate is not None:
@@ -1374,113 +1374,113 @@ def _replace_selection(repository: Repository, filter_id: int, prepared: dict[st
             name = name or duplicate['name']
             if not pinned and duplicate['pinned']:
                 pinned, position = duplicate['pinned'], duplicate['position']
-            connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (merged_filter_id,))
+            connection.execute(f'DELETE FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (merged_filter_id,))
         connection.execute(
-            f'UPDATE {SAVED_FILTERS_TABLE} SET selection_key = ?, name = ?, pinned = ?, position = ?, '
+            f'UPDATE {SAVED_SCORINGS_TABLE} SET selection_key = ?, name = ?, pinned = ?, position = ?, '
             'use_count = use_count + 1, last_used_at = ? WHERE id = ?',
             (prepared['selection_key'], name, pinned, position, now, int(filter_id)))
         _queue_calculation(connection, int(filter_id), prepared, username, now)
-        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
-    return _row_to_saved_filter(row), merged_filter_id
+        row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+    return _row_to_saved_scoring(row), merged_filter_id
 
 
-def mark_saved_filter_used(repository: Repository, filter_id: int) -> dict[str, Any] | None:
-    """Count the opening of a Saved Filter from its card as a use, which also moves it up the list."""
+def mark_saved_scoring_used(repository: Repository, filter_id: int) -> dict[str, Any] | None:
+    """Count the opening of a Saved Scoring from its card as a use, which also moves it up the list."""
     with repository.connection() as connection:
-        connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET use_count = use_count + 1, last_used_at = ? WHERE id = ?',
+        connection.execute(f'UPDATE {SAVED_SCORINGS_TABLE} SET use_count = use_count + 1, last_used_at = ? WHERE id = ?',
                            (local_now_iso(), int(filter_id)))
-    return get_saved_filter(repository, filter_id)
+    return get_saved_scoring(repository, filter_id)
 
 
-def update_saved_filter(repository: Repository, filter_id: int, *, name: str | None = None,
+def update_saved_scoring(repository: Repository, filter_id: int, *, name: str | None = None,
                            pinned: bool | None = None, username: str | None = None) -> dict[str, Any] | None:
-    """Rename a Saved Filter (an empty name shows its filters) or star it, which keeps it at the top of the list of starred
+    """Rename a Saved Scoring (an empty name shows its filters) or star it, which keeps it at the top of the list of starred
     ones (unstarring it takes it out of the list); the user who stars it (``username``) is its creator."""
     updates: dict[str, Any] = {}
     if name is not None:
         text = ' '.join(str(name).split())
         if len(text) > 120:
-            raise ValueError('The name of a Saved Filter can have up to 120 characters.')
+            raise ValueError('The name of a Saved Scoring can have up to 120 characters.')
         updates['name'] = text
     if pinned is not None:
         updates['pinned'] = 1 if pinned else 0
     if updates:
         with repository.connection() as connection:
             if pinned is not None:
-                row = connection.execute(f'SELECT pinned, position FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+                row = connection.execute(f'SELECT pinned, position FROM {SAVED_SCORINGS_TABLE} WHERE id = ?',
                                          (int(filter_id),)).fetchone()
                 if pinned and row is not None and not (row['pinned'] and row['position'] is not None):
-                    # A newly starred Saved Filter goes first; the others keep their order.
+                    # A newly starred Saved Scoring goes first; the others keep their order.
                     first = connection.execute(
-                        f'SELECT MIN(position) FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1 AND position IS NOT NULL').fetchone()[0]
+                        f'SELECT MIN(position) FROM {SAVED_SCORINGS_TABLE} WHERE pinned = 1 AND position IS NOT NULL').fetchone()[0]
                     updates['position'] = (int(first) - 1) if first is not None else 1
                 elif not pinned:
                     updates['position'] = None
                 if pinned and row is not None and not row['pinned'] and str(username or '').strip():
                     updates['created_by'] = str(username).strip()
             assignments = ', '.join(f'{column} = ?' for column in updates)
-            connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET {assignments} WHERE id = ?',
+            connection.execute(f'UPDATE {SAVED_SCORINGS_TABLE} SET {assignments} WHERE id = ?',
                                (*updates.values(), int(filter_id)))
-    return get_saved_filter(repository, filter_id)
+    return get_saved_scoring(repository, filter_id)
 
 
-def reorder_saved_filters(repository: Repository, filter_ids: list[int]) -> list[int]:
-    """Put the starred Saved Filters in the order given (dragged in their list); starred ones left out follow it in their
+def reorder_saved_scorings(repository: Repository, filter_ids: list[int]) -> list[int]:
+    """Put the starred Saved Scorings in the order given (dragged in their list); starred ones left out follow it in their
     order. Returns the new order."""
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
         starred = [int(row['id']) for row in connection.execute(
-            f'SELECT id FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1 '
+            f'SELECT id FROM {SAVED_SCORINGS_TABLE} WHERE pinned = 1 '
             'ORDER BY position IS NULL, position, julianday(last_used_at) DESC, id DESC').fetchall()]
         chosen = [int(filter_id) for filter_id in dict.fromkeys(filter_ids) if int(filter_id) in starred]
         order = [*chosen, *(filter_id for filter_id in starred if filter_id not in chosen)]
-        connection.executemany(f'UPDATE {SAVED_FILTERS_TABLE} SET position = ? WHERE id = ?',
+        connection.executemany(f'UPDATE {SAVED_SCORINGS_TABLE} SET position = ? WHERE id = ?',
                                [(index, filter_id) for index, filter_id in enumerate(order, start=1)])
     return order
 
 
-def recover_interrupted_saved_filters(repository: Repository) -> list[int]:
+def recover_interrupted_saved_scorings(repository: Repository) -> list[int]:
     """Fail the calculations left running when the application stopped, when the workspace is first opened."""
     now = local_now_iso()
     with repository.connection() as connection:
         rows = connection.execute(
-            f"SELECT id FROM {SAVED_FILTERS_TABLE} WHERE status IN ('queued', 'processing') ORDER BY id",
+            f"SELECT id FROM {SAVED_SCORINGS_TABLE} WHERE status IN ('queued', 'processing') ORDER BY id",
         ).fetchall()
         filter_ids = [int(row['id']) for row in rows]
         if filter_ids:
             placeholders = ','.join('?' for _ in filter_ids)
             connection.execute(
-                f"UPDATE {SAVED_FILTERS_TABLE} SET status = 'failed', last_error = ?, message = ?, updated_at = ?, "
+                f"UPDATE {SAVED_SCORINGS_TABLE} SET status = 'failed', last_error = ?, message = ?, updated_at = ?, "
                 f"finished_at = ? WHERE id IN ({placeholders}) AND status IN ('queued', 'processing')",
                 (INTERRUPTED_CALCULATION_MESSAGE, INTERRUPTED_CALCULATION_MESSAGE, now, now, *filter_ids),
             )
     return filter_ids
 
 
-def get_saved_filter(
+def get_saved_scoring(
     repository: Repository, filter_id: int, include_result: bool = False,
     include_internal_snapshot: bool = False,
 ) -> dict[str, Any] | None:
-    """A Saved Filter and, optionally, its saved result."""
+    """A Saved Scoring and, optionally, its saved result."""
     with repository.connection() as connection:
-        row = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
     if row is None:
         return None
-    saved_filter = _row_to_saved_filter(
+    saved_scoring = _row_to_saved_scoring(
         row, include_result=include_result, include_internal_snapshot=include_internal_snapshot,
     )
     if include_result and not include_internal_snapshot:
-        _apply_current_environment_labels(repository, saved_filter)
+        _apply_current_environment_labels(repository, saved_scoring)
         # Results saved before environment scaling existed are scaled when they are opened.
         from src.modules.scoring.scoring import apply_environment_scaling
-        apply_environment_scaling(saved_filter.get('result'), str(saved_filter.get('baseline_operator') or 'EE'))
-    return saved_filter
+        apply_environment_scaling(saved_scoring.get('result'), str(saved_scoring.get('baseline_operator') or 'EE'))
+    return saved_scoring
 
 
-def _apply_current_environment_labels(repository: Repository, saved_filter: dict[str, Any]) -> None:
+def _apply_current_environment_labels(repository: Repository, saved_scoring: dict[str, Any]) -> None:
     """Project current profile labels without changing stored rules or environment keys."""
     try:
-        profile = repository.get_scoring_profile(saved_filter.get('scoring_profile_id') or None)
+        profile = repository.get_scoring_profile(saved_scoring.get('scoring_profile_id') or None)
     except ValueError:
         return
     current = profile['configuration'].get('scope', {}).get('environments', {})
@@ -1495,7 +1495,7 @@ def _apply_current_environment_labels(repository: Repository, saved_filter: dict
 
     labels = {source_identity(scope): str(scope.get('display_name') or name)
               for name, scope in current.items()}
-    for configuration in (saved_filter.get('configuration'), (saved_filter.get('result') or {}).get('configuration')):
+    for configuration in (saved_scoring.get('configuration'), (saved_scoring.get('result') or {}).get('configuration')):
         if not isinstance(configuration, dict):
             continue
         for name, scope in configuration.get('scope', {}).get('environments', {}).items():
@@ -1505,33 +1505,33 @@ def _apply_current_environment_labels(repository: Repository, saved_filter: dict
                 scope['display_name'] = label
 
 
-def delete_saved_filter(repository: Repository, filter_id: int) -> bool:
-    """Remove a Saved Filter and its saved result; its CDRs and the Scoring History stay."""
+def delete_saved_scoring(repository: Repository, filter_id: int) -> bool:
+    """Remove a Saved Scoring and its saved result; its CDRs and the Scoring History stay."""
     with repository.connection() as connection:
-        cursor = connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),))
+        cursor = connection.execute(f'DELETE FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),))
         return cursor.rowcount > 0
 
 
-def prune_unpinned_saved_filters(repository: Repository, keep_id: int, username: str) -> list[int]:
-    """Only the Saved Filters marked with the star are kept: remove the other unstarred ones of a user when they use
+def prune_unpinned_saved_scorings(repository: Repository, keep_id: int, username: str) -> list[int]:
+    """Only the Saved Scorings marked with the star are kept: remove the other unstarred ones of a user when they use
     another one (``keep_id``), except those still calculating or drawing their Points Lost Map."""
     workspace = str(Path(repository.db_path).resolve())
     with _points_loss_guard:
         drawing = {filter_id for path, filter_id in _points_loss_jobs if path == workspace}
     with repository.connection() as connection:
         rows = connection.execute(
-            f"SELECT id FROM {SAVED_FILTERS_TABLE} WHERE pinned = 0 AND id != ? AND created_by = ? "
+            f"SELECT id FROM {SAVED_SCORINGS_TABLE} WHERE pinned = 0 AND id != ? AND created_by = ? "
             "AND status NOT IN ('queued', 'processing')", (int(keep_id), str(username or 'system'))).fetchall()
         removed = [int(row['id']) for row in rows if int(row['id']) not in drawing]
-        connection.executemany(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', [(filter_id,) for filter_id in removed])
+        connection.executemany(f'DELETE FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', [(filter_id,) for filter_id in removed])
     return removed
 
 
-class _SavedFilterDeleted(Exception):
-    """Stop a calculation at a checkpoint once its Saved Filter is removed."""
+class _SavedScoringDeleted(Exception):
+    """Stop a calculation at a checkpoint once its Saved Scoring is removed."""
 
 
-def _update_saved_filter(repository: Repository, filter_id: int, **fields: Any) -> None:
+def _update_saved_scoring(repository: Repository, filter_id: int, **fields: Any) -> None:
     allowed_fields = {
         'status', 'progress', 'message', 'result_json', 'last_error', 'started_at', 'finished_at',
     }
@@ -1543,7 +1543,7 @@ def _update_saved_filter(repository: Repository, filter_id: int, **fields: Any) 
     values = [updates[column] for column in updates]
     with repository.connection() as connection:
         connection.execute(
-            f'UPDATE {SAVED_FILTERS_TABLE} SET {assignments} WHERE id = ?',
+            f'UPDATE {SAVED_SCORINGS_TABLE} SET {assignments} WHERE id = ?',
             (*values, int(filter_id)),
         )
 
@@ -1552,8 +1552,18 @@ def _update_saved_filter(repository: Repository, filter_id: int, **fields: Any) 
 # A Favourite Scoring travels as the Scoring & GAP Favourite Scorings element, without its result: its CDRs are named by the SHA-256 of
 # their files, so the workspace that receives it finds them whatever their name or id there.
 
-SAVED_FILTERS_FORMAT = 'drivetest-analyzer-saved-filters'
-SAVED_FILTERS_VERSION = 1
+SAVED_SCORINGS_FORMAT = 'drivetest-analyzer-saved-scorings'
+SAVED_SCORINGS_VERSION = 1
+# Exported until v0.12.7, when they were called Saved Filters: still imported, transferred and restored.
+LEGACY_SAVED_SCORINGS_FORMAT = 'drivetest-analyzer-saved-filters'
+
+
+def current_saved_scorings_document(document: Any) -> Any:
+    """A Saved Scorings document in the format of this version (one of the Saved Filters of earlier versions converted)."""
+    if isinstance(document, dict) and document.get('format') == LEGACY_SAVED_SCORINGS_FORMAT and 'saved_scorings' not in document:
+        return {**{key: value for key, value in document.items() if key != 'saved_filters'},
+                'format': SAVED_SCORINGS_FORMAT, 'saved_scorings': document.get('saved_filters')}
+    return document
 
 
 def _cdr_hashes(repository: Repository) -> dict[int, dict[str, str]]:
@@ -1578,60 +1588,61 @@ def _cdr_hashes(repository: Repository) -> dict[int, dict[str, str]]:
     return hashes
 
 
-def saved_filters_document(repository: Repository, *, favourites_only: bool = False) -> dict[str, Any]:
-    """Every Saved Filter of the workspace (``favourites_only``: the Favourite Scorings, the Scoring & GAP Favourite Scorings
+def saved_scorings_document(repository: Repository, *, favourites_only: bool = False) -> dict[str, Any]:
+    """Every Saved Scoring of the workspace (``favourites_only``: the Favourite Scorings, the Scoring & GAP Favourite Scorings
     element of Import / Export / Transfer, workspace transfers and backups), without its result, with its CDRs named
     by their file."""
     hashes: dict[int, dict[str, str]] | None = None
     entries = []
     with repository.connection() as connection:
-        rows = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE}{" WHERE pinned = 1" if favourites_only else ""} '
+        rows = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE}{" WHERE pinned = 1" if favourites_only else ""} '
                                   'ORDER BY id').fetchall()
     for row in rows:
-        saved_filter = _row_to_saved_filter(row, include_snapshot=False)
+        saved_scoring = _row_to_saved_scoring(row, include_snapshot=False)
         refs = _decode_json(row['cdr_refs_json'], [])
-        if saved_filter['dataset_ids']:
+        if saved_scoring['dataset_ids']:
             hashes = hashes if hashes is not None else _cdr_hashes(repository)
-            refs = [hashes.get(dataset_id) for dataset_id in saved_filter['dataset_ids']]
+            refs = [hashes.get(dataset_id) for dataset_id in saved_scoring['dataset_ids']]
             if not all(refs):
                 # Without the file of one of its CDRs, the selection could not be found again elsewhere.
                 continue
         if not refs:
             continue
         entries.append({
-            'name': saved_filter['name'], 'pinned': saved_filter['pinned'], 'position': saved_filter['position'],
-            'use_count': saved_filter['use_count'], 'last_used_at': saved_filter['last_used_at'],
-            'cdrs': refs, 'nr_mode': saved_filter['nr_mode'], 'levels': saved_filter['levels'],
-            'baseline_operator': saved_filter['baseline_operator'],
-            'context_filters': saved_filter['context_filters'],
-            'scoring_profile_id': saved_filter['scoring_profile_id'],
+            'name': saved_scoring['name'], 'pinned': saved_scoring['pinned'], 'position': saved_scoring['position'],
+            'use_count': saved_scoring['use_count'], 'last_used_at': saved_scoring['last_used_at'],
+            'cdrs': refs, 'nr_mode': saved_scoring['nr_mode'], 'levels': saved_scoring['levels'],
+            'baseline_operator': saved_scoring['baseline_operator'],
+            'context_filters': saved_scoring['context_filters'],
+            'scoring_profile_id': saved_scoring['scoring_profile_id'],
             # Its Geographical Areas & Scoring Trends (Main Cities kept as such).
-            'area_summary': saved_filter['area_summary'],
+            'area_summary': saved_scoring['area_summary'],
             # Who it belongs to (who starred it, or who calculates it), for Import / Export and Transfer.
-            'created_by': saved_filter['created_by'],
+            'created_by': saved_scoring['created_by'],
         })
-    return {'format': SAVED_FILTERS_FORMAT, 'version': SAVED_FILTERS_VERSION, 'saved_filters': entries}
+    return {'format': SAVED_SCORINGS_FORMAT, 'version': SAVED_SCORINGS_VERSION, 'saved_scorings': entries}
 
 
-def import_saved_filters(repository: Repository, document: Any,
+def import_saved_scorings(repository: Repository, document: Any,
                          creator: Callable[[Any, str], str] | None = None,
                          progress: Callable[[str, float], None] | None = None, takes_order: bool = True) -> int:
-    """Add the Saved Filters of a document to the workspace. Their CDRs are found by file, except for those with a
+    """Add the Saved Scorings of a document to the workspace. Their CDRs are found by file, except for those with a
     Campaign choice (Latest campaign…), which take the CDRs it stands for here and need none in the document; until
     they are processed here, they wait for them. One the workspace already has (the same selection) takes the name and
     the creator of the document, and its star if the document has it, without losing its own star (see
     _resolve_imported_filters). ``creator(creator in the document, '')`` decides who each one belongs to (without it,
-    the application), and ``progress(phase, share done)`` follows the Saved Filters of the document, the only ones it
+    the application), and ``progress(phase, share done)`` follows the Saved Scorings of the document, the only ones it
     prepares. The starred ones go in the order of the document, ahead of those only the workspace has; without an order
     in the document (or ``takes_order``, the starter ones), those the workspace lacks follow its own and the others stay
     where they are. Returns how many were added."""
-    if (not isinstance(document, dict) or document.get('format') != SAVED_FILTERS_FORMAT
-            or document.get('version') != SAVED_FILTERS_VERSION or not isinstance(document.get('saved_filters'), list)):
-        raise ValueError('The Saved Filters are invalid.')
+    document = current_saved_scorings_document(document)
+    if (not isinstance(document, dict) or document.get('format') != SAVED_SCORINGS_FORMAT
+            or document.get('version') != SAVED_SCORINGS_VERSION or not isinstance(document.get('saved_scorings'), list)):
+        raise ValueError('The Saved Scorings are invalid.')
     added = 0
     package_keys: list[str] = []
     now = local_now_iso()
-    entries = sorted(enumerate(document['saved_filters']), key=lambda item: (
+    entries = sorted(enumerate(document['saved_scorings']), key=lambda item: (
         not (isinstance(item[1], dict) and item[1].get('pinned')),
         item[1].get('position') is None if isinstance(item[1], dict) else True,
         (item[1].get('position') or 0) if isinstance(item[1], dict) and isinstance(item[1].get('position'), int) else 0,
@@ -1640,11 +1651,11 @@ def import_saved_filters(repository: Repository, document: Any,
     ordered = takes_order and any(isinstance(entry.get('position'), int) for entry in starred)
     with repository.connection() as connection:
         first, last = connection.execute(
-            f'SELECT MIN(position), MAX(position) FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1').fetchone()
+            f'SELECT MIN(position), MAX(position) FROM {SAVED_SCORINGS_TABLE} WHERE pinned = 1').fetchone()
     next_position = int(first) - len(starred) if ordered and first is not None else int(last or 0) + 1
     for _index, entry in entries:
         if not isinstance(entry, dict):
-            raise ValueError('The Saved Filters are invalid.')
+            raise ValueError('The Saved Scorings are invalid.')
         refs = [
             {'sha256': str(item.get('sha256') or ''), 'name': str(item.get('name') or ''), 'kind': str(item.get('kind') or '')}
             for item in entry.get('cdrs') or [] if isinstance(item, dict) and item.get('sha256')
@@ -1657,7 +1668,7 @@ def import_saved_filters(repository: Repository, document: Any,
             # Without CDRs (the starter Favourite Scorings), those its Campaign choice stands for in the workspace.
             refs = [{'sha256': '', 'name': f'{CAMPAIGN_PRESET_LABELS[campaign_choice]} CDRs', 'kind': ''}]
         if not refs or not levels or nr_mode is None:
-            raise ValueError('The Saved Filters are invalid.')
+            raise ValueError('The Saved Scorings are invalid.')
         area_summary = entry.get('area_summary') if isinstance(entry.get('area_summary'), dict) else None
         selection = {'levels': levels, 'nr_mode': nr_mode, 'baseline_operator': str(entry.get('baseline_operator') or DEFAULT_BASELINE_OPERATOR),
                      'context_filters': context_filters, 'scoring_profile_id': str(entry.get('scoring_profile_id') or ''),
@@ -1674,20 +1685,20 @@ def import_saved_filters(repository: Repository, document: Any,
         # Whether the document says who it belongs to (documents of earlier versions do not): only then does a Saved
         # Filter the workspace has take that creator.
         snapshot['creator_from_document'] = str(entry.get('created_by') or '').strip().casefold() not in {'', 'system'}
-        # Whether the place it is given here is the one the document says: the Saved Filter it joins takes it too.
+        # Whether the place it is given here is the one the document says: the Saved Scoring it joins takes it too.
         snapshot['position_from_document'] = ordered and bool(entry.get('pinned'))
         created_by = creator(entry.get('created_by'), '') if creator else 'system'
         position = next_position if entry.get('pinned') else None
         if entry.get('pinned'):
             next_position += 1
         with repository.connection() as connection:
-            if connection.execute(f'SELECT 1 FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?', (pending_key,)).fetchone():
+            if connection.execute(f'SELECT 1 FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?', (pending_key,)).fetchone():
                 if snapshot['position_from_document']:
-                    connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET position = ? WHERE selection_key = ?',
+                    connection.execute(f'UPDATE {SAVED_SCORINGS_TABLE} SET position = ? WHERE selection_key = ?',
                                        (position, pending_key))
                 continue
             connection.execute(
-                f"""INSERT INTO {SAVED_FILTERS_TABLE} (
+                f"""INSERT INTO {SAVED_SCORINGS_TABLE} (
                     selection_key, name, pinned, position, use_count, last_used_at, cdr_refs_json, dataset_ids_json,
                     source_metadata_json, nr_mode, levels_json, baseline_operator, status, message, created_by, created_at,
                     updated_at
@@ -1727,17 +1738,17 @@ def _postal_twin_key(prepared: dict[str, Any]) -> str:
     if not summary.pop('postal_codes', False):
         summary['postal_codes'] = True
     filters = snapshot['context_filters']
-    return saved_filter_key([] if campaign_presets(filters.get('Campaign') or []) else prepared['dataset_ids'], prepared['levels'],
+    return saved_scoring_key([] if campaign_presets(filters.get('Campaign') or []) else prepared['dataset_ids'], prepared['levels'],
                             prepared['nr_mode'], prepared['baseline_operator'], filters, snapshot['scoring_profile_id'], summary)
 
 
 def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[str] | None = None,
                               progress: Callable[[str, float], None] | None = None) -> None:
-    """Give the imported Saved Filters their CDRs once every one of them is in the workspace (found by file); those
+    """Give the imported Saved Scorings their CDRs once every one of them is in the workspace (found by file); those
     with a Campaign choice (Latest campaign…) take the CDRs it stands for here once the workspace has them. One that
-    matches a Saved Filter of the workspace joins it. ``selection_keys`` keeps to some of them (those of an import),
+    matches a Saved Scoring of the workspace joins it. ``selection_keys`` keeps to some of them (those of an import),
     and ``progress(phase, share done)`` follows them; what they read alike is read once."""
-    query = f"SELECT * FROM {SAVED_FILTERS_TABLE} WHERE dataset_ids_json = '[]' AND cdr_refs_json <> '[]'"
+    query = f"SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE dataset_ids_json = '[]' AND cdr_refs_json <> '[]'"
     keys = list(dict.fromkeys(selection_keys)) if selection_keys is not None else None
     if keys is not None and not keys:
         return
@@ -1748,16 +1759,16 @@ def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[s
         pending = [row for row in pending if row['selection_key'] in wanted]
     if not pending:
         return
-    items = [(row, _row_to_saved_filter(row, include_snapshot=False)) for row in pending]
-    by_file = [not campaign_presets(saved_filter['context_filters'].get('Campaign') or []) for _row, saved_filter in items]
+    items = [(row, _row_to_saved_scoring(row, include_snapshot=False)) for row in pending]
+    by_file = [not campaign_presets(saved_scoring['context_filters'].get('Campaign') or []) for _row, saved_scoring in items]
     # The CDRs are found by the hash of their files first (most of the time when they are read for the first time).
     share = 0.5 if any(by_file) else 0.0
     by_hash: dict[str, int] = _ready_cdr_hashes(repository, (lambda done, count: progress(
         f'identifying CDR {done + 1} of {count} by its file', share * done / count)) if progress else None) if any(by_file) else {}
     cache: dict[Any, Any] = {}
-    for index, ((row, saved_filter), needs_files) in enumerate(zip(items, by_file)):
+    for index, ((row, saved_scoring), needs_files) in enumerate(zip(items, by_file)):
         if progress:
-            progress(f'preparing Saved Filter {index + 1} of {len(items)}', share + (1 - share) * index / len(items))
+            progress(f'preparing Saved Scoring {index + 1} of {len(items)}', share + (1 - share) * index / len(items))
         if not needs_files:
             # Chosen when it is prepared, from the CDRs of this workspace.
             dataset_ids = []
@@ -1767,33 +1778,33 @@ def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[s
             if not dataset_ids or not all(dataset_ids):
                 continue
         try:
-            prepared = _prepare_saved_filter(
-                repository, dataset_ids, saved_filter['levels'], saved_filter['nr_mode'],
-                baseline_operator=saved_filter['baseline_operator'], context_filters=saved_filter['context_filters'],
-                scoring_profile_id=saved_filter['scoring_profile_id'] or None, area_summary=saved_filter['area_summary'],
+            prepared = _prepare_saved_scoring(
+                repository, dataset_ids, saved_scoring['levels'], saved_scoring['nr_mode'],
+                baseline_operator=saved_scoring['baseline_operator'], context_filters=saved_scoring['context_filters'],
+                scoring_profile_id=saved_scoring['scoring_profile_id'] or None, area_summary=saved_scoring['area_summary'],
                 cache=cache,
             )
         except ValueError:
             continue
         with repository.connection() as connection:
-            existing = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
+            existing = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
                                           (prepared['selection_key'],)).fetchone()
-            # Another map of its Postal Codes is the same Saved Filter too: it takes the one the import brings.
+            # Another map of its Postal Codes is the same Saved Scoring too: it takes the one the import brings.
             brings_postal_codes = (existing is not None and postal_areas.wanted(prepared['snapshot']) and postal_areas.chosen_map(prepared['snapshot'])
                                    != postal_areas.chosen_map(_decode_json(existing['source_metadata_json'], {})))
             if existing is None:
-                # With or without Postal Codes it is the same Saved Filter: the option the import brings is added, to be
+                # With or without Postal Codes it is the same Saved Scoring: the option the import brings is added, to be
                 # drawn when it is calculated again, and, as a star, the one of the workspace stays.
-                existing = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
+                existing = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
                                               (_postal_twin_key(prepared),)).fetchone()
                 brings_postal_codes = existing is not None and postal_areas.wanted(prepared['snapshot'])
             if existing is not None:
                 if brings_postal_codes:
                     connection.execute(
-                        f'UPDATE {SAVED_FILTERS_TABLE} SET selection_key = ?, source_metadata_json = ? WHERE id = ?',
+                        f'UPDATE {SAVED_SCORINGS_TABLE} SET selection_key = ?, source_metadata_json = ? WHERE id = ?',
                         (prepared['selection_key'], json.dumps(prepared['snapshot'], ensure_ascii=False, separators=(',', ':')),
                          existing['id']))
-                # The same selection: the Saved Filter of the workspace takes the name of the import and its creator
+                # The same selection: the Saved Scoring of the workspace takes the name of the import and its creator
                 # (with the star it brings; a star of the workspace stays with whoever starred it).
                 incoming_creator = str(row['created_by'] or '').strip()
                 incoming_creator = '' if incoming_creator.casefold() in {'', 'system'} else incoming_creator
@@ -1802,19 +1813,19 @@ def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[s
                 take_creator = bool(incoming_creator) and (bool(row['pinned']) or (from_document and not existing['pinned']))
                 take_position = isinstance(metadata, dict) and bool(metadata.get('position_from_document'))
                 connection.execute(
-                    f"UPDATE {SAVED_FILTERS_TABLE} SET name = CASE WHEN ? <> '' THEN ? ELSE name END, "
+                    f"UPDATE {SAVED_SCORINGS_TABLE} SET name = CASE WHEN ? <> '' THEN ? ELSE name END, "
                     'created_by = CASE WHEN ? = 1 THEN ? ELSE created_by END, '
                     'pinned = MAX(pinned, ?), use_count = MAX(use_count, ?), '
-                    # A Saved Filter of the workspace takes the place the import gave it when the document says one or
+                    # A Saved Scoring of the workspace takes the place the import gave it when the document says one or
                     # stars it here; else, a starred one stays where it is.
                     'position = CASE WHEN ? = 1 OR pinned = 0 OR position IS NULL THEN ? ELSE position END WHERE id = ?',
                     (row['name'] or '', row['name'] or '', int(take_creator), incoming_creator, row['pinned'],
                      row['use_count'], int(take_position), row['position'] if row['pinned'] else None, existing['id']),
                 )
-                connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],))
+                connection.execute(f'DELETE FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (row['id'],))
                 continue
             connection.execute(
-                f"""UPDATE {SAVED_FILTERS_TABLE} SET selection_key = ?, result_key = ?, method_version = ?,
+                f"""UPDATE {SAVED_SCORINGS_TABLE} SET selection_key = ?, result_key = ?, method_version = ?,
                    source_fingerprint = ?, dataset_ids_json = ?, levels_json = ?, nr_mode = ?, baseline_operator = ?,
                    source_metadata_json = ?, cdr_refs_json = '[]', message = 'Calculated when it is opened'
                    WHERE id = ?""",
@@ -1826,7 +1837,7 @@ def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[s
 
 
 def convert_scoring_jobs(connection: Any) -> None:
-    """Turn the Scoring Jobs of a workspace saved by earlier versions into Saved Filters, once: the jobs of the same
+    """Turn the Scoring Jobs of a workspace saved by earlier versions into Saved Scorings, once: the jobs of the same
     selection become one, with the latest result and how many times it was calculated."""
     if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scoring_jobs'").fetchone():
         return
@@ -1839,7 +1850,7 @@ def convert_scoring_jobs(connection: Any) -> None:
         dataset_ids = _decode_json(row['dataset_ids_json'], [])
         levels = _decode_json(row['levels_json'], [])
         try:
-            key = saved_filter_key(dataset_ids, levels, row['nr_mode'], row['baseline_operator'],
+            key = saved_scoring_key(dataset_ids, levels, row['nr_mode'], row['baseline_operator'],
                                    snapshot.get('context_filters') or {}, snapshot.get('scoring_profile_id') or '',
                                    snapshot.get('area_summary'))
         except (TypeError, ValueError):
@@ -1857,7 +1868,7 @@ def convert_scoring_jobs(connection: Any) -> None:
     for key, entry in merged.items():
         row = entry['row']
         connection.execute(
-            f"""INSERT OR IGNORE INTO {SAVED_FILTERS_TABLE} (
+            f"""INSERT OR IGNORE INTO {SAVED_SCORINGS_TABLE} (
                 selection_key, use_count, calculation_count, last_used_at, result_key, method_version, source_fingerprint,
                 dataset_ids_json, source_metadata_json, nr_mode, levels_json, baseline_operator, status, progress, message,
                 result_json, last_error, created_by, created_at, started_at, updated_at, finished_at
@@ -2086,32 +2097,32 @@ def _attach_mapping_boundaries(repository: Repository, dataset_ids: list[int], r
         document.setdefault('boundaries', {}).update(boundaries)
 
 
-def calculate_saved_filter(repository: Repository, filter_id: int,
+def calculate_saved_scoring(repository: Repository, filter_id: int,
                            submit_points_loss: Callable[[Callable[[], None]], Any] | None = None,
                            work_waiting: Callable[[], bool] | None = None) -> dict[str, Any] | None:
-    """Calculate the queued result of a Saved Filter, save it, and keep a failure with its reason.
+    """Calculate the queued result of a Saved Scoring, save it, and keep a failure with its reason.
 
     A result from the Scoring History gets its Points Lost Map from the rows of the tests afterwards: with
     ``submit_points_loss`` as a job of its own (so the calculations waiting do not wait for it, and with
     ``work_waiting`` it gives way to those queued while it is drawn; see queue_points_loss), else at once.
     """
-    saved_filter = get_saved_filter(repository, filter_id, include_internal_snapshot=True)
-    if saved_filter is None:
+    saved_scoring = get_saved_scoring(repository, filter_id, include_internal_snapshot=True)
+    if saved_scoring is None:
         return None
-    if saved_filter['status'] == 'completed':
-        return get_saved_filter(repository, filter_id, include_result=True)
-    if saved_filter['status'] == 'processing':
-        return saved_filter
+    if saved_scoring['status'] == 'completed':
+        return get_saved_scoring(repository, filter_id, include_result=True)
+    if saved_scoring['status'] == 'processing':
+        return saved_scoring
     now = local_now_iso()
-    _update_saved_filter(
+    _update_saved_scoring(
         repository, filter_id, status='processing', progress=2,
         message='Checking selected CDR datasets', last_error='', started_at=now,
     )
 
     def update_progress(progress: int, message: str) -> None:
-        if get_saved_filter(repository, filter_id) is None:
-            raise _SavedFilterDeleted()
-        _update_saved_filter(
+        if get_saved_scoring(repository, filter_id) is None:
+            raise _SavedScoringDeleted()
+        _update_saved_scoring(
             repository, filter_id, progress=max(2, min(95, int(progress))), message=message,
         )
 
@@ -2120,41 +2131,41 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         # filter and its Separate cities only.
         # The National & Country Areas Trends score their own Areas and Cities on their own when they have some; the
         # Country Areas tab those of Country Areas.
-        requested = saved_filter.get('area_summary')
+        requested = saved_scoring.get('area_summary')
         main_cities = _workspace_main_cities(repository)
-        saved_filter['area_summary'] = with_breakdown_cities(
-            resolve_main_cities(trend_area_summary(requested), main_cities), saved_filter.get('context_filters'))
+        saved_scoring['area_summary'] = with_breakdown_cities(
+            resolve_main_cities(trend_area_summary(requested), main_cities), saved_scoring.get('context_filters'))
         if isinstance(requested, dict) and 'trend_cities' in requested:
-            saved_filter['geographical_areas'] = with_breakdown_cities(
-                resolve_main_cities(country_area_summary(requested), main_cities), saved_filter.get('context_filters'))
-        configuration = saved_filter.get('configuration')
+            saved_scoring['geographical_areas'] = with_breakdown_cities(
+                resolve_main_cities(country_area_summary(requested), main_cities), saved_scoring.get('context_filters'))
+        configuration = saved_scoring.get('configuration')
         if configuration is None:
             raise ValueError(
-                'This Saved Filter has no saved methodology. Import the Scoring & GAP Analysis Methodologies and calculate it again.'
+                'This Saved Scoring has no saved methodology. Import the Scoring & GAP Analysis Methodologies and calculate it again.'
             )
         current_version = _method_version(configuration)
-        if current_version != saved_filter['method_version']:
+        if current_version != saved_scoring['method_version']:
             raise ValueError(
                 'The scoring methodology changed after this calculation was queued. Calculate it again.')
         configuration = validate_scoring_configuration(configuration)
-        dataset_ids = [int(value) for value in saved_filter['dataset_ids']]
+        dataset_ids = [int(value) for value in saved_scoring['dataset_ids']]
         sources, _campaigns, current_fingerprint = _source_snapshot(
-            repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'],
+            repository, dataset_ids, expected_nr_mode=saved_scoring['nr_mode'],
         )
-        if current_fingerprint != saved_filter['source_fingerprint']:
+        if current_fingerprint != saved_scoring['source_fingerprint']:
             raise ValueError('A selected CDR changed after this calculation was queued. Calculate it again.')
         engine = _scoring_engine()
-        context_filters = saved_filter.get('resolved_context_filters', saved_filter.get('context_filters', {}))
-        groups = saved_filter.get('methodology_groups') or []
+        context_filters = saved_scoring.get('resolved_context_filters', saved_scoring.get('context_filters', {}))
+        groups = saved_scoring.get('methodology_groups') or []
         # Country Areas and Scoring Trends switched off are not calculated (nor the rows of the whole country read for them).
-        areas_on = area_summary_part_enabled(saved_filter.get('area_summary'), 'country_areas')
-        trends_on = area_summary_part_enabled(saved_filter.get('area_summary'), 'trends')
-        trends = saved_filter.get('area_trends') if saved_filter.get('area_summary') and trends_on else None
+        areas_on = area_summary_part_enabled(saved_scoring.get('area_summary'), 'country_areas')
+        trends_on = area_summary_part_enabled(saved_scoring.get('area_summary'), 'trends')
+        trends = saved_scoring.get('area_trends') if saved_scoring.get('area_summary') and trends_on else None
         # National & Geographical Areas Trends with campaigns of their own are scored apart, from the CDRs of those
         # campaigns; the Geographical Areas of the job keep their Breakdown and Separate cities.
-        job_filter = ({**saved_filter, 'area_summary': None,
-                       'geographical_areas': saved_filter.get('geographical_areas') or saved_filter.get('area_summary')}
-                      if trends or not trends_on else saved_filter)
+        job_filter = ({**saved_scoring, 'area_summary': None,
+                       'geographical_areas': saved_scoring.get('geographical_areas') or saved_scoring.get('area_summary')}
+                      if trends or not trends_on else saved_scoring)
         if not areas_on:
             job_filter = {**job_filter, 'geographical': False}
         if len(groups) > 1:
@@ -2180,11 +2191,11 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
             result, map_pending = _scoring_result(repository, job_filter, configuration, dataset_ids, sources,
                                                   context_filters, engine, update_progress)
         if trends:
-            summary = _trend_area_summary(repository, saved_filter, trends, configuration, context_filters, engine,
+            summary = _trend_area_summary(repository, saved_scoring, trends, configuration, context_filters, engine,
                                           update_progress)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings', [])]
             result['area_summary'] = summary
-        if warning := _campaigns_without_tests_warning(saved_filter, context_filters, result):
+        if warning := _campaigns_without_tests_warning(saved_scoring, context_filters, result):
             result['warnings'] = [*(result.get('warnings') or []), warning]
         # The calls the Excluded Calls lists leave out of its CDRs.
         from src.modules.scoring.scoring_exclusions import load_scope, summary_warning
@@ -2193,31 +2204,31 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
             result['excluded_calls'] = excluded_calls
             if warning := summary_warning(excluded_calls):
                 result['warnings'] = [*(result.get('warnings') or []), warning]
-        if postal_areas.wanted(saved_filter) and not map_pending:
+        if postal_areas.wanted(saved_scoring) and not map_pending:
             # Postal Codes are only placed while the map is drawn apart (the scores never need them).
             result['points_loss'] = {'version': 2, 'pending': True}
             map_pending = True
-        _save_scoring_result(repository, saved_filter, filter_id, dataset_ids, configuration, result,
+        _save_scoring_result(repository, saved_scoring, filter_id, dataset_ids, configuration, result,
                              points_loss_pending=map_pending)
         if map_pending and _complete_points_loss(
-                repository, saved_filter, filter_id, [dict(source) for source in sources], dataset_ids, configuration,
+                repository, saved_scoring, filter_id, [dict(source) for source in sources], dataset_ids, configuration,
                 context_filters, engine, groups, cached_only=True):
             # The maps of its CDRs and methodologies were drawn before: it is complete at once.
             map_pending = False
         if map_pending:
             # The Points Lost Map needs the rows of the tests: it is added once they are read.
             if submit_points_loss is None:
-                complete_saved_filter_points_loss(repository, filter_id)
+                complete_saved_scoring_points_loss(repository, filter_id)
             else:
                 queue_points_loss(repository, filter_id, submit_points_loss, work_waiting)
-    except _SavedFilterDeleted:
+    except _SavedScoringDeleted:
         return None
     except Exception as exc:
-        _fail_calculation(repository, saved_filter, filter_id, exc)
-    return get_saved_filter(repository, filter_id, include_result=True)
+        _fail_calculation(repository, saved_scoring, filter_id, exc)
+    return get_saved_scoring(repository, filter_id, include_result=True)
 
 
-def _campaigns_without_tests_warning(saved_filter: dict[str, Any], context_filters: dict[str, list[str]],
+def _campaigns_without_tests_warning(saved_scoring: dict[str, Any], context_filters: dict[str, list[str]],
                                      result: dict[str, Any]) -> str | None:
     """The warning of the chosen campaigns the other filters leave no test of (26-Q4 without tests in the City
     chosen): the Campaign filter lists every campaign, so it tells why they add nothing to the results."""
@@ -2225,7 +2236,7 @@ def _campaigns_without_tests_warning(saved_filter: dict[str, Any], context_filte
 
     chosen = [str(value) for value in context_filters.get('Campaign') or [] if str(value or '').strip()
               and not str(value).startswith('@')]
-    if not chosen or _compares_nr_modes(saved_filter) or not isinstance(result.get('campaigns'), list):
+    if not chosen or _compares_nr_modes(saved_scoring) or not isinstance(result.get('campaigns'), list):
         return None
     measured = {campaign_identity(value) for value in result['campaigns']}
     missing = list(dict.fromkeys(format_campaign(value) or value for value in chosen if campaign_identity(value) not in measured))
@@ -2237,15 +2248,15 @@ def _campaigns_without_tests_warning(saved_filter: dict[str, Any], context_filte
             f"{'they add' if len(missing) > 1 else 'it adds'} nothing to the results.")
 
 
-def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], trends: dict[str, Any],
+def _trend_area_summary(repository: Repository, saved_scoring: dict[str, Any], trends: dict[str, Any],
                         configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
                         update_progress: Callable[[int, str], None]) -> dict[str, Any]:
     """National & Geographical Areas Trends with campaigns of their own: the CDRs of those campaigns scored with the job's filters
     (its campaigns aside) and methodology (each campaign with its own By campaign), split by Operator and Campaign. The
-    trends of the same CDRs, methodology and options calculated before (by this Saved Filter or another one) are reused."""
-    area_summary = saved_filter['area_summary']
+    trends of the same CDRs, methodology and options calculated before (by this Saved Scoring or another one) are reused."""
+    area_summary = saved_scoring['area_summary']
     dataset_ids = [int(value) for value in trends.get('dataset_ids') or []]
-    sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'])
+    sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=saved_scoring['nr_mode'])
     if fingerprint != trends.get('source_fingerprint'):
         raise ValueError('A CDR of the National & Country Areas Trends changed after this calculation was queued. Calculate it again.')
     # Split as the National calculation of the summary, which then reuses this one.
@@ -2261,16 +2272,16 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
             'geographical_version': GEOGRAPHICAL_AREAS_VERSION, 'sources': fingerprint, 'levels': levels,
             'filters': _filters_key(filters), 'area_summary': area_summary,
             'methodology': [trends.get('configuration_hash'), configuration_hash(trends.get('configuration') or configuration)],
-            'baseline_operator': saved_filter['baseline_operator'], 'baseline_aliases': saved_filter.get('baseline_aliases', []),
-            'operator_mappings': saved_filter.get('operator_mappings', {}),
+            'baseline_operator': saved_scoring['baseline_operator'], 'baseline_aliases': saved_scoring.get('baseline_aliases', []),
+            'operator_mappings': saved_scoring.get('operator_mappings', {}),
             'operator_groups': repository.list_operator_mapping_groups(),
-            **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_filter) else {}),
+            **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_scoring) else {}),
         })
         cached = scoring_cache.read(repository, 'trends', key)
         if cached is not None:
             update_progress(95, 'National & Country Areas Trends: reused from a calculation of the same CDRs and methodology')
             return cached
-    trend_filter = {**saved_filter, 'dataset_ids': dataset_ids, 'levels': levels, 'source_fingerprint': fingerprint,
+    trend_filter = {**saved_scoring, 'dataset_ids': dataset_ids, 'levels': levels, 'source_fingerprint': fingerprint,
                     'geographical': False}
 
     def progress(value: int, message: str) -> None:
@@ -2309,18 +2320,18 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
     return summary
 
 
-def _scoring_result(repository: Repository, saved_filter: dict[str, Any], configuration: dict[str, Any],
+def _scoring_result(repository: Repository, saved_scoring: dict[str, Any], configuration: dict[str, Any],
                     dataset_ids: list[int], sources: list[dict[str, Any]], context_filters: dict[str, list[str]],
                     engine: Any, update_progress: Callable[[int, str], None]) -> tuple[dict[str, Any], bool]:
-    """The scoring (and area summary) of a Saved Filter with one methodology, and whether it came from the Scoring
+    """The scoring (and area summary) of a Saved Scoring with one methodology, and whether it came from the Scoring
     History (its Points Lost Map then follows from the rows of the tests)."""
-    result = _history_result(repository, saved_filter, configuration, dataset_ids, context_filters, engine,
+    result = _history_result(repository, saved_scoring, configuration, dataset_ids, context_filters, engine,
                              update_progress)
     if result is not None:
         return result, True
-    if saved_filter.get('history_gap'):
+    if saved_scoring.get('history_gap'):
         # Every step says why the rows of the CDRs are read (and the Scoring History not used).
-        reason = saved_filter['history_gap']
+        reason = saved_scoring['history_gap']
         report = update_progress
         update_progress = lambda progress, message: report(progress, f'{message} (from the CDR rows: {reason})')
     update_progress(6, 'Reading processed CDR rows')
@@ -2328,44 +2339,44 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
     # The area summary also reads its breakdown and City columns, and the test start time for its time split; the
     # Geographical views read those of their Breakdown and Separate cities.
-    extra = area_summary_levels(saved_filter['levels'], saved_filter.get('area_summary'))
-    if saved_filter.get('geographical', True):
-        extra = [*extra, *(level for level in geographical_levels(saved_filter['levels'], _geographical_areas(saved_filter))
+    extra = area_summary_levels(saved_scoring['levels'], saved_scoring.get('area_summary'))
+    if saved_scoring.get('geographical', True):
+        extra = [*extra, *(level for level in geographical_levels(saved_scoring['levels'], _geographical_areas(saved_scoring))
                            if level not in extra)]
     for source in sources:
-        source['levels'] = [*saved_filter['levels'], *extra]
-    nr_mode_campaigns = _compares_nr_modes(saved_filter)
+        source['levels'] = [*saved_scoring['levels'], *extra]
+    nr_mode_campaigns = _compares_nr_modes(saved_scoring)
     frames = _load_source_frames(repository, sources, update_progress, required_columns, context_filters,
                                  nr_mode_campaigns=nr_mode_campaigns)
     _current_sources, _campaigns, post_load_fingerprint = _source_snapshot(
-        repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'],
+        repository, dataset_ids, expected_nr_mode=saved_scoring['nr_mode'],
     )
-    if post_load_fingerprint != saved_filter['source_fingerprint']:
+    if post_load_fingerprint != saved_scoring['source_fingerprint']:
         raise ValueError('A selected CDR changed while its scoring rows were being loaded.')
     update_progress(62, 'Calculating KPIs and interpolated scores')
     calculate = engine.calculate_scoring
-    call_kwargs = _engine_kwargs(repository, saved_filter, configuration, calculate)
-    result = calculate(frames, saved_filter['levels'], **call_kwargs)
+    call_kwargs = _engine_kwargs(repository, saved_scoring, configuration, calculate)
+    result = calculate(frames, saved_scoring['levels'], **call_kwargs)
     if not isinstance(result, dict):
         raise TypeError('The scoring engine must return a result object.')
     job_filtered = has_area_filters(context_filters)
     # The Geographical Areas & Scoring Trends are scored on the whole country: a job with area filters reads its rows apart.
     country_frames = frames
-    if job_filtered and (saved_filter.get('area_summary') or saved_filter.get('geographical', True)):
+    if job_filtered and (saved_scoring.get('area_summary') or saved_scoring.get('geographical', True)):
         update_progress(87, 'Reading the CDR rows of the whole country for the Country Areas & Scoring Trends')
         country_frames = _load_source_frames(repository, [dict(source) for source in sources], lambda *_args: None,
                                              required_columns, whole_country_filters(context_filters),
                                              nr_mode_campaigns=nr_mode_campaigns)
-    if saved_filter.get('area_summary'):
-        summary = calculate_area_summary(calculate, country_frames, saved_filter['levels'],
-                                         saved_filter['area_summary'], call_kwargs, update_progress, job_filtered=job_filtered)
+    if saved_scoring.get('area_summary'):
+        summary = calculate_area_summary(calculate, country_frames, saved_scoring['levels'],
+                                         saved_scoring['area_summary'], call_kwargs, update_progress, job_filtered=job_filtered)
         result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
         result['area_summary'] = summary
-    if saved_filter.get('geographical', True):
+    if saved_scoring.get('geographical', True):
         # Its Breakdown and Separate cities on the whole country: those equal to the job's own calculation or to one of
         # the summary (the same rows) are read from them.
-        geographical = calculate_geographical(calculate, country_frames, saved_filter['levels'], call_kwargs, update_progress,
-                                              result.get('area_summary'), _geographical_areas(saved_filter),
+        geographical = calculate_geographical(calculate, country_frames, saved_scoring['levels'], call_kwargs, update_progress,
+                                              result.get('area_summary'), _geographical_areas(saved_scoring),
                                               reuse_job=not job_filtered)
         if geographical:
             result['geographical'] = geographical
@@ -2376,10 +2387,10 @@ def calculate_selection(repository: Repository, campaigns: list[str], levels: li
                         context_filters: dict[str, list[str]] | None = None, baseline_operator: str = DEFAULT_BASELINE_OPERATOR,
                         scoring_profile_id: str | None = 'by-campaign',
                         progress: Callable[[int, str], None] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-    """The scoring of a selection calculated at once, as a Saved Filter of the same selection calculates it (the
+    """The scoring of a selection calculated at once, as a Saved Scoring of the same selection calculates it (the
     AI Assistant), without saving one: the complete campaigns of the NR Mode choose the CDRs, each campaign is scored
     with the methodology that applies to it, and the Scoring History is used when it covers the selection (else the
-    rows of the CDRs are read). Neither the Geographical Areas nor the trends of a Saved Filter are calculated.
+    rows of the CDRs are read). Neither the Geographical Areas nor the trends of a Saved Scoring are calculated.
 
     Returns the result and the selection it was calculated for (its CDRs, campaigns, methodology and filters)."""
     from src.modules.scoring.scoring_selection import scoring_auto_cdrs
@@ -2391,7 +2402,7 @@ def calculate_selection(repository: Repository, campaigns: list[str], levels: li
     if not dataset_ids:
         raise ValueError('No campaign with Data, Voice and Speech CDRs matches this selection.')
     filters['Campaign'] = list(chosen['campaign_selection'] or campaigns)
-    prepared = _prepare_saved_filter(repository, dataset_ids, levels, chosen['nr_mode'], baseline_operator=baseline_operator,
+    prepared = _prepare_saved_scoring(repository, dataset_ids, levels, chosen['nr_mode'], baseline_operator=baseline_operator,
                                      context_filters=filters, scoring_profile_id=scoring_profile_id)
     snapshot = prepared['snapshot']
     job = {'levels': prepared['levels'], 'nr_mode': prepared['nr_mode'], 'baseline_operator': prepared['baseline_operator'],
@@ -2432,31 +2443,31 @@ def calculate_selection(repository: Repository, campaigns: list[str], levels: li
     return result, selection
 
 
-def _compares_nr_modes(saved_filter: dict[str, Any]) -> bool:
-    """Whether a Saved Filter scores NSA vs SA (each campaign with the NR Mode of its CDRs)."""
-    return normalize_scoring_nr_mode(saved_filter.get('nr_mode')) == NSA_VS_SA
+def _compares_nr_modes(saved_scoring: dict[str, Any]) -> bool:
+    """Whether a Saved Scoring scores NSA vs SA (each campaign with the NR Mode of its CDRs)."""
+    return normalize_scoring_nr_mode(saved_scoring.get('nr_mode')) == NSA_VS_SA
 
 
-def _geographical_areas(saved_filter: dict[str, Any]) -> dict[str, Any] | None:
-    """The Breakdown and Separate cities of the Geographical Areas & Scoring Trends of a Saved Filter (those of the job
+def _geographical_areas(saved_scoring: dict[str, Any]) -> dict[str, Any] | None:
+    """The Breakdown and Separate cities of the Geographical Areas & Scoring Trends of a Saved Scoring (those of the job
     when its trends, with campaigns of their own, are scored apart)."""
-    areas = saved_filter.get('geographical_areas') or saved_filter.get('area_summary')
+    areas = saved_scoring.get('geographical_areas') or saved_scoring.get('area_summary')
     return areas if isinstance(areas, dict) else None
 
 
-def _engine_kwargs(repository: Repository, saved_filter: dict[str, Any], configuration: dict[str, Any],
+def _engine_kwargs(repository: Repository, saved_scoring: dict[str, Any], configuration: dict[str, Any],
                    calculate: Callable[..., Any]) -> dict[str, Any]:
     """The options of the engine's calculation: reference, methodology, operator names and Map Areas."""
     parameters = inspect.signature(calculate).parameters
     call_kwargs = {
-        'baseline_operator': saved_filter['baseline_operator'],
+        'baseline_operator': saved_scoring['baseline_operator'],
         'configuration': configuration,
     }
     accepts_keywords = any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
     if 'operator_mappings' in parameters or accepts_keywords:
-        call_kwargs['operator_mappings'] = saved_filter.get('operator_mappings', {})
+        call_kwargs['operator_mappings'] = saved_scoring.get('operator_mappings', {})
     if 'baseline_aliases' in parameters or accepts_keywords:
-        call_kwargs['baseline_aliases'] = saved_filter.get('baseline_aliases', [])
+        call_kwargs['baseline_aliases'] = saved_scoring.get('baseline_aliases', [])
     if 'map_areas' in parameters:
         # The tests are placed in the workspace's Map Areas of their country (the ITL3 areas in the UK).
         from src.modules.network.map_areas import area_index
@@ -2464,9 +2475,9 @@ def _engine_kwargs(repository: Repository, saved_filter: dict[str, Any], configu
     return call_kwargs
 
 
-def _history_result(repository: Repository, saved_filter: dict[str, Any], configuration: dict[str, Any], dataset_ids: list[int],
+def _history_result(repository: Repository, saved_scoring: dict[str, Any], configuration: dict[str, Any], dataset_ids: list[int],
                     context_filters: dict[str, list[str]], engine: Any, update_progress) -> dict[str, Any] | None:
-    """The scoring (and area summary) of the saved_filter from the Scoring History when it holds every selected CDR at its
+    """The scoring (and area summary) of the saved_scoring from the Scoring History when it holds every selected CDR at its
     current revision with every KPI of the methodology, and the split and filters are its dimensions; else None."""
     from src.modules.scoring import scoring as scoring_engine
     from src.modules.scoring.scoring_history import HistoryUnavailable, calculate_scoring_from_history, history_gap
@@ -2475,41 +2486,41 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
         return None
     update_progress(4, f'Checking the Scoring History of the {len(dataset_ids)} CDRs')
     # Why the rows of the CDRs are read instead, told while they are read.
-    saved_filter['history_gap'] = history_gap(repository, dataset_ids, saved_filter['levels'], configuration,
+    saved_scoring['history_gap'] = history_gap(repository, dataset_ids, saved_scoring['levels'], configuration,
                                               context_filters)
-    if saved_filter['history_gap']:
+    if saved_scoring['history_gap']:
         return None
     update_progress(20, 'Calculating from the Scoring History')
     catalogues = repository.cdr_catalogues_by_dataset(dataset_ids)
     options = {
-        'baseline_operator': saved_filter['baseline_operator'], 'configuration': configuration,
-        'baseline_aliases': saved_filter.get('baseline_aliases', []), 'operator_mappings': saved_filter.get('operator_mappings', {}),
+        'baseline_operator': saved_scoring['baseline_operator'], 'configuration': configuration,
+        'baseline_aliases': saved_scoring.get('baseline_aliases', []), 'operator_mappings': saved_scoring.get('operator_mappings', {}),
         'context_filters': context_filters,
         'vendor_operators': scoring_vendor_operators(catalogues, repository.list_operator_mapping_groups()),
-        **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_filter) else {}),
+        **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_scoring) else {}),
     }
     try:
-        result = calculate_scoring_from_history(repository, dataset_ids, saved_filter['levels'], **options)
+        result = calculate_scoring_from_history(repository, dataset_ids, saved_scoring['levels'], **options)
         job_filtered = has_area_filters(context_filters)
-        if saved_filter.get('area_summary'):
+        if saved_scoring.get('area_summary'):
             # The summary is scored on the whole country, whatever the job's area filters.
             summary_options = {**options, 'context_filters': whole_country_filters(context_filters)}
 
             def calculate(levels: list[str], *, time_split: str | None = None, cities=None) -> dict[str, Any]:
                 return calculate_scoring_from_history(repository, dataset_ids, levels, time_split=time_split,
                                                       cities=cities, **summary_options)
-            summary = calculate_area_summary_from_history(calculate, saved_filter['levels'], saved_filter['area_summary'],
+            summary = calculate_area_summary_from_history(calculate, saved_scoring['levels'], saved_scoring['area_summary'],
                                                           update_progress, job_filtered=job_filtered)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings')]
             result['area_summary'] = summary
-        if saved_filter.get('geographical', True):
+        if saved_scoring.get('geographical', True):
             # Its Breakdown and Separate cities on the whole country: those equal to the job's own calculation or to one
             # of the summary are read from them.
             country_options = {**options, 'context_filters': whole_country_filters(context_filters)}
             geographical = calculate_geographical_from_history(
                 lambda levels, *, cities=None: calculate_scoring_from_history(repository, dataset_ids, levels, cities=cities,
                                                                               **country_options),
-                saved_filter['levels'], update_progress, result.get('area_summary'), _geographical_areas(saved_filter),
+                saved_scoring['levels'], update_progress, result.get('area_summary'), _geographical_areas(saved_scoring),
                 reuse_job=not job_filtered)
             if geographical:
                 result['geographical'] = geographical
@@ -2519,7 +2530,7 @@ def _history_result(repository: Repository, saved_filter: dict[str, Any], config
     return result
 
 
-# The Points Lost Maps waiting or being drawn, per workspace database and Saved Filter, for the background tasks card.
+# The Points Lost Maps waiting or being drawn, per workspace database and Saved Scoring, for the background tasks card.
 _points_loss_jobs: dict[tuple[str, int], dict[str, Any]] = {}
 _points_loss_guard = threading.Lock()
 
@@ -2537,12 +2548,12 @@ class _MapStopped(Exception):
 
 
 POINTS_LOSS_STOPPED = 'Stopped by a user before it was drawn'
-# The message of a Saved Filter whose Points Lost Map a user stopped: it is drawn again once the application is idle.
+# The message of a Saved Scoring whose Points Lost Map a user stopped: it is drawn again once the application is idle.
 POINTS_LOSS_STOPPED_MESSAGE = 'Scoring tables and GAP analysis are ready; the Points Lost Map was stopped'
 
 
 def request_points_loss_stop(database_path: Any, filter_id: int) -> bool:
-    """Stop the Points Lost Map of a Saved Filter: one waiting does not start, one being drawn stops at once (its process
+    """Stop the Points Lost Map of a Saved Scoring: one waiting does not start, one being drawn stops at once (its process
     is ended); its result keeps its scores, without the map. Returns whether it was waiting or drawn."""
     with _points_loss_guard:
         job = _points_loss_jobs.get(_points_loss_key(database_path, filter_id))
@@ -2553,32 +2564,32 @@ def request_points_loss_stop(database_path: Any, filter_id: int) -> bool:
 
 
 def _points_loss_stopped(repository: Repository, filter_id: int) -> None:
-    """The result of a Saved Filter whose Points Lost Map a user stopped: its scores, and the map stopped."""
+    """The result of a Saved Scoring whose Points Lost Map a user stopped: its scores, and the map stopped."""
     with repository.connection() as connection:
-        row = connection.execute(f'SELECT status, result_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        row = connection.execute(f'SELECT status, result_json FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
     if row is None or row['status'] != 'completed' or not row['result_json']:
         return
     result = json.loads(row['result_json'])
     if not (isinstance(result.get('points_loss'), dict) and result['points_loss'].get('pending')):
         return
     result['points_loss'] = {'version': 2, 'error': POINTS_LOSS_STOPPED}
-    _update_saved_filter(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
+    _update_saved_scoring(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
                                                                    allow_nan=False),
                         message=POINTS_LOSS_STOPPED_MESSAGE)
 
 
 def stopped_points_loss_ids(repository: Repository) -> list[int]:
-    """The Saved Filters whose Points Lost Map a user stopped, the oldest first."""
+    """The Saved Scorings whose Points Lost Map a user stopped, the oldest first."""
     with repository.connection() as connection:
         return [int(row['id']) for row in connection.execute(
-            f"SELECT id FROM {SAVED_FILTERS_TABLE} WHERE status = 'completed' AND message = ? ORDER BY updated_at, id",
+            f"SELECT id FROM {SAVED_SCORINGS_TABLE} WHERE status = 'completed' AND message = ? ORDER BY updated_at, id",
             (POINTS_LOSS_STOPPED_MESSAGE,)).fetchall()]
 
 
 def resume_stopped_points_loss(repository: Repository, filter_id: int) -> bool:
     """Make the Points Lost Map a user stopped pending again, to be drawn (see queue_points_loss); whether it was."""
     with repository.connection() as connection:
-        row = connection.execute(f'SELECT status, message, result_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+        row = connection.execute(f'SELECT status, message, result_json FROM {SAVED_SCORINGS_TABLE} WHERE id = ?',
                                  (int(filter_id),)).fetchone()
     if row is None or row['status'] != 'completed' or row['message'] != POINTS_LOSS_STOPPED_MESSAGE or not row['result_json']:
         return False
@@ -2586,7 +2597,7 @@ def resume_stopped_points_loss(repository: Repository, filter_id: int) -> bool:
     if not (isinstance(result.get('points_loss'), dict) and result['points_loss'].get('error') == POINTS_LOSS_STOPPED):
         return False
     result['points_loss'] = {'version': 2, 'pending': True}
-    _update_saved_filter(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
+    _update_saved_scoring(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
                                                                    allow_nan=False),
                         message='Scoring tables and GAP analysis are ready; preparing the Points Lost Map')
     return True
@@ -2602,13 +2613,13 @@ def queue_points_loss(repository: Repository, filter_id: int, submit: Callable[[
     with _points_loss_guard:
         _points_loss_jobs[_points_loss_key(repository.db_path, filter_id)] = {
             'status': 'queued', 'queued_at': time.time(), 'started_at': None}
-    submit(partial(complete_saved_filter_points_loss, repository, int(filter_id), submit, work_waiting))
+    submit(partial(complete_saved_scoring_points_loss, repository, int(filter_id), submit, work_waiting))
 
 
-def complete_saved_filter_points_loss(repository: Repository, filter_id: int,
+def complete_saved_scoring_points_loss(repository: Repository, filter_id: int,
                                       requeue: Callable[[Callable[[], None]], Any] | None = None,
                                       work_waiting: Callable[[], bool] | None = None) -> None:
-    """Read the rows of the tests of a Saved Filter and add its Points Lost Map to its saved result."""
+    """Read the rows of the tests of a Saved Scoring and add its Points Lost Map to its saved result."""
     key = _points_loss_key(repository.db_path, filter_id)
     with _points_loss_guard:
         if key in _points_loss_jobs:
@@ -2628,24 +2639,24 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int,
     gave_way = False
     try:
         report(0, 'Reading the rows of the tests')
-        saved_filter = get_saved_filter(repository, filter_id, include_internal_snapshot=True)
-        if saved_filter is None or not saved_filter.get('configuration'):
+        saved_scoring = get_saved_scoring(repository, filter_id, include_internal_snapshot=True)
+        if saved_scoring is None or not saved_scoring.get('configuration'):
             return
-        configuration = validate_scoring_configuration(saved_filter['configuration'])
-        dataset_ids = [int(value) for value in saved_filter['dataset_ids']]
-        context_filters = saved_filter.get('resolved_context_filters', saved_filter.get('context_filters', {}))
+        configuration = validate_scoring_configuration(saved_scoring['configuration'])
+        dataset_ids = [int(value) for value in saved_scoring['dataset_ids']]
+        context_filters = saved_scoring.get('resolved_context_filters', saved_scoring.get('context_filters', {}))
         try:
             sources, _campaigns, _fingerprint = _source_snapshot(repository, dataset_ids,
-                                                                 expected_nr_mode=saved_filter['nr_mode'])
+                                                                 expected_nr_mode=saved_scoring['nr_mode'])
         except ValueError:
             sources = []
-        _complete_points_loss(repository, saved_filter, filter_id, sources, dataset_ids, configuration, context_filters,
-                              _scoring_engine(), saved_filter.get('methodology_groups') or [], report)
+        _complete_points_loss(repository, saved_scoring, filter_id, sources, dataset_ids, configuration, context_filters,
+                              _scoring_engine(), saved_scoring.get('methodology_groups') or [], report)
     except _MapGivesWay:
         gave_way = True
     except _MapStopped:
         _points_loss_stopped(repository, filter_id)
-        repository.try_add_log('system', 'points_loss_map_stopped', json.dumps({'saved_filter_id': int(filter_id)}))
+        repository.try_add_log('system', 'points_loss_map_stopped', json.dumps({'saved_scoring_id': int(filter_id)}))
     finally:
         if not gave_way:
             with _points_loss_guard:
@@ -2660,7 +2671,7 @@ def points_loss_tasks(database_path: Any) -> list[dict[str, Any]]:
     with _points_loss_guard:
         jobs = [(filter_id, dict(job)) for (path, filter_id), job in _points_loss_jobs.items() if path == workspace]
     return [{
-        'id': f'saved-filter-map:{filter_id}', 'label': f'Points Lost Map #{filter_id}',
+        'id': f'saved-scoring-map:{filter_id}', 'label': f'Points Lost Map #{filter_id}',
         'detail': (_points_loss_detail(job) if job['status'] == 'processing'
                    else 'Waiting for the calculations before it'),
         'status': job['status'], 'progress': job.get('progress') if job['status'] == 'processing' else None,
@@ -2680,26 +2691,26 @@ def _points_loss_detail(job: dict[str, Any]) -> str:
     return f'{detail} · {left}'
 
 
-def is_saved_filter_work(task_callback: Any, task_args: tuple[Any, ...], filter_id: int) -> bool:
-    """Whether a queued job calculates the given Saved Filter or draws its Points Lost Map."""
-    if task_callback is calculate_saved_filter:
+def is_saved_scoring_work(task_callback: Any, task_args: tuple[Any, ...], filter_id: int) -> bool:
+    """Whether a queued job calculates the given Saved Scoring or draws its Points Lost Map."""
+    if task_callback is calculate_saved_scoring:
         return len(task_args) > 1 and int(task_args[1]) == int(filter_id)
-    return (isinstance(task_callback, partial) and task_callback.func is complete_saved_filter_points_loss
+    return (isinstance(task_callback, partial) and task_callback.func is complete_saved_scoring_points_loss
             and int(task_callback.args[1]) == int(filter_id))
 
 
-def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+def _points_loss_of(repository: Repository, saved_scoring: dict[str, Any], sources: list[dict[str, Any]],
                     configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
                     progress: Callable[[float, str], None] = lambda *_args: None, *, cached_only: bool = False) -> Any:
-    """The Points Lost Map of a Saved Filter with one methodology, from the rows of its tests.
+    """The Points Lost Map of a Saved Scoring with one methodology, from the rows of its tests.
 
     ``progress`` (0-100 and the step) follows the CDRs read (the first 45%) and the groups of tests mapped. The map of
-    the same CDRs, methodology and options drawn before (by this Saved Filter or another one) is reused; with
+    the same CDRs, methodology and options drawn before (by this Saved Scoring or another one) is reused; with
     ``cached_only``, only that one (None without it).
     """
     from src.modules.scoring import scoring as scoring_engine
     from src.modules.scoring import scoring_cache
-    key = (scoring_cache.key_of(_points_loss_inputs(repository, saved_filter, sources, configuration, context_filters))
+    key = (scoring_cache.key_of(_points_loss_inputs(repository, saved_scoring, sources, configuration, context_filters))
            if engine is scoring_engine else None)
     cached = scoring_cache.read(repository, 'points-loss', key) if key is not None else None
     if cached is not None:
@@ -2708,17 +2719,17 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
     if cached_only:
         return None
     postal_missing = []
-    if postal_areas.wanted(saved_filter):
+    if postal_areas.wanted(saved_scoring):
         # The postal codes of the countries that lack them, before the map reads them (its key follows them).
         postal_missing = postal_areas.ensure_postal_layers(
             repository, _campaign_sources(sources, _normalize_context_filters(context_filters)),
-            progress=lambda step: progress(0, step), map_key=postal_areas.chosen_map(saved_filter))
+            progress=lambda step: progress(0, step), map_key=postal_areas.chosen_map(saved_scoring))
         if engine is scoring_engine:
-            key = scoring_cache.key_of(_points_loss_inputs(repository, saved_filter, sources, configuration, context_filters))
+            key = scoring_cache.key_of(_points_loss_inputs(repository, saved_scoring, sources, configuration, context_filters))
     if engine is scoring_engine and POINTS_LOSS_APART:
-        points_loss = _draw_points_loss_apart(repository, saved_filter, sources, configuration, context_filters, progress)
+        points_loss = _draw_points_loss_apart(repository, saved_scoring, sources, configuration, context_filters, progress)
     else:
-        points_loss = draw_points_loss(repository, saved_filter, sources, configuration, context_filters, engine, progress)
+        points_loss = draw_points_loss(repository, saved_scoring, sources, configuration, context_filters, engine, progress)
     if postal_missing and isinstance(points_loss, dict):
         points_loss['postal_missing'] = postal_missing
     if key is not None:
@@ -2730,7 +2741,7 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
 # The Points Lost Map is drawn in processes of their own (points_loss_worker), unless this is switched off (the tests
 # draw it in theirs).
 POINTS_LOSS_APART = os.environ.get('DTA_POINTS_LOSS_IN_PROCESS') != '1'
-# The processes drawing Points Lost Maps at the same time, at most (each methodology of a Saved Filter draws its Data
+# The processes drawing Points Lost Maps at the same time, at most (each methodology of a Saved Scoring draws its Data
 # tests in one and its other tests in another).
 POINTS_LOSS_PROCESSES = max(1, int(os.environ.get('DTA_POINTS_LOSS_PROCESSES') or 4))
 
@@ -2791,7 +2802,7 @@ def _points_loss_kind_groups(sources: list[dict[str, Any]]) -> list[list[str]]:
     return [kinds] if kinds else []
 
 
-def _draw_points_loss_apart(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+def _draw_points_loss_apart(repository: Repository, saved_scoring: dict[str, Any], sources: list[dict[str, Any]],
                             configuration: dict[str, Any], context_filters: dict[str, list[str]],
                             progress: Callable[[float, str], None]) -> Any:
     """draw_points_loss in processes of their own (draw_points_loss_parts: Data in one, the other CDR types in another,
@@ -2812,7 +2823,7 @@ def _draw_points_loss_apart(repository: Repository, saved_filter: dict[str, Any]
         payload = {'db_path': str(Path(repository.db_path).resolve()),
                    'global_db_path': str(Path(repository.global_db_path).resolve()),
                    'registry_db_path': str(Path(registry).resolve()) if registry else '',
-                   'saved_filter': saved_filter, 'sources': sources, 'configuration': configuration,
+                   'saved_scoring': saved_scoring, 'sources': sources, 'configuration': configuration,
                    'context_filters': context_filters}
         planned = getattr(_points_loss_tickets, 'tickets', None) or {}
         tasks = [{'kinds': kinds, 'result': Path(folder) / f'part-{index}.pickle', 'errors': Path(folder) / f'errors-{index}.txt',
@@ -2854,7 +2865,7 @@ def _draw_points_loss_apart(repository: Repository, saved_filter: dict[str, Any]
         try:
             start_waiting()
             # (Read while the processes draw: the map areas the parts are put together with.)
-            options = _engine_kwargs(repository, saved_filter, configuration, scoring_engine.calculate_scoring)
+            options = _engine_kwargs(repository, saved_scoring, configuration, scoring_engine.calculate_scoring)
             while not all(task['done'] for task in tasks):
                 start_waiting()
                 try:
@@ -2907,20 +2918,20 @@ def _draw_points_loss_apart(repository: Repository, saved_filter: dict[str, Any]
         raise RuntimeError(missing)
     parts.sort(key=lambda part: first_rows[part['kind']])
     return scoring_engine.points_loss_document(parts, options.get('map_areas'), apart=True,
-                                               postal_areas=_postal_index(repository, saved_filter))
+                                               postal_areas=_postal_index(repository, saved_scoring))
 
 
-def draw_points_loss_parts(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+def draw_points_loss_parts(repository: Repository, saved_scoring: dict[str, Any], sources: list[dict[str, Any]],
                            configuration: dict[str, Any], context_filters: dict[str, list[str]], kinds: list[str],
                            progress: Callable[[float, str], None] = lambda *_args: None) -> dict[str, Any]:
-    """The Points Lost Map of the CDR types ``kinds`` of a Saved Filter with one methodology, before the parts of every CDR
+    """The Points Lost Map of the CDR types ``kinds`` of a Saved Scoring with one methodology, before the parts of every CDR
     type are put together (scoring.points_loss_document): the part of each type and the place in ``sources`` of the first
     CDR of each type with rows (the order of the types)."""
     from src.modules.scoring import scoring as scoring_engine
     from src.modules.scoring.scoring_points_loss import compact_contribution
 
     for source in sources:
-        source['levels'] = list(saved_filter['levels'])
+        source['levels'] = list(saved_scoring['levels'])
     total = max(1, sum(str(source['metadata']['kind']) in kinds for source in sources))
     read = 0
 
@@ -2933,24 +2944,24 @@ def draw_points_loss_parts(repository: Repository, saved_filter: dict[str, Any],
     progress(0, f'Reading the rows of the tests: CDR 1 of {total}')
     first_rows: dict[str, int] = {}
     frames = _load_source_frames(repository, sources, cdr_read, scoring_engine.load_input_columns, context_filters,
-                                 nr_mode_campaigns=_compares_nr_modes(saved_filter), columnar=True, kinds=set(kinds),
+                                 nr_mode_campaigns=_compares_nr_modes(saved_scoring), columnar=True, kinds=set(kinds),
                                  first_rows=first_rows)
-    options = _engine_kwargs(repository, saved_filter, configuration, scoring_engine.calculate_scoring)
+    options = _engine_kwargs(repository, saved_scoring, configuration, scoring_engine.calculate_scoring)
     parts = scoring_engine.points_loss_parts(
-        frames, saved_filter['levels'], configuration=configuration, operator_mappings=options.get('operator_mappings'),
+        frames, saved_scoring['levels'], configuration=configuration, operator_mappings=options.get('operator_mappings'),
         map_areas=options.get('map_areas'), progress_callback=lambda share, step: progress(45 + share * 55, step),
-        postal_areas=_postal_index(repository, saved_filter))
+        postal_areas=_postal_index(repository, saved_scoring))
     for part in parts:
         compact_contribution(part['places'])
     return {'parts': parts, 'first_rows': first_rows}
 
 
-def draw_points_loss(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+def draw_points_loss(repository: Repository, saved_scoring: dict[str, Any], sources: list[dict[str, Any]],
                      configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
                      progress: Callable[[float, str], None] = lambda *_args: None) -> Any:
-    """The Points Lost Map of a Saved Filter with one methodology, from the rows of its tests (see _points_loss_of)."""
+    """The Points Lost Map of a Saved Scoring with one methodology, from the rows of its tests (see _points_loss_of)."""
     for source in sources:
-        source['levels'] = list(saved_filter['levels'])
+        source['levels'] = list(saved_scoring['levels'])
     required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
     total = max(1, len(sources))
     read = 0
@@ -2964,33 +2975,33 @@ def draw_points_loss(repository: Repository, saved_filter: dict[str, Any], sourc
     progress(0, f'Reading the rows of the tests: CDR 1 of {total}')
     # The map only needs the rows: read from the columnar copies of each CDR type at once.
     frames = _load_source_frames(repository, sources, cdr_read, required_columns, context_filters,
-                                 nr_mode_campaigns=_compares_nr_modes(saved_filter), columnar=True)
+                                 nr_mode_campaigns=_compares_nr_modes(saved_scoring), columnar=True)
     calculate = engine.calculate_scoring
-    options = _engine_kwargs(repository, saved_filter, configuration, calculate)
+    options = _engine_kwargs(repository, saved_scoring, configuration, calculate)
     if hasattr(engine, 'calculate_points_loss'):
         # Only the map: the scores are already saved.
         extra = ({'progress_callback': lambda share, step: progress(45 + share * 55, step)}
                  if 'progress_callback' in inspect.signature(engine.calculate_points_loss).parameters else {})
         if 'postal_areas' in inspect.signature(engine.calculate_points_loss).parameters:
-            extra['postal_areas'] = _postal_index(repository, saved_filter)
+            extra['postal_areas'] = _postal_index(repository, saved_scoring)
         points_loss = engine.calculate_points_loss(
-            frames, saved_filter['levels'], configuration=configuration,
+            frames, saved_scoring['levels'], configuration=configuration,
             operator_mappings=options.get('operator_mappings'), map_areas=options.get('map_areas'), **extra)
     else:
-        points_loss = calculate(frames, saved_filter['levels'], **options)['points_loss']
+        points_loss = calculate(frames, saved_scoring['levels'], **options)['points_loss']
     return points_loss
 
 
-def _postal_index(repository: Repository, saved_filter: dict[str, Any]) -> Any:
-    """The postal code areas that place the tests of a Saved Filter that asks for Postal Codes."""
-    return postal_areas.postal_index(repository, postal_areas.chosen_map(saved_filter)) if postal_areas.wanted(saved_filter) else None
+def _postal_index(repository: Repository, saved_scoring: dict[str, Any]) -> Any:
+    """The postal code areas that place the tests of a Saved Scoring that asks for Postal Codes."""
+    return postal_areas.postal_index(repository, postal_areas.chosen_map(saved_scoring)) if postal_areas.wanted(saved_scoring) else None
 
 
-def _points_loss_inputs(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+def _points_loss_inputs(repository: Repository, saved_scoring: dict[str, Any], sources: list[dict[str, Any]],
                         configuration: dict[str, Any], context_filters: dict[str, list[str]]) -> dict[str, Any]:
     """What the Points Lost Map of one methodology depends on: the revision of the CDRs it reads (and whether their tests
     are placed in the Map Areas), the split, the methodology, the filters, the Operator Maps, the Map Areas and, for a
-    Saved Filter that asks for them, the postal code areas."""
+    Saved Scoring that asks for them, the postal code areas."""
     from src.modules.scoring import scoring as scoring_engine
     from src.modules.network.map_area_columns import areas_version, current_datasets
     read = _campaign_sources(sources, _normalize_context_filters(context_filters))
@@ -2999,15 +3010,15 @@ def _points_loss_inputs(repository: Repository, saved_filter: dict[str, Any], so
         'kind': 'points-loss', 'method_version': scoring_engine.METHOD_VERSION,
         'sources': sorted((json.dumps({**source['signature'], 'placed': int(source['metadata']['dataset_id']) in placed},
                                       sort_keys=True, default=str) for source in read)),
-        'levels': list(saved_filter['levels']), 'configuration': configuration_hash(configuration),
-        'filters': _filters_key(context_filters), 'operator_mappings': saved_filter.get('operator_mappings', {}),
+        'levels': list(saved_scoring['levels']), 'configuration': configuration_hash(configuration),
+        'filters': _filters_key(context_filters), 'operator_mappings': saved_scoring.get('operator_mappings', {}),
         'map_areas': areas_version(repository),
-        **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_filter) else {}),
-        **({'postal_codes': postal_areas.postal_version(repository, postal_areas.chosen_map(saved_filter))} if postal_areas.wanted(saved_filter) else {}),
+        **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_scoring) else {}),
+        **({'postal_codes': postal_areas.postal_version(repository, postal_areas.chosen_map(saved_scoring))} if postal_areas.wanted(saved_scoring) else {}),
     }
 
 
-def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], filter_id: int, sources: list[dict[str, Any]],
+def _complete_points_loss(repository: Repository, saved_scoring: dict[str, Any], filter_id: int, sources: list[dict[str, Any]],
                           dataset_ids: list[int], configuration: dict[str, Any],
                           context_filters: dict[str, list[str]], engine: Any,
                           groups: list[dict[str, Any]] | None = None,
@@ -3041,7 +3052,7 @@ def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], 
                     progress(overall, f'Methodology {index + 1} of {len(groups)} ({name}): {step}')
                 _points_loss_tickets.tickets = planned[index]
                 try:
-                    return _points_loss_of(repository, saved_filter, [dict(source) for source in sources],
+                    return _points_loss_of(repository, saved_scoring, [dict(source) for source in sources],
                                            validate_scoring_configuration(group['configuration']),
                                            {**context_filters, 'Campaign': list(group['campaigns'])}, engine,
                                            group_progress, cached_only=cached_only)
@@ -3059,7 +3070,7 @@ def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], 
                 return False
             points_loss = _merge_points_loss(maps)
         else:
-            points_loss = _points_loss_of(repository, saved_filter, sources, configuration, context_filters, engine,
+            points_loss = _points_loss_of(repository, saved_scoring, sources, configuration, context_filters, engine,
                                           lambda value, step: progress(value * 0.97, step), cached_only=cached_only)
             if points_loss is None and cached_only:
                 return False
@@ -3074,20 +3085,20 @@ def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], 
             return False
         document = {'points_loss': {'version': 2, 'error': str(exc)}}
     with repository.connection() as connection:
-        row = connection.execute(f'SELECT status, result_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        row = connection.execute(f'SELECT status, result_json FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
     if row is None or row['status'] != 'completed' or not row['result_json']:
         return False
     result = json.loads(row['result_json'])
     if not (isinstance(result.get('points_loss'), dict) and result['points_loss'].get('pending')):
         return True
     result['points_loss'] = _serialize_result_value(document['points_loss'])
-    _update_saved_filter(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
+    _update_saved_scoring(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
                                                                    allow_nan=False),
                         message='Scoring tables, GAP analysis and Points Lost Map are ready')
     return True
 
 
-def _save_scoring_result(repository: Repository, saved_filter: dict[str, Any], filter_id: int, dataset_ids: list[int],
+def _save_scoring_result(repository: Repository, saved_scoring: dict[str, Any], filter_id: int, dataset_ids: list[int],
                          configuration: dict[str, Any], result: dict[str, Any], *, points_loss_pending: bool = False) -> None:
     """Store the result of a calculation once the selected CDRs are checked unchanged."""
     if not isinstance(result, dict):
@@ -3096,14 +3107,14 @@ def _save_scoring_result(repository: Repository, saved_filter: dict[str, Any], f
     result.setdefault('configuration', configuration)
     result.setdefault('configuration_hash', configuration_hash(configuration))
     result.setdefault('gap_direction', 'operator_minus_reference')
-    result.setdefault('baseline_aliases', saved_filter.get('baseline_aliases', []))
-    result.setdefault('aggregation_levels', saved_filter['levels'])
-    result.setdefault('aggregation_contract_version', saved_filter['aggregation_contract_version'])
-    result.setdefault('campaigns', saved_filter['campaigns'])
+    result.setdefault('baseline_aliases', saved_scoring.get('baseline_aliases', []))
+    result.setdefault('aggregation_levels', saved_scoring['levels'])
+    result.setdefault('aggregation_contract_version', saved_scoring['aggregation_contract_version'])
+    result.setdefault('campaigns', saved_scoring['campaigns'])
     _latest_sources, _latest_campaigns, final_fingerprint = _source_snapshot(
-        repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'],
+        repository, dataset_ids, expected_nr_mode=saved_scoring['nr_mode'],
     )
-    if final_fingerprint != saved_filter['source_fingerprint']:
+    if final_fingerprint != saved_scoring['source_fingerprint']:
         raise ValueError('A selected CDR changed while its scoring calculation was running.')
     result_payload = {
         'scoring': result.get('scoring', []),
@@ -3115,7 +3126,7 @@ def _save_scoring_result(repository: Repository, saved_filter: dict[str, Any], f
     encoded_result = json.dumps(
         _serialize_result_value(result_payload), ensure_ascii=False, separators=(',', ':'), allow_nan=False,
     )
-    _update_saved_filter(
+    _update_saved_scoring(
         repository, filter_id, status='completed', progress=100,
         message=('Scoring tables and GAP analysis are ready; preparing the Points Lost Map' if points_loss_pending
                  else 'Scoring tables and GAP analysis are ready'),
@@ -3123,20 +3134,20 @@ def _save_scoring_result(repository: Repository, saved_filter: dict[str, Any], f
     )
     # How many times its result has been calculated, beside how many times it has been used.
     with repository.connection() as connection:
-        connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET calculation_count = calculation_count + 1 WHERE id = ?',
+        connection.execute(f'UPDATE {SAVED_SCORINGS_TABLE} SET calculation_count = calculation_count + 1 WHERE id = ?',
                            (int(filter_id),))
 
 
-def _fail_calculation(repository: Repository, saved_filter: dict[str, Any], filter_id: int, exc: Exception) -> None:
+def _fail_calculation(repository: Repository, saved_scoring: dict[str, Any], filter_id: int, exc: Exception) -> None:
     """Keep a failed calculation with its reason, for review."""
-    _update_saved_filter(
+    _update_saved_scoring(
         repository, filter_id, status='failed', progress=100,
         message='Scoring calculation failed', last_error=str(exc), finished_at=local_now_iso(),
     )
     # App Logs show why a calculation failed, with where it happened.
     if hasattr(repository, 'try_add_log'):
         import traceback
-        repository.try_add_log(str(saved_filter.get('created_by') or 'system'), 'scoring_calculation_failed', json.dumps({
+        repository.try_add_log(str(saved_scoring.get('created_by') or 'system'), 'scoring_calculation_failed', json.dumps({
             'filter_id': filter_id, 'error': f'{type(exc).__name__}: {exc}',
             'location': ''.join(traceback.format_exception(exc)[-3:]).strip()[-1500:],
         }, ensure_ascii=False))

@@ -44,8 +44,8 @@ def test_scoring_selection_loads_from_server_before_enabling_controls():
     assert 'await persistCalculationSelection({force: true});' in script
     assert "calculationPanel.inert = true;" in script
     assert "calculationPanel.inert = false;" in script
-    assert 'Promise.all([loadCalculationSelection(), refreshSavedFilters()]).catch(() => {});' in script
-    assert 'restoreOpenedSavedFilterTrends' not in script and 'data-scoring-area-enabled' not in script
+    assert 'Promise.all([loadCalculationSelection(), refreshSavedScorings()]).catch(() => {});' in script
+    assert 'restoreOpenedSavedScoringTrends' not in script and 'data-scoring-area-enabled' not in script
     assert 'localStorage' not in script
 
 
@@ -94,7 +94,7 @@ def test_scoring_calculation_panel_orders_nr_mode_campaign_cdrs_filters_and_gap_
     )
 
 
-def test_server_chosen_cdrs_are_checked_unless_an_opened_saved_filter_keeps_its_own():
+def test_server_chosen_cdrs_are_checked_unless_an_opened_saved_scoring_keeps_its_own():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     functions = '\n'.join(_function_source(script, name) for name in (
         'applyAutoCdrResponse', 'calculationSelectionFromControls',
@@ -129,7 +129,7 @@ process.stdout.write(JSON.stringify({automatic, pinned: {ids: selectedDatasetIds
         'context_filters': {'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['UK_Q2_2026']},
         'area_summary': {'enabled': False},
     }
-    # An opened Saved Filter keeps its own CDRs while its filter lists are refreshed.
+    # An opened Saved Scoring keeps its own CDRs while its filter lists are refreshed.
     assert result['pinned'] == {'ids': ['1', '2'], 'auto': False}
 
 
@@ -225,7 +225,7 @@ def test_scoring_selection_saves_are_debounced_serialized_and_flushed_on_navigat
 def test_job_selection_restoration_maps_job_fields_and_schedules_persistence():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     functions = '\n'.join(_function_source(script, name) for name in (
-        'restoreCalculationSelectionFromSavedFilter', 'scheduleSelectionSave',
+        'restoreCalculationSelectionFromSavedScoring', 'scheduleSelectionSave',
     ))
     program = r'''
 let applied, persisted = false, timeoutDelay, timeoutCallback, autoRefresh = null;
@@ -242,7 +242,7 @@ const window = {
   setTimeout: (callback, delay) => {timeoutCallback = callback; timeoutDelay = delay; return 42;},
 };
 ''' + functions + r'''
-restoreCalculationSelectionFromSavedFilter({
+restoreCalculationSelectionFromSavedScoring({
   dataset_ids: [12, '13'], aggregation_levels: ['City', 'Vendor'], levels: ['Legacy'],
   nr_mode: 'NR', baseline_operator: 'EE', scoring_profile_id: 'profile-7',
   context_filters: {Region: ['North'], City: [], Operator: ['EE'], Vendor: [], Campaign: ['Spring']},
@@ -264,7 +264,7 @@ process.stdout.write(JSON.stringify({queued, persisted}));
     assert result['queued']['selectionDirty'] is True
     assert result['queued']['selectionSaveTimer'] == 42
     assert result['queued']['timeoutDelay'] == 250
-    # The panel shows the CDRs of the Saved Filter, and the lists of its filters follow for its NR Mode and filters.
+    # The panel shows the CDRs of the Saved Scoring, and the lists of its filters follow for its NR Mode and filters.
     assert result['queued']['pinnedCdrs'] is True
     assert result['queued']['autoRefresh'] == {'delay': 0}
     # Its filters stay in the lists until those of its NR Mode and filters arrive.
@@ -274,7 +274,7 @@ process.stdout.write(JSON.stringify({queued, persisted}));
 
 def test_job_selection_restoration_uses_legacy_levels_field():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    restore = _function_source(script, 'restoreCalculationSelectionFromSavedFilter')
+    restore = _function_source(script, 'restoreCalculationSelectionFromSavedScoring')
     program = r'''
 let applied, pinnedCdrs = false;
 const applySavedCalculationSelection = selection => {applied = selection;};
@@ -282,7 +282,7 @@ const keepRestoredContextValues = () => {};
 const scheduleSelectionSave = () => {};
 const scheduleAutoCdrRefresh = () => {};
 ''' + restore + r'''
-restoreCalculationSelectionFromSavedFilter({dataset_ids: [5], levels: ['Operator', 'City']});
+restoreCalculationSelectionFromSavedScoring({dataset_ids: [5], levels: ['Operator', 'City']});
 process.stdout.write(JSON.stringify(applied));
 '''
     result = _run_node_json(program, {})
@@ -294,7 +294,7 @@ process.stdout.write(JSON.stringify(applied));
 def test_job_selection_restoration_clears_filters_on_actual_controls():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     apply_saved = _function_source(script, 'applySavedCalculationSelection')
-    restore = _function_source(script, 'restoreCalculationSelectionFromSavedFilter')
+    restore = _function_source(script, 'restoreCalculationSelectionFromSavedScoring')
     program = r'''
 let restoringSelection = false, message = '', pinnedCdrs = false;
 const keepRestoredContextValues = () => {};
@@ -327,7 +327,7 @@ const Event = class {constructor(type, options) {this.type = type; this.options 
 const setMessage = text => {message = text;};
 const scheduleSelectionSave = () => {};
 ''' + apply_saved + restore + r'''
-restoreCalculationSelectionFromSavedFilter({dataset_ids: [], aggregation_levels: ['Operator'], context_filters: {}});
+restoreCalculationSelectionFromSavedScoring({dataset_ids: [], aggregation_levels: ['Operator'], context_filters: {}});
 process.stdout.write(JSON.stringify({
   datasetChecked: datasetInput.checked,
   aggregationChecked: aggregationInputs.map(input => input.checked),
@@ -344,14 +344,14 @@ process.stdout.write(JSON.stringify({
 
 def test_only_explicit_job_list_selection_restores_saved_calculation_selection():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    handler_start = script.index("  for (const list of savedFilterLists) list.addEventListener('click', async event => {")
+    handler_start = script.index("  for (const list of savedScoringLists) list.addEventListener('click', async event => {")
     handler_end = script.index("\n  root.addEventListener('click',", handler_start)
     job_list_handler = script[handler_start:handler_end]
-    load_job = _function_source(script, 'loadSavedFilter')
+    load_job = _function_source(script, 'loadSavedScoring')
 
-    assert job_list_handler.count('restoreCalculationSelectionFromSavedFilter(savedFilter);') == 1
-    assert 'await loadSavedFilter(savedFilter, true);' in job_list_handler
-    assert 'restoreCalculationSelectionFromSavedFilter' not in load_job
+    assert job_list_handler.count('restoreCalculationSelectionFromSavedScoring(savedScoring);') == 1
+    assert 'await loadSavedScoring(savedScoring, true);' in job_list_handler
+    assert 'restoreCalculationSelectionFromSavedScoring' not in load_job
 
 
 def test_context_filters_keep_all_values_and_remembered_values_when_the_cdrs_change():
@@ -412,24 +412,24 @@ def test_included_area_summary_keeps_the_area_filters():
     assert 'Always the whole country: the Region, Cluster and City of the Context Filters do not apply' in template
 
 
-def test_an_opened_saved_filter_queued_again_keeps_its_progress_over_an_earlier_list():
-    """Opening a Saved Filter whose CDRs changed queues it again; a list requested before that answer still reads it
+def test_an_opened_saved_scoring_queued_again_keeps_its_progress_over_an_earlier_list():
+    """Opening a Saved Scoring whose CDRs changed queues it again; a list requested before that answer still reads it
     completed and must not show its old result or stop following its calculation."""
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    assert 'const calculatingSavedFilters = new Map();' in script
-    assert 'if (isActive(record)) calculatingSavedFilters.set(id, {record, request: ++savedFilterRequests});' in script
-    assert 'const request = ++savedFilterRequests;' in script
-    assert 'if (calculating.request > request) return {...savedFilter, ...calculating.record};' in script
-    assert 'const anyActive = savedFilters.some(isActive) || Boolean(selectedSavedFilter && isActive(selectedSavedFilter));' in script
+    assert 'const calculatingSavedScorings = new Map();' in script
+    assert 'if (isActive(record)) calculatingSavedScorings.set(id, {record, request: ++savedScoringRequests});' in script
+    assert 'const request = ++savedScoringRequests;' in script
+    assert 'if (calculating.request > request) return {...savedScoring, ...calculating.record};' in script
+    assert 'const anyActive = savedScorings.some(isActive) || Boolean(selectedSavedScoring && isActive(selectedSavedScoring));' in script
 
 
-def test_a_saved_filter_opened_from_the_saved_filters_panel_shows_its_results():
+def test_a_saved_scoring_opened_from_the_saved_scorings_panel_shows_its_results():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     assert "const resultsPanel = root.querySelector('.scoring-results-panel');" in script
     assert "if (resultsPanel && typeof showSectionAtTop === 'function') showSectionAtTop(resultsPanel);" in script
     # (Opened on its own from the blocks, quietly, the page stays where it is.)
     assert '    else if (!quiet) showResults();' in script
-    assert 'if (!fromDropdown && !quiet && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();' in script
+    assert 'if (!fromDropdown && !quiet && selectedSavedScoringId === savedScoringIdOf(savedScoring)) showResults();' in script
 
 
 def test_a_restored_selection_keeps_its_filters_until_the_lists_of_its_nr_mode_arrive():
@@ -469,7 +469,7 @@ const state = () => Object.fromEntries([...contextFilterSelects].map(([key, sele
 const filters = () => JSON.stringify(selectedContextFilters({keepPresets: true}));
 refreshContextFilterOptions();
 const log = [{lists: state(), filters: filters()}];
-// A Saved Filter is used: its values stay while the lists are still those of the selection before.
+// A Saved Scoring is used: its values stay while the lists are still those of the selection before.
 restoredContextValues = new Map([['Campaign', ['@latest-2-campaigns']], ['City', ['Manchester']]]);
 for (const [key, values] of restoredContextValues) {
   const select = contextFilterSelects.get(key);
