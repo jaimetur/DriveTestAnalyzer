@@ -28,7 +28,16 @@ def test_a_guide_exports_to_word_with_numbered_headings_a_contents_and_tables(cl
     assert '1  Reports' in headings and '2  The report editor' in headings and '2.1  Campaigns of each module' in headings
     # The index of the chapter is left out (and unnumbered); the document has its own table of contents.
     assert not any('in this guide' in heading.lower() for heading in headings)
-    assert paragraphs[1] == 'Contents' and '1  Reports' in paragraphs[2:6]
+    # Each entry of the contents ends with its page (a PAGEREF field after a right tab), the contents end with a page break,
+    # every main section after the first starts on a new page, and the footer numbers the pages.
+    assert paragraphs[1] == 'Contents' and '1  Reports\t' in paragraphs[2:6]
+    document = Document(BytesIO(response.content))
+    xml = document.element.xml
+    assert 'PAGEREF' in xml and 'w:updateFields' in document.settings.element.xml
+    second = next(paragraph for paragraph in document.paragraphs if paragraph.text == '2  The report editor')
+    assert second.paragraph_format.page_break_before
+    footer = document.sections[0].footer._element.xml
+    assert ' PAGE ' in footer and ' NUMPAGES ' in footer
     assert tables >= 1
     event = export_events()[0]
     details = json.loads(event['details'])

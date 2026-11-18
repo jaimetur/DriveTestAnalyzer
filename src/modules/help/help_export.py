@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_TAB_ALIGNMENT, WD_TAB_LEADER
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -84,6 +84,8 @@ class _Context:
     seen: dict[str, int] = field(default_factory=dict)
     chapter: int = 1
     bookmarks: list[int] = field(default_factory=lambda: [0])
+    # The main sections (level 2 headings) written so far: each one after the first starts on a new page.
+    sections: int = 0
 
 
 def heading_id(text: str) -> str:
@@ -397,6 +399,9 @@ class _Writer:
             run.bold = True
             return False
         paragraph = container.add_heading(label, level=min(level, 4))
+        if level == 2:
+            paragraph.paragraph_format.page_break_before = context.sections > 0 or None
+            context.sections += 1
         context.bookmarks[0] += 1
         _bookmark(paragraph, _bookmark_name(context.chapter, anchor), context.bookmarks[0])
         return False
@@ -523,9 +528,14 @@ def _new_document(title: str) -> Any:
 def _footer(document: Any, text: str) -> None:
     paragraph = document.sections[0].footer.paragraphs[0]
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = paragraph.add_run(text)
-    run.font.size = Pt(8)
-    run.font.color.rgb = RGBColor(0x77, 0x77, 0x77)
+    # Its text and the number of the page: "... · Page 3 of 40".
+    for part in (f'{text} · Page ', 'PAGE', ' of ', 'NUMPAGES'):
+        if part in {'PAGE', 'NUMPAGES'}:
+            _field(paragraph, part, '1', size=8, color=RGBColor(0x77, 0x77, 0x77))
+            continue
+        run = paragraph.add_run(part)
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(0x77, 0x77, 0x77)
 
 
 def _next_anchor(text: str, seen: dict[str, int]) -> str:
@@ -590,7 +600,52 @@ def chapter_headings(chapter: Chapter, position: int = 1) -> list[tuple[int, str
     return entries
 
 
+def _field(paragraph: Any, instruction: str, shown: str = '', size: float | None = None, color: Any = None) -> None:
+    """A Word field (PAGE, NUMPAGES, PAGEREF...) in a paragraph, with the text it shows until it is updated."""
+    def char(kind: str) -> None:
+        element = OxmlElement('w:fldChar')
+        element.set(qn('w:fldCharType'), kind)
+        if kind == 'begin':
+            element.set(qn('w:dirty'), 'true')
+        paragraph.add_run()._r.append(element)
+
+    char('begin')
+    text = OxmlElement('w:instrText')
+    text.set(qn('xml:space'), 'preserve')
+    text.text = f' {instruction} '
+    paragraph.add_run()._r.append(text)
+    char('separate')
+    run = paragraph.add_run(shown)
+    if size:
+        run.font.size = Pt(size)
+    if color is not None:
+        run.font.color.rgb = color
+    char('end')
+
+
+def _page_reference(paragraph: Any, bookmark: str, size: float) -> None:
+    """The page of a bookmark, right-aligned after a dotted leader: a PAGEREF field that Word updates when the document
+    opens and LibreOffice (the PDF) lays out."""
+    paragraph.add_run('\t')
+    _field(paragraph, f'PAGEREF {bookmark} \\h', '', size=size)
+
+
+def _update_fields_on_open(document: Any) -> None:
+    """Word fills the page numbers of the contents when the document opens."""
+    settings = document.settings.element
+    update = settings.find(qn('w:updateFields'))
+    if update is None:
+        update = OxmlElement('w:updateFields')
+        settings.append(update)
+    update.set(qn('w:val'), 'true')
+
+
 def _table_of_contents(document: Any, entries: list[tuple[int, str, str]]) -> None:
+    """The contents, each entry with its page on the right, and nothing else on its pages: what follows starts on a new
+    page."""
+    section = document.sections[0]
+    right = section.page_width - section.left_margin - section.right_margin
+    _update_fields_on_open(document)
     paragraph = document.add_paragraph()
     run = paragraph.add_run('Contents')
     run.bold = True
@@ -601,7 +656,11 @@ def _table_of_contents(document: Any, entries: list[tuple[int, str, str]]) -> No
         paragraph.paragraph_format.space_after = Pt(4 if level == 1 else 1)
         if level == 1:
             paragraph.paragraph_format.space_before = Pt(6)
-        _internal_link(paragraph, bookmark, label, bold=level == 1, size=10.5 if level <= 2 else 9.5)
+        paragraph.paragraph_format.tab_stops.add_tab_stop(right, WD_TAB_ALIGNMENT.RIGHT, WD_TAB_LEADER.DOTS)
+        size = 10.5 if level <= 2 else 9.5
+        _internal_link(paragraph, bookmark, label, bold=level == 1, size=size)
+        _page_reference(paragraph, bookmark, size)
+    document.add_page_break()
 
 
 def _write_title(document: Any, chapter: Chapter, position: int, bookmarks: list[int]) -> None:
@@ -657,7 +716,8 @@ def documentation_docx(chapters: list[Chapter], version: str, today: date | None
                                   for entry in chapter_headings(chapter, index)])
     bookmarks = [0]
     for index, chapter in enumerate(chapters, start=1):
-        document.add_page_break()
+        if index > 1:
+            document.add_page_break()
         _write_title(document, chapter, index, bookmarks)
         _write_body(document, chapter, index, bookmarks)
     output = BytesIO()
