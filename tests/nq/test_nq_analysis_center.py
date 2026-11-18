@@ -551,7 +551,8 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     assert query(client, filters={'state': ['open']})['total'] == life['open'] + life['open_tracked']
     assert query(client, filters={'state': ['open']})['total'] == query(client, filters={'status': life['open_statuses']})['total']
     phases = {phase['key']: phase for phase in lifecycle['phases']}
-    assert next(item['count'] for item in phases['analysis_status']['items'] if item['value'] == 'Ongoing') == 1
+    # (An attended call Under Analysis without an Analysis Status counts as Ongoing too, as its status says.)
+    assert next(item['count'] for item in phases['analysis_status']['items'] if item['value'] == 'Ongoing') == 2
     assert lifecycle['modes'] == {'auto': 3, 'manual': 0}
     assert any(move['to'] == 'Under Analysis' for move in lifecycle['moves'])
     # A field whose values have no colour takes the palette, one colour per value.
@@ -2366,3 +2367,4 @@ def test_workspaces_before_get_analysis_finished_and_the_new_closing_rules_once(
     assert client.put('/api/non-qualified-calls/status-rules', json={'rules': rules}).status_code == 200
     nq.ensure_nq_tables(repository)
     assert [rule['status'] for rule in nq.status_rules(repository)] == ['Closed']
+

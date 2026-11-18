@@ -9695,16 +9695,27 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     # The phases and RCA Identification count only the calls in a queue, as the pipeline (the tracked calls apart).
     in_queue = [row for row in rows if str(row['queue'] or '')]
     phases = []
+    # A phase field counts the value its status says when the call has none: a call Under Analysis (given by the rule
+    # Analysis Status is Ongoing, or by being attended) without an Analysis Status counts as Ongoing, so that the card and
+    # the status always agree (the value of the call is not changed). Read from the Status Rules of one condition on one
+    # value: (field) -> {status: value}.
+    implied: dict[str, dict[str, str]] = {}
+    for rule in status_rules(task_repository):
+        conditions = rule.get('conditions') or []
+        if len(conditions) == 1 and conditions[0].get('op') == 'in' and len(conditions[0].get('values') or []) == 1:
+            implied.setdefault(str(conditions[0]['field']), {}).setdefault(str(rule['status']).casefold(), str(conditions[0]['values'][0]))
     for field in definitions:
         if field['section'] not in PHASE_SECTIONS or field['type'] != 'list' or field['source'] not in {'user', 'derived'}:
             continue
         values: Counter = Counter()
+        by_status = implied.get(field['key'], {}) if field['source'] == 'user' else {}
         for row in in_queue:
             try:
                 stored = json.loads(row['field_values_json'] or '{}') or {}
             except (TypeError, ValueError):
                 stored = {}
-            values[stored.get(field['key'], '') if field['source'] == 'user' else derived_value(field, row)] += 1
+            value = stored.get(field['key'], '') if field['source'] == 'user' else derived_value(field, row)
+            values[value or by_status.get(str(row['status'] or '').casefold(), '')] += 1
         # A field whose values have no colour takes the palette, so that its values can be told apart.
         colours = ([option['color'] for option in field['options']] if any(option['color'] for option in field['options'])
                    else series_colours(len(field['options'])))

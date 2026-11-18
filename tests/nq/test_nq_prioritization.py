@@ -1766,3 +1766,26 @@ def test_the_in_queues_badge_lifecycle_and_progress_count_the_same_follow_up(pri
         found = client.post('/api/non-qualified-calls/calls', json={'filters': {'state': [state_name]}, 'page_size': 10,
                                                                       'breakdowns': False}).json()['total']
         assert found == expected, state_name
+
+
+def test_a_call_under_analysis_without_an_analysis_status_counts_as_ongoing_in_its_phase(prioritized):
+    """The Analysis Status card of Lifecycle & Phases agrees with the NQ Call Status: Under Analysis without a value is Ongoing."""
+    client = prioritized['client']
+    queue = next(item for item in client.post('/api/non-qualified-calls/prioritization', json={'filters': {}}).json()['queues']
+                 if len(item['rows']) >= 2)
+    commented, chosen = queue['rows'][0]['call_key'], queue['rows'][1]['call_key']
+
+    def ongoing() -> int:
+        life = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
+        phase = next(item for item in life['phases'] if item['key'] == 'analysis_status')
+        return next(item['count'] for item in phase['items'] if item['value'] == 'Ongoing')
+
+    before = ongoing()
+    assert client.post(f'/api/non-qualified-calls/calls/{commented}/comments', json={'body': 'Looking at it'}).status_code == 200
+    version = client.get(f'/api/non-qualified-calls/calls/{chosen}').json()['call']['version']
+    assert client.patch(f'/api/non-qualified-calls/calls/{chosen}', json={'changes': {'fields': {'analysis_status': 'Ongoing'}},
+                                                                            'version': version}).status_code == 200
+    call = client.get(f'/api/non-qualified-calls/calls/{commented}').json()['call']
+    assert call['status'] == 'Under Analysis' and not (call.get('values') or {}).get('analysis_status')
+    assert ongoing() == before + 2
+
