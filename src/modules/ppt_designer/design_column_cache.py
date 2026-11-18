@@ -16,6 +16,7 @@ import pickle
 import re
 import shutil
 import sqlite3
+from contextlib import closing
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Sequence
@@ -839,7 +840,7 @@ def read_grouped_frame(
     database = f'file:{Path(str(database_path)).resolve()}?mode=ro'
     selected: list[tuple[np.ndarray, np.ndarray]] = []
     copy_rows: list[np.ndarray] = []
-    with sqlite3.connect(database, uri=True, timeout=30) as connection:
+    with closing(sqlite3.connect(database, uri=True, timeout=30)) as connection, connection:
         combined_columns: dict[str, set[str]] = {}
         for segment in segments:
             source = segment.source
@@ -1117,7 +1118,7 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
     source = segment.source
     dataset_id = int(segment.dataset_id)
     database = f'file:{Path(str(database_path)).resolve()}?mode=ro'
-    with sqlite3.connect(database, uri=True, timeout=30) as connection:
+    with closing(sqlite3.connect(database, uri=True, timeout=30)) as connection, connection:
         try:
             combined_rowids, source_rows = _row_map(connection, database_path, segment)
         except (TypeError, ValueError):

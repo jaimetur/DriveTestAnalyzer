@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -113,7 +114,7 @@ def migrate_workspace_database(database_path: Path) -> None:
     """Rename the Designs state, tables and App Events of a workspace database."""
     if not Path(database_path).is_file():
         return
-    with sqlite3.connect(database_path, timeout=30) as connection:
+    with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
         if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_state'").fetchone():
             return
         for old, new in WORKSPACE_STATE_PREFIXES:

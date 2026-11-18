@@ -15684,6 +15684,9 @@ def build_datasets_analysis_payload(
             if analysis is None:
                 with warnings.catch_warnings(record=True) as captured_warnings:
                     warnings.simplefilter('always')
+                    # (A ResourceWarning tells of a connection or file another part of the server left open, collected
+                    # while the analysis ran: it is not a warning of the analysis.)
+                    warnings.simplefilter('ignore', ResourceWarning)
                     analysis = store_cached_analysis(dataset_path, metric_filters, metric, build_analysis(df, metric_filters, metric, prefiltered=True, shared=shared_analysis))
                 if username:
                     for captured in captured_warnings:

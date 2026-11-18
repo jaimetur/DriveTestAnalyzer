@@ -26,7 +26,7 @@ import re
 import shutil
 import sqlite3
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
@@ -182,7 +182,7 @@ def _known_set(sets: dict[str, tuple[Any, set[Any]]], database_path: Any, read: 
         known = sets.get(key)
     if known is None or known[0] != file:
         try:
-            with sqlite3.connect(f'file:{Path(str(database_path)).resolve()}?mode=ro', uri=True, timeout=30) as connection:
+            with closing(sqlite3.connect(f'file:{Path(str(database_path)).resolve()}?mode=ro', uri=True, timeout=30)) as connection, connection:
                 found = read(connection)
         except sqlite3.Error:
             found = set()
@@ -338,7 +338,7 @@ def empty_combined_table(repository: Any, kind: str) -> bool:
     whether it was emptied."""
     kind = str(kind).casefold()
     table = f'reporting_rows_{kind}'
-    with sqlite3.connect(repository.db_path, timeout=30) as connection:
+    with closing(sqlite3.connect(repository.db_path, timeout=30)) as connection, connection:
         if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone():
             return False
         if kind in combined_shadows(connection):
@@ -654,7 +654,7 @@ def fresh_copies(database_path: Any, dataset_ids: Any) -> set[int]:
     root = store_root(database_path)
     if not root.is_dir():
         return set()
-    with sqlite3.connect(database_path, timeout=30) as connection:
+    with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
         cdrs = _ready_cdrs(connection)
         versions = _versions(connection)
         fresh = set()
@@ -679,7 +679,7 @@ def store_changes(database_path: Any) -> dict[str, Any]:
     go (their copy holds them as they are)."""
     root = store_root(database_path)
     only = only_copies(database_path)
-    with sqlite3.connect(database_path, timeout=30) as connection:
+    with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
         cdrs = _ready_cdrs(connection)
         versions = _versions(connection)
         existing = {int(row[0]) for row in connection.execute('SELECT id FROM datasets')}
@@ -819,7 +819,7 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
     with repository.connection() as writer:
         ensure_versions_table(writer)
         ensure_change_triggers(writer, dataset_id)
-    with sqlite3.connect(database_path, timeout=30) as connection:
+    with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
         # Every read below sees the same snapshot of the CDR (the database is in WAL mode).
         connection.execute('BEGIN')
         try:
@@ -917,7 +917,7 @@ def snapshot_copies(snapshot_path: Any, database_path: Any) -> list[tuple[Path, 
     if not root.is_dir():
         return []
     files: list[tuple[Path, str]] = []
-    with sqlite3.connect(f'file:{Path(str(snapshot_path)).resolve()}?mode=ro', uri=True, timeout=30) as connection:
+    with closing(sqlite3.connect(f'file:{Path(str(snapshot_path)).resolve()}?mode=ro', uri=True, timeout=30)) as connection, connection:
         cdrs = _ready_cdrs(connection)
         versions = _versions(connection)
         for dataset_id, cdr in sorted(cdrs.items()):
@@ -966,7 +966,7 @@ _table_locks: dict[tuple[str, int], Lock] = {}
 
 
 def only_copies(database_path: Any) -> bool:
-    with sqlite3.connect(database_path, timeout=30) as connection:
+    with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
         if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_state'").fetchone():
             return False
         row = connection.execute('SELECT value FROM workspace_state WHERE key = ?', (ONLY_COPIES_STATE_KEY,)).fetchone()
@@ -986,7 +986,7 @@ def hold(repository: Any, dataset_id: int):
     try:
         # A table being emptied goes first (see drop_copied_table).
         with lock:
-            with sqlite3.connect(repository.db_path, timeout=30) as connection:
+            with closing(sqlite3.connect(repository.db_path, timeout=30)) as connection, connection:
                 table_holds_rows = int(dataset_id) not in shadows(connection)
         yield table_holds_rows
     finally:
@@ -1072,7 +1072,7 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
         with _holds_guard:
             if key in _holds:
                 return False
-        with sqlite3.connect(database_path, timeout=30) as connection:
+        with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
             if dataset_id not in shadows(connection) or not connection.execute(
                     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone():
                 return False
@@ -1238,7 +1238,7 @@ def replace_copy_rows(repository: Any, dataset_id: int, frame: pd.DataFrame,
         with _holds_guard:
             if key in _holds:
                 return False
-        with sqlite3.connect(database_path, timeout=30) as connection:
+        with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
             if dataset_id not in shadows(connection):
                 return False
             cdr = _ready_cdrs(connection, ready_only=False).get(dataset_id)
@@ -1409,7 +1409,7 @@ def compact_database(repository: Any, starting: Callable[[], None] = lambda: Non
     from src.modules.core.repository import workspace_write_lock
 
     database_path = Path(str(repository.db_path)).resolve()
-    with sqlite3.connect(database_path, timeout=30) as connection:
+    with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
         page_size = int(connection.execute('PRAGMA page_size').fetchone()[0])
         pages = int(connection.execute('PRAGMA page_count').fetchone()[0])
         free = int(connection.execute('PRAGMA freelist_count').fetchone()[0])
@@ -2006,7 +2006,7 @@ def read_cdrs(database_path: Any, kind: str, dataset_ids: Any, columns: list[str
 
 def copied_rows(database_path: Any, dataset_id: int) -> int:
     """How many rows the copy of a CDR holds (0 without a copy)."""
-    with sqlite3.connect(database_path, timeout=30) as connection:
+    with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
         row = connection.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (int(dataset_id),)).fetchone()
     kind = str(row[0] or '').casefold() if row else ''
     manifest = read_manifest(manifest_file(store_root(database_path), kind, int(dataset_id))) if kind in CDR_KINDS else None
@@ -2017,7 +2017,7 @@ def fresh_kind(database_path: Any, dataset_id: int) -> str | None:
     """The type of a CDR whose copy holds its rows as they are now (None when it has no such copy)."""
     if int(dataset_id) not in fresh_copies(database_path, [dataset_id]):
         return None
-    with sqlite3.connect(database_path, timeout=30) as connection:
+    with closing(sqlite3.connect(database_path, timeout=30)) as connection, connection:
         row = connection.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (int(dataset_id),)).fetchone()
     return str(row[0]).casefold() if row else None
 
@@ -2046,7 +2046,7 @@ def _plan_rowids(database_path: Any, kind: str, dataset_id: int, query: str, whe
     a column it was not given."""
     table = f'dataset_rows_{int(dataset_id)}'
     source = f'file:{Path(str(database_path)).resolve()}?mode=ro'
-    with sqlite3.connect(source, uri=True, timeout=30) as workspace:
+    with closing(sqlite3.connect(source, uri=True, timeout=30)) as workspace, workspace:
         hint = _plan_hint(workspace, table, query, params)
         index_sql = None
         if hint and hint.startswith('INDEXED BY'):
