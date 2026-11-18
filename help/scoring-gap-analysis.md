@@ -17,97 +17,14 @@ scoring-gap-analysis
 
 | I want to… | Go to |
 | --- | --- |
-| Watch the presentation of the module | [Presentation](#presentation) |
+| Calculate the scoring of a campaign | [Calculate and review](#calculate-and-review) |
+| Reuse a saved or favourite scoring | [Reuse Saved Scorings](#5-reuse-saved-scorings) · [Filter Navigator](#filter-navigator) |
+| Read the scores and the GAPs to the competition | [Results tabs](#results-tabs) · [GAP Analysis](#gap-analysis) |
+| Find where and why points are lost | [Points Lost](#points-lost) · [Points Lost Map](#points-lost-map) |
+| Follow the scoring across campaigns and areas | [Scoring Trends](#scoring-trends) · [Country Areas](#country-areas) |
+| Change the methodology and see what it changes | [Methodology](#methodology) · [Methodology Impact](#methodology-impact) |
+| Share the results as PowerPoint, Word or Excel | [Results exports](#results-exports) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
-| Calculate or recalculate a comparison | [Calculate and review](#calculate-and-review) |
-| Find a Favourite Scoring among many | [Filter Navigator](#filter-navigator) |
-| Understand filters and Break down by | [Filters and Break down by](#filters-and-break-down-by) |
-| Read scores, GAPs and coverage warnings | [Results and workspace settings](#results-and-workspace-settings) |
-| Change the colours of the charts, tables and exports | [Choose a theme](#choose-a-theme) |
-| Leave calls out of every scoring | [Excluded Calls](#excluded-calls) |
-| See what a change of methodology does to the results | [Methodology Impact](#methodology-impact) |
-| Show or configure the Most Reliable scoring | [Most Reliable Network scoring](#most-reliable-network-scoring) |
-| Change environments, KPIs or weights | [Methodology](#methodology) |
-| Edit formulas and scoring rules | [KPI definitions](#editing-replacing-adding-and-removing-kpis) |
-| Understand methodology JSON | [Portable JSON reference](#portable-json-reference) |
-| Inspect original KPI weights and sources | [Supported KPI allocation](#supported-kpi-allocation) |
-| Understand the Scoring History and fast calculations | [Scoring History](#scoring-history) |
-| Share results or preserve a workspace | [Persistence and exports](#persistence-and-exports) |
-| Resolve missing results | [Troubleshooting](#troubleshooting) |
-
-## Tips & shortcuts
-
-Gestures and keys that save time in the module. Each one is also described where it belongs below.
-
-**Charts, tables and maps of the results**
-
-| To… | Do this |
-| --- | --- |
-| Open a chart, map or table larger | Double-click it. It takes the whole screen but 5% on each side. This works on **every table of every results tab** (Summary, Scoring Tables, GAP Analysis, Points Lost, Methodology Impact…) |
-| Open a chart larger with the keyboard | Focus the chart card (<kbd>Tab</kbd>) and press <kbd>Enter</kbd> or <kbd>Space</kbd> |
-| Close the larger view | Press <kbd>Esc</kbd>, click outside it or press **×**. While it is open, <kbd>Tab</kbd> stays inside it |
-| Zoom into part of a chart or map | Drag a rectangle over it (also in the larger view). Cards that are not drawn charts zoom up to 8× |
-| Zoom with buttons | Point at the chart or map: **+** (zoom in), **−** (zoom out) and **⤢** (whole view) appear. On a chart narrowed to fit its card, at the whole view **+** and **−** first widen or narrow the chart step by step. On touch: tap the chart to show the buttons for a few seconds |
-| See the values of a bar, segment, cell or donut | Hover it (or focus it) for its tooltip. On touch: not available; read the tables |
-| Save or copy a card as an image | Point at the card: the download (PNG) and camera (copy) buttons appear on its top edge, and an extra pair for the chart or table under the pointer. On touch: tap the card |
-| Copy an image when the browser blocks the clipboard | The image opens in a window: right-click it (on touch: keep it pressed) and choose **Copy Image** |
-
-**Results tabs**
-
-| To… | Do this |
-| --- | --- |
-| Open a results tab from a link or bookmark | Add its name to the address: `/scoring#scoring-results-summary`, `-charts`, `-tables`, `-geographical-areas` (Country Areas), `-trends`, `-gap`, `-points-lost` or `-methodology-impact` |
-| Jump from Where to act to the details | Click a link of the **Deep-dive** column: it opens that section of **Points Lost** |
-| Show or hide an operator in every section | Click its **Operators** chip. One always stays on, and every section of the page follows the same choice |
-| Choose the single operator of Campaign Comparison or Where to act | Click its button in **Focus operators** or **Other operators** |
-
-**Points Lost Map and route maps**
-
-| To… | Do this |
-| --- | --- |
-| Show only the areas of one place | Click its row in the ranking: the map centres and zooms on them. Click it again for all |
-| Add or remove single rows | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click a row |
-| Choose a range of rows | <kbd>Shift</kbd>+click: every row from the last one clicked. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+click adds the range to the rows already chosen |
-| Light the places measured in an area | Click the area on the map (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click adds areas) |
-| Choose several areas at once | <kbd>Shift</kbd>+drag a rectangle: every area it touches is chosen (a plain drag zooms) |
-| Show everything again | Click the same choice again, click outside every area, or press <kbd>Esc</kbd> after a click on the map |
-| See the tests of a place, or the full environment name | Hover a **Per 1,000 tests** or **Type** cell |
-| Zoom a route map onto a stretch | Click its row (or focus it and press <kbd>Enter</kbd>/<kbd>Space</kbd>). Again, or **Whole route**, for the whole route |
-
-**Site Area Map** (from a site of **Sites to review**; the same map as in [Non-Qualified Calls](non-qualified-calls.md#map-of-the-call), where every control is described)
-
-| To… | Do this |
-| --- | --- |
-| Zoom in the floating panel | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+wheel, or pinch. A plain wheel only shows a hint, so the page still scrolls |
-| Open the larger map | Double-click it (on touch: double-tap). Inside the larger map, a double-click zooms in and the plain wheel zooms towards the pointer |
-| Zoom into a rectangle | Hold <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> (the pointer becomes a crosshair) and drag |
-| Measure a distance with the elevation profile | <kbd>Alt</kbd>/<kbd>Option</kbd>+drag: the ruler gives the distance, the bearing and the profile of the ground. <kbd>Esc</kbd> clears it |
-| Move or resize a floating card | Drag its header to move it, drag its corner to resize it; pin it to keep it open, restore it to put it back in its place |
-| Move along the timeline chart | Drag it, or use <kbd>←</kbd>/<kbd>→</kbd> (<kbd>Shift</kbd> for 5 s steps), <kbd>Home</kbd>/<kbd>End</kbd>; <kbd>Esc</kbd> leaves it |
-
-**Scoring Trends and Methodology Impact**
-
-| To… | Do this |
-| --- | --- |
-| Enlarge a single area trend | Double-click its chart in **National & Country Areas Trends**: only that chart opens larger. Double-click the table to enlarge the table |
-| See only the KPIs of one kind of change | Click a count in **What changed in the methodology** (again to undo) |
-| See every row of a long list | Click **Show all N** (and **Show the first N** to shorten it again) |
-
-**Favourite Scorings and Filter Navigator**
-
-| To… | Do this |
-| --- | --- |
-| Keep or remove a Favourite Scoring | Click its star: **☆** keeps it, **★** takes it out |
-| Open the Filter Navigator | Click the scoring name, or anywhere on the **Showing** summary |
-| Move from the search to the tree | <kbd>↓</kbd>. In the tree, <kbd>↑</kbd> on the first item goes back to the search |
-| Move in the tree | <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Home</kbd> <kbd>End</kbd>; <kbd>→</kbd>/<kbd>←</kbd> open and close a branch; <kbd>Enter</kbd> or <kbd>Space</kbd> use the focused item |
-| Use the only match of a search | Press <kbd>Enter</kbd> in the search |
-| Close the list of Favourite Scorings | Press <kbd>Esc</kbd> or click outside it |
-| Clear the search, then close | <kbd>Esc</kbd> once clears it, again closes the dialog |
-| Reorder Favourite Scorings | Drag a card by the tab on its left in **Manage Favourite Scorings** (not for readers) |
-| See the CDR files of a scoring | Hover or click its **CDRs** button |
-| Close a dialog of the configuration | <kbd>Esc</kbd> closes an open list first, then cancels the dialog |
-| Open the methodology editor in its own tab | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click (or <kbd>Shift</kbd>+click) **Scoring Methodologies**: Workspace Config opens in a new tab instead of the panel over the page |
 
 ## Calculate and review
 
@@ -2095,3 +2012,77 @@ From Q3 2026 NetCheck adds TikTok to Video Streaming. The **NetCheck 2026-Q3** m
 | K33 | TIK TOK VIDEO STREAMING SUCCESS RATIO [%] | 18.9280 | 10.1920 | 29.5750 / 15.9250 |
 | K34 | TIK TOK VIDEO STREAMING TTFP >= 10 s [%] | 1.1830 | 0.6370 | |
 | K35 | TIK TOK VIDEO STREAMING IRRITATING EXPERIENCE [%] | 9.4640 | 5.0960 | |
+
+## Tips & shortcuts
+
+Gestures and keys that save time in the module. Each one is also described where it belongs below.
+
+**Charts, tables and maps of the results**
+
+| To… | Do this |
+| --- | --- |
+| Open a chart, map or table larger | Double-click it. It takes the whole screen but 5% on each side. This works on **every table of every results tab** (Summary, Scoring Tables, GAP Analysis, Points Lost, Methodology Impact…) |
+| Open a chart larger with the keyboard | Focus the chart card (<kbd>Tab</kbd>) and press <kbd>Enter</kbd> or <kbd>Space</kbd> |
+| Close the larger view | Press <kbd>Esc</kbd>, click outside it or press **×**. While it is open, <kbd>Tab</kbd> stays inside it |
+| Zoom into part of a chart or map | Drag a rectangle over it (also in the larger view). Cards that are not drawn charts zoom up to 8× |
+| Zoom with buttons | Point at the chart or map: **+** (zoom in), **−** (zoom out) and **⤢** (whole view) appear. On a chart narrowed to fit its card, at the whole view **+** and **−** first widen or narrow the chart step by step. On touch: tap the chart to show the buttons for a few seconds |
+| See the values of a bar, segment, cell or donut | Hover it (or focus it) for its tooltip. On touch: not available; read the tables |
+| Save or copy a card as an image | Point at the card: the download (PNG) and camera (copy) buttons appear on its top edge, and an extra pair for the chart or table under the pointer. On touch: tap the card |
+| Copy an image when the browser blocks the clipboard | The image opens in a window: right-click it (on touch: keep it pressed) and choose **Copy Image** |
+
+**Results tabs**
+
+| To… | Do this |
+| --- | --- |
+| Open a results tab from a link or bookmark | Add its name to the address: `/scoring#scoring-results-summary`, `-charts`, `-tables`, `-geographical-areas` (Country Areas), `-trends`, `-gap`, `-points-lost` or `-methodology-impact` |
+| Jump from Where to act to the details | Click a link of the **Deep-dive** column: it opens that section of **Points Lost** |
+| Show or hide an operator in every section | Click its **Operators** chip. One always stays on, and every section of the page follows the same choice |
+| Choose the single operator of Campaign Comparison or Where to act | Click its button in **Focus operators** or **Other operators** |
+
+**Points Lost Map and route maps**
+
+| To… | Do this |
+| --- | --- |
+| Show only the areas of one place | Click its row in the ranking: the map centres and zooms on them. Click it again for all |
+| Add or remove single rows | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click a row |
+| Choose a range of rows | <kbd>Shift</kbd>+click: every row from the last one clicked. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+click adds the range to the rows already chosen |
+| Light the places measured in an area | Click the area on the map (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click adds areas) |
+| Choose several areas at once | <kbd>Shift</kbd>+drag a rectangle: every area it touches is chosen (a plain drag zooms) |
+| Show everything again | Click the same choice again, click outside every area, or press <kbd>Esc</kbd> after a click on the map |
+| See the tests of a place, or the full environment name | Hover a **Per 1,000 tests** or **Type** cell |
+| Zoom a route map onto a stretch | Click its row (or focus it and press <kbd>Enter</kbd>/<kbd>Space</kbd>). Again, or **Whole route**, for the whole route |
+
+**Site Area Map** (from a site of **Sites to review**; the same map as in [Non-Qualified Calls](non-qualified-calls.md#map-of-the-call), where every control is described)
+
+| To… | Do this |
+| --- | --- |
+| Zoom in the floating panel | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+wheel, or pinch. A plain wheel only shows a hint, so the page still scrolls |
+| Open the larger map | Double-click it (on touch: double-tap). Inside the larger map, a double-click zooms in and the plain wheel zooms towards the pointer |
+| Zoom into a rectangle | Hold <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> (the pointer becomes a crosshair) and drag |
+| Measure a distance with the elevation profile | <kbd>Alt</kbd>/<kbd>Option</kbd>+drag: the ruler gives the distance, the bearing and the profile of the ground. <kbd>Esc</kbd> clears it |
+| Move or resize a floating card | Drag its header to move it, drag its corner to resize it; pin it to keep it open, restore it to put it back in its place |
+| Move along the timeline chart | Drag it, or use <kbd>←</kbd>/<kbd>→</kbd> (<kbd>Shift</kbd> for 5 s steps), <kbd>Home</kbd>/<kbd>End</kbd>; <kbd>Esc</kbd> leaves it |
+
+**Scoring Trends and Methodology Impact**
+
+| To… | Do this |
+| --- | --- |
+| Enlarge a single area trend | Double-click its chart in **National & Country Areas Trends**: only that chart opens larger. Double-click the table to enlarge the table |
+| See only the KPIs of one kind of change | Click a count in **What changed in the methodology** (again to undo) |
+| See every row of a long list | Click **Show all N** (and **Show the first N** to shorten it again) |
+
+**Favourite Scorings and Filter Navigator**
+
+| To… | Do this |
+| --- | --- |
+| Keep or remove a Favourite Scoring | Click its star: **☆** keeps it, **★** takes it out |
+| Open the Filter Navigator | Click the scoring name, or anywhere on the **Showing** summary |
+| Move from the search to the tree | <kbd>↓</kbd>. In the tree, <kbd>↑</kbd> on the first item goes back to the search |
+| Move in the tree | <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Home</kbd> <kbd>End</kbd>; <kbd>→</kbd>/<kbd>←</kbd> open and close a branch; <kbd>Enter</kbd> or <kbd>Space</kbd> use the focused item |
+| Use the only match of a search | Press <kbd>Enter</kbd> in the search |
+| Close the list of Favourite Scorings | Press <kbd>Esc</kbd> or click outside it |
+| Clear the search, then close | <kbd>Esc</kbd> once clears it, again closes the dialog |
+| Reorder Favourite Scorings | Drag a card by the tab on its left in **Manage Favourite Scorings** (not for readers) |
+| See the CDR files of a scoring | Hover or click its **CDRs** button |
+| Close a dialog of the configuration | <kbd>Esc</kbd> closes an open list first, then cancels the dialog |
+| Open the methodology editor in its own tab | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click (or <kbd>Shift</kbd>+click) **Scoring Methodologies**: Workspace Config opens in a new tab instead of the panel over the page |

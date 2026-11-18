@@ -16,9 +16,9 @@ administration
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentation | [Open section](#presentation) |
-| Import / Export / Transfer | [Open section](#import-export-transfer) |
-| Datasets Management | [Open section](#datasets-management) |
+| Export or import packages of a workspace | [Import / Export / Transfer](#import-export-transfer) |
+| Send to or request from another server | [Transfer to other server](#transfer-to-other-server) · [Request from other server](#request-from-other-server) |
+| Manage the datasets | [Datasets Management](#datasets-management) |
 
 ## Import / Export / Transfer
 

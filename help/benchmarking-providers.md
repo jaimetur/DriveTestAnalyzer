@@ -9,11 +9,10 @@ DriveTest Analyzer was built for the CDRs of NetCheck. It is being adapted to th
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentation | [Open section](#presentation) |
-| Adaptation status | [Open section](#adaptation-status) |
-| What is needed to continue | [Open section](#what-is-needed-to-continue) |
-| The multi-provider model | [Open section](#the-multi-provider-model) |
-| Compatibility reports | [Open section](#compatibility-reports) |
+| See how far each provider is supported | [Adaptation status](#adaptation-status) |
+| Know what is needed to continue | [What is needed to continue](#what-is-needed-to-continue) |
+| Understand how one tool supports several providers | [The multi-provider model](#the-multi-provider-model) |
+| Check whether a CDR file is compatible | [Compatibility reports](#compatibility-reports) |
 
 ## Presentation
 

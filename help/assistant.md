@@ -28,31 +28,12 @@ assistant
 
 | Task or topic | Go to |
 | --- | --- |
-| Ask a question | [Open section](#ask-a-question) |
-| Read an answer | [Open section](#read-an-answer) |
-| Charts | [Open section](#charts) |
-| What the assistant can read | [Open section](#what-the-assistant-can-read) |
-| Privacy: the names sent as codes | [Open section](#privacy-the-names-sent-as-codes) |
-| The glossary of the workspace | [Open section](#the-glossary-of-the-workspace) |
-| Conversations | [Open section](#conversations) |
-| Engines | [Open section](#engines) |
-| App Events | [Open section](#app-events) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-These keys and gestures speed up the chat. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-| To… | Do this |
-| --- | --- |
-| Ask the question | <kbd>Enter</kbd> (or **Ask**) |
-| Start a new line in the question | <kbd>Shift</kbd>+<kbd>Enter</kbd> |
-| Rename the conversation | **Rename**, type the name and press <kbd>Enter</kbd> (or click elsewhere); <kbd>Esc</kbd> cancels |
-| Hide or show a series of a chart | Click its entry in the legend |
-| Zoom into part of a chart | Drag a rectangle over its plot area; once zoomed, drag to move around |
-| See a chart larger | **Expand**; <kbd>Esc</kbd>, **Close** or a click outside closes it |
-| Close a dialog of the chat (feedback, glossary term, what was sent) | <kbd>Esc</kbd>, or click outside it |
-| Go back to the last line while an answer arrives | The round arrow at the bottom right of the chat |
+| Ask a question about the workspace | [Ask a question](#ask-a-question) |
+| Read the answer, its tables and its charts | [Read an answer](#read-an-answer) · [Charts](#charts) |
+| Know what it reads and what leaves the tool | [What the assistant can read](#what-the-assistant-can-read) · [Privacy: the names sent as codes](#privacy-the-names-sent-as-codes) |
+| Teach it the words of the workspace | [The glossary of the workspace](#the-glossary-of-the-workspace) |
+| Go back to an earlier conversation | [Conversations](#conversations) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Ask a question
 
@@ -174,3 +155,18 @@ The assistant answers with the AI engines a super-admin enables in **Super Admin
 ## App Events
 
 Every action is recorded in App Events (module AI Assistant): each question (with its conversation, engine and text), each answer (its duration, steps, the tools used with their duration and errors, the tokens, the size of what was sent any figure that could not be traced and the charts it drew), each failed or stopped question with its reason, the feedback, the suggestions and the changes of the glossary, and the conversations renamed and deleted.
+
+## Tips & shortcuts
+
+These keys and gestures speed up the chat. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+| To… | Do this |
+| --- | --- |
+| Ask the question | <kbd>Enter</kbd> (or **Ask**) |
+| Start a new line in the question | <kbd>Shift</kbd>+<kbd>Enter</kbd> |
+| Rename the conversation | **Rename**, type the name and press <kbd>Enter</kbd> (or click elsewhere); <kbd>Esc</kbd> cancels |
+| Hide or show a series of a chart | Click its entry in the legend |
+| Zoom into part of a chart | Drag a rectangle over its plot area; once zoomed, drag to move around |
+| See a chart larger | **Expand**; <kbd>Esc</kbd>, **Close** or a click outside closes it |
+| Close a dialog of the chat (feedback, glossary term, what was sent) | <kbd>Esc</kbd>, or click outside it |
+| Go back to the last line while an answer arrives | The round arrow at the bottom right of the chat |

@@ -15,20 +15,14 @@ This article collects rules that affect data interpretation, performance, persis
 
 | Task or topic | Go to |
 | --- | --- |
-| Storage boundaries | [Open section](#storage-boundaries) |
-| Processed and derived columns | [Open section](#processed-and-derived-columns) |
-| Operator normalisation | [Open section](#operator-normalisation) |
-| NR Mode and radio-access selection | [Open section](#nr-mode-and-radio-access-selection) |
-| Test result semantics | [Open section](#test-result-semantics) |
-| Campaign ordering | [Open section](#campaign-ordering) |
-| Template execution semantics | [Open section](#template-execution-semantics) |
-| Multivendor calculation and remapping | [Open section](#multivendor-calculation-and-remapping) |
-| Interactive previews and PPT preparation | [Open section](#interactive-previews-and-ppt-preparation) |
-| Filtered dataset preview | [Open section](#filtered-dataset-preview) |
-| Startup and workspace upgrades | [Open section](#startup-and-workspace-upgrades) |
-| Background jobs and output | [Open section](#background-jobs-and-output) |
-| Import, export and server transfer | [Open section](#import-export-and-server-transfer) |
-| Performance and scale | [Open section](#performance-and-scale) |
+| Know where the data and the configuration are stored | [Storage boundaries](#storage-boundaries) |
+| Understand the processed and derived columns | [Processed and derived columns](#processed-and-derived-columns) |
+| Know how operators and test results are read from a CDR | [Operator normalisation](#operator-normalisation) · [Test result semantics](#test-result-semantics) |
+| Know how the NR Mode and radio access are chosen | [NR Mode and radio-access selection](#nr-mode-and-radio-access-selection) |
+| Understand how the Vendor of each cell is found | [Multivendor calculation and remapping](#multivendor-calculation-and-remapping) |
+| Know what runs in the background and where its output goes | [Background jobs and output](#background-jobs-and-output) |
+| Move data between workspaces and servers | [Import, export and server transfer](#import-export-and-server-transfer) |
+| Work with large workspaces | [Performance and scale](#performance-and-scale) |
 
 ## Storage boundaries
 

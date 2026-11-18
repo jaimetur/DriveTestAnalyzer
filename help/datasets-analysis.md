@@ -18,38 +18,12 @@ cdr-analysis
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentation | [Open section](#presentation) |
-| Eligible datasets | [Open section](#eligible-datasets) |
-| Analysis workflow | [Open section](#analysis-workflow) |
-| Analysis Controls | [Open section](#analysis-controls) |
-| Dataset Summary | [Open section](#dataset-summary) |
-| Charts and Scorecards | [Open section](#charts-and-scorecards) |
-| Processed Metrics | [Open section](#processed-metrics) |
-| Preview and export | [Open section](#preview-and-export) |
-| Example investigation | [Open section](#example-investigation) |
-| Performance | [Open section](#performance) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-The charts and the preview of the rows react to the mouse as below. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-**Charts**
-
-| To… | Do this |
-| --- | --- |
-| Zoom a CDF into a range | Drag a rectangle over it: it narrows the X and Y range and moves both handles of **Visible X Range** |
-| Zoom into some bars | Drag a rectangle over them: the chart widens to fit them and scrolls to them |
-| Go back to the whole chart | The reset button of the zoom controls at its top right corner |
-| Read a value | Hover a bar, or hover a CDF to read the probability of every curve at that value |
-
-**Preview Dataset**
-
-| To… | Do this |
-| --- | --- |
-| Scroll a wide table sideways | <kbd>Shift</kbd> + mouse wheel over the table |
-| Read how a field is calculated | Hover its `Derived`, `Auto-calculated` or `Analysis-derived` badge |
-| See the complete rule of a field | Click its badge; <kbd>Esc</kbd>, its close button or a click outside closes the panel |
+| Pick a CDR and analyse it | [Analysis workflow](#analysis-workflow) · [Analysis Controls](#analysis-controls) |
+| Read the summary and the charts of a CDR | [Dataset Summary](#dataset-summary) · [Charts and Scorecards](#charts-and-scorecards) |
+| Look at the rows behind a result and export them | [Preview and export](#preview-and-export) |
+| Follow an example investigation | [Example investigation](#example-investigation) |
+| Know why a CDR is not listed | [Eligible datasets](#eligible-datasets) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Eligible datasets
 
@@ -168,3 +142,24 @@ First compare group sample counts. Then inspect the CDF and group benchmark. If 
 - The page shows the first four metrics at once; the other metrics and the Processed Metrics table appear as they are calculated, a few at a time, while you already work with the first ones.
 - Repeated dataset/filter/metric combinations reuse in-memory cache entries.
 - Large caches are process-local and are cleared by an application restart.
+
+## Tips & shortcuts
+
+The charts and the preview of the rows react to the mouse as below. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+**Charts**
+
+| To… | Do this |
+| --- | --- |
+| Zoom a CDF into a range | Drag a rectangle over it: it narrows the X and Y range and moves both handles of **Visible X Range** |
+| Zoom into some bars | Drag a rectangle over them: the chart widens to fit them and scrolls to them |
+| Go back to the whole chart | The reset button of the zoom controls at its top right corner |
+| Read a value | Hover a bar, or hover a CDF to read the probability of every curve at that value |
+
+**Preview Dataset**
+
+| To… | Do this |
+| --- | --- |
+| Scroll a wide table sideways | <kbd>Shift</kbd> + mouse wheel over the table |
+| Read how a field is calculated | Hover its `Derived`, `Auto-calculated` or `Analysis-derived` badge |
+| See the complete rule of a field | Click its badge; <kbd>Esc</kbd>, its close button or a click outside closes the panel |

@@ -9,14 +9,12 @@ DriveTest Analyzer separates application settings, storage roots and Docker depl
 
 | Task or topic | Go to |
 | --- | --- |
-| Runtime settings | [Open section](#runtime-settings) |
-| Application Config page | [Open section](#application-config-page) |
-| Storage roots | [Open section](#storage-roots) |
-| Code asset overrides | [Open section](#code-asset-overrides) |
-| Docker settings | [Open section](#docker-settings) |
-| Persistence layout | [Open section](#persistence-layout) |
-| Bootstrap accounts | [Open section](#bootstrap-accounts) |
-| Validation checklist | [Open section](#validation-checklist) |
+| Set the runtime settings | [Runtime settings](#runtime-settings) · [Application Config page](#application-config-page) |
+| Choose where the data is stored | [Storage roots](#storage-roots) · [Persistence layout](#persistence-layout) |
+| Override a bundled asset | [Code asset overrides](#code-asset-overrides) |
+| Configure the Docker service | [Docker settings](#docker-settings) |
+| Create the first accounts | [Bootstrap accounts](#bootstrap-accounts) |
+| Check the installation | [Validation checklist](#validation-checklist) |
 
 ## Runtime settings
 

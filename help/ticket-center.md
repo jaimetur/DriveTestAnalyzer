@@ -18,55 +18,13 @@ ticket-center
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentation | [Open section](#presentation) |
-| Read the dashboard | [Open section](#dashboard) |
-| Statistics | [Open section](#statistics) |
-| Time Spent | [Open section](#time-spent) |
-| Open a ticket | [Open section](#new-ticket) |
-| Find and follow tickets | [Open section](#all-tickets) |
-| The page of a ticket | [Open section](#the-page-of-a-ticket) |
-| Types, priorities and statuses | [Open section](#types-priorities-and-statuses) |
-| Who can do what | [Open section](#who-can-do-what) |
-| Email updates | [Open section](#email-updates) |
-| Clean up attachments | [Open section](#clean-up-attachments) |
-| Portability | [Open section](#portability) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-These keys and gestures speed up writing tickets and comments. On a Mac use <kbd>⌘</kbd> where a key says <kbd>Ctrl</kbd> (except <kbd>Ctrl</kbd>+<kbd>Y</kbd>). The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-**Moving around**
-
-| To… | Do this |
-| --- | --- |
-| Change view (New Ticket, All Tickets, Dashboard, Statistics, Time Spent) | Click its tab, or focus a tab and press <kbd>←</kbd> / <kbd>→</kbd> |
-| List the tickets behind a tile, count, bar or cell | Click it |
-
-**Attachments**
-
-| To… | Do this |
-| --- | --- |
-| Attach a screenshot | Paste it with <kbd>Ctrl</kbd>+<kbd>V</kbd> anywhere in the form, not only in the text |
-| Attach files | Drop them on the zone, or click it to choose them |
-
-**Formatting the text** (see [Writing descriptions and comments](#writing-descriptions-and-comments))
-
-| To… | Do this |
-| --- | --- |
-| Bold, italic, code | <kbd>Ctrl</kbd>+<kbd>B</kbd>, <kbd>Ctrl</kbd>+<kbd>I</kbd>, <kbd>Ctrl</kbd>+<kbd>E</kbd> |
-| Strikethrough, highlight | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> |
-| Add a link | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
-| Numbered list, bullets, tasks | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd>, <kbd>8</kbd>, <kbd>9</kbd> |
-| Heading of level 1, 2 or 3 | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, <kbd>2</kbd>, <kbd>3</kbd> |
-| Turn a heading back into text | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>0</kbd> |
-| Undo, redo | <kbd>Ctrl</kbd>+<kbd>Z</kbd>; <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>+<kbd>Y</kbd> |
-| Nest an item, or bring it back | <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> |
-| Go on in the same item | <kbd>Shift</kbd>+<kbd>Enter</kbd> |
-| Open a link while writing | <kbd>Ctrl</kbd>+click it (a plain click places the caret in it) |
-| Tick a task | Click its box |
-| Post the comment or save the description | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> |
-| Bring formatted text from elsewhere | Paste or drop it: it is read as Markdown |
+| Report a bug or ask for an improvement | [New Ticket](#new-ticket) |
+| Find and follow my tickets | [All Tickets](#all-tickets) · [The page of a ticket](#the-page-of-a-ticket) |
+| See the state of all the tickets at a glance | [Dashboard](#dashboard) · [Statistics](#statistics) |
+| See the time spent on the tickets | [Time Spent](#time-spent) |
+| Know how a ticket moves and who can change it | [Types, priorities and statuses](#types-priorities-and-statuses) · [Who can do what](#who-can-do-what) |
+| Get the updates by email | [Email updates](#email-updates) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Dashboard
 
@@ -270,3 +228,39 @@ App Events record each cleanup as *Ticket attachments cleaned up*, with the size
 ## Portability
 
 The tickets live in the application database, so **Application Config** exports, transfers, backups and restores include them with every workspace. **Ticket Center** in [Import / Export / Transfer](administrator-config.md#import-export-transfer) and in [Backup Protection](super-admin.md#backup-protection) also moves them on their own (super-admins only): one JSON document with every ticket, its type and its timeline, and each attachment (screenshot or file) as a file. Importing or restoring it merges the tickets into the server: the tickets, comments and attachments it does not have are added, a ticket or comment changed later in the package takes its newer content, and nothing is deleted. The tables are **Tickets**, **Ticket Comments** and **Ticket Attachments** in the Database Viewer, where the attachments show as their size and cannot be edited.
+
+## Tips & shortcuts
+
+These keys and gestures speed up writing tickets and comments. On a Mac use <kbd>⌘</kbd> where a key says <kbd>Ctrl</kbd> (except <kbd>Ctrl</kbd>+<kbd>Y</kbd>). The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+**Moving around**
+
+| To… | Do this |
+| --- | --- |
+| Change view (New Ticket, All Tickets, Dashboard, Statistics, Time Spent) | Click its tab, or focus a tab and press <kbd>←</kbd> / <kbd>→</kbd> |
+| List the tickets behind a tile, count, bar or cell | Click it |
+
+**Attachments**
+
+| To… | Do this |
+| --- | --- |
+| Attach a screenshot | Paste it with <kbd>Ctrl</kbd>+<kbd>V</kbd> anywhere in the form, not only in the text |
+| Attach files | Drop them on the zone, or click it to choose them |
+
+**Formatting the text** (see [Writing descriptions and comments](#writing-descriptions-and-comments))
+
+| To… | Do this |
+| --- | --- |
+| Bold, italic, code | <kbd>Ctrl</kbd>+<kbd>B</kbd>, <kbd>Ctrl</kbd>+<kbd>I</kbd>, <kbd>Ctrl</kbd>+<kbd>E</kbd> |
+| Strikethrough, highlight | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> |
+| Add a link | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
+| Numbered list, bullets, tasks | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd>, <kbd>8</kbd>, <kbd>9</kbd> |
+| Heading of level 1, 2 or 3 | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, <kbd>2</kbd>, <kbd>3</kbd> |
+| Turn a heading back into text | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>0</kbd> |
+| Undo, redo | <kbd>Ctrl</kbd>+<kbd>Z</kbd>; <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>+<kbd>Y</kbd> |
+| Nest an item, or bring it back | <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> |
+| Go on in the same item | <kbd>Shift</kbd>+<kbd>Enter</kbd> |
+| Open a link while writing | <kbd>Ctrl</kbd>+click it (a plain click places the caret in it) |
+| Tick a task | Click its box |
+| Post the comment or save the description | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> |
+| Bring formatted text from elsewhere | Paste or drop it: it is read as Markdown |

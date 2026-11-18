@@ -22,49 +22,12 @@ builders
 
 | I want to… | Go to |
 | --- | --- |
-| Watch the presentation | [Presentation](#presentation) |
-| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
-| Build a chart step by step | [Workflow](#workflow) |
-| Understand the shelves, Chart Type and Format | [Interactive Preview](#interactive-preview) |
-| Keep the chart in a PPT Design or Template | [Add to PPT Design or Template](#add-to-ppt-design-or-template) |
-| See a complete example | [Example](#example) |
+| Build a chart step by step | [Workflow](#workflow) · [Example](#example) |
+| Change the shelves, chart type and format | [Interactive Preview](#interactive-preview) |
 | Filter the rows of the chart | [Filters](#filters) |
+| Keep the chart in a PPT Design or Template | [Add to PPT Design or Template](#add-to-ppt-design-or-template) |
 | Make it faster or fix an empty chart | [Performance and troubleshooting](#performance-and-troubleshooting) |
-
-## Tips & shortcuts
-
-Gestures that save time while building a chart.
-
-### Shelves and fields
-
-| To… | Do this |
-| --- | --- |
-| Put a field on a shelf | Drag it there, or click it and choose the shelf |
-| Put a field before or after a pill | Drop it near the left or right edge of the pill, or between pills (a bar shows where it goes) |
-| Replace a pill | Drop the field on the middle of the pill (the pill it replaces is outlined) |
-| Move a pill | Drag it along its shelf or to another shelf; or click its label → **Move before** / **Move after** |
-| Change the aggregation of a measure | Click its pill |
-| Group a time by hour, day, week or month | Click its pill on Rows or Columns |
-| Set the limits of the classes of `Rate Bucket` or `Buckets` | Click its pill; <kbd>Enter</kbd> keeps the limits |
-| Change or remove a filter | Click its pill to change it; **×** removes it |
-| Choose the chart type | Click the **Chart Type** tab on the right edge of the chart; <kbd>Esc</kbd> or a click outside closes it |
-
-### On the chart
-
-| To… | Do this |
-| --- | --- |
-| Read the value of a point | Point at it: a tooltip names its label, series and value |
-| Change the colour, width, line or opacity of a series | Click its entry in the legend (here it never hides the series) |
-| Change the range of a numeric axis | Click its labels and drag the two ends of the slider |
-| Choose the values of a text axis | Click its labels: untick values, **Only** one, or **Show all** |
-| Change the order of the values of Rows or Columns | Drag an axis label, header or row label before or after another (**Default order** gives it back) |
-| Zoom into one area | With the mouse, drag a rectangle over the plot (at 100%; not from the title or the legend) |
-| Zoom in or out | **−** and **+** (100% to 400%, in steps of 25%), the reset arrow to go back |
-| Move around a zoomed chart | Drag it, or use the arrows that appear once zoomed |
-| Copy or download the chart as an image | Point at its card for the buttons at its top right corner. On touch: tap; they show for 5 seconds. |
-
-> [!NOTE]
-> **Only in PPT Designer:** zooming with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + wheel, the larger view (double-click) and hiding series from the legend are features of the [PPT Designer](ppt-designer.md#tips-shortcuts) viewer.
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Workflow
 
@@ -173,3 +136,38 @@ Format · Legend: Bottom
 - **Empty chart:** inspect filtered data and verify KPI, technology and filter values.
 
 Use [PPT Designer](ppt-designer.md) to keep charts in a Design and generate its PowerPoint, and PPT Templates Editor for reusable definitions.
+
+## Tips & shortcuts
+
+Gestures that save time while building a chart.
+
+### Shelves and fields
+
+| To… | Do this |
+| --- | --- |
+| Put a field on a shelf | Drag it there, or click it and choose the shelf |
+| Put a field before or after a pill | Drop it near the left or right edge of the pill, or between pills (a bar shows where it goes) |
+| Replace a pill | Drop the field on the middle of the pill (the pill it replaces is outlined) |
+| Move a pill | Drag it along its shelf or to another shelf; or click its label → **Move before** / **Move after** |
+| Change the aggregation of a measure | Click its pill |
+| Group a time by hour, day, week or month | Click its pill on Rows or Columns |
+| Set the limits of the classes of `Rate Bucket` or `Buckets` | Click its pill; <kbd>Enter</kbd> keeps the limits |
+| Change or remove a filter | Click its pill to change it; **×** removes it |
+| Choose the chart type | Click the **Chart Type** tab on the right edge of the chart; <kbd>Esc</kbd> or a click outside closes it |
+
+### On the chart
+
+| To… | Do this |
+| --- | --- |
+| Read the value of a point | Point at it: a tooltip names its label, series and value |
+| Change the colour, width, line or opacity of a series | Click its entry in the legend (here it never hides the series) |
+| Change the range of a numeric axis | Click its labels and drag the two ends of the slider |
+| Choose the values of a text axis | Click its labels: untick values, **Only** one, or **Show all** |
+| Change the order of the values of Rows or Columns | Drag an axis label, header or row label before or after another (**Default order** gives it back) |
+| Zoom into one area | With the mouse, drag a rectangle over the plot (at 100%; not from the title or the legend) |
+| Zoom in or out | **−** and **+** (100% to 400%, in steps of 25%), the reset arrow to go back |
+| Move around a zoomed chart | Drag it, or use the arrows that appear once zoomed |
+| Copy or download the chart as an image | Point at its card for the buttons at its top right corner. On touch: tap; they show for 5 seconds. |
+
+> [!NOTE]
+> **Only in PPT Designer:** zooming with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + wheel, the larger view (double-click) and hiding series from the legend are features of the [PPT Designer](ppt-designer.md#tips-shortcuts) viewer.

@@ -12,31 +12,14 @@ administration
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentation | [Open section](#presentation) |
-| Roles | [Open section](#roles) |
-| Users | [Open section](#users) |
-| Modules Profiles | [Open section](#modules-profiles) |
-| Workspace Groups | [Open section](#workspace-groups) |
-| Access Requests | [Open section](#access-requests) |
-| Interface Settings | [Open section](#interface-settings) |
-| Presentations | [Open section](#presentations) |
-| AI Comment Writers | [Open section](#ai-comment-writers) |
-| Database Management | [Open section](#database-management) |
-| Reset Application | [Open section](#reset-application) |
-| Operational checklist | [Open section](#operational-checklist) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-These gestures speed up the administration pages. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-| To… | Do this |
-| --- | --- |
-| Sort the users | Click the title of a column (but **Password**); click it again to reverse the order |
-| Change many users at once | Tick them, or every listed user with the header box, and use the bar that appears |
-| Reorder the main tabs in **Interface Settings** | Drag a row by its handle (⠿), also on touch, or use its arrows |
-| Open a table in the **Database Viewer** | Type part of its title or database name in the search of the **Table** picker and press <kbd>Enter</kbd> to open the first one found; <kbd>Esc</kbd> closes the picker |
-| Import a package (**Admin → Import / Export / Transfer**) | Drop the ZIP or JSON file on the **Import** zone, or click it to choose it |
+| Know what each role can do | [Roles](#roles) |
+| Give a person access: account, role and modules | [Users](#users) · [Modules Profiles](#modules-profiles) |
+| Choose which workspaces each user sees | [Workspace Groups](#workspace-groups) |
+| Answer access requests and forgotten passwords | [Access Requests](#access-requests) |
+| Rename the modules or change the look of the tool | [Interface Settings](#interface-settings) |
+| Protect, back up or browse the databases | [Database Management](#database-management) |
+| Check the platform regularly | [Operational checklist](#operational-checklist) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Roles
 
@@ -296,3 +279,15 @@ App Logs of the new deployment record who reset the application.
 4. Test restoration with a non-production package.
 5. Review App Logs after failures or permission changes.
 6. Avoid manual Database Management edits unless the impact is understood.
+
+## Tips & shortcuts
+
+These gestures speed up the administration pages. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+| To… | Do this |
+| --- | --- |
+| Sort the users | Click the title of a column (but **Password**); click it again to reverse the order |
+| Change many users at once | Tick them, or every listed user with the header box, and use the bar that appears |
+| Reorder the main tabs in **Interface Settings** | Drag a row by its handle (⠿), also on touch, or use its arrows |
+| Open a table in the **Database Viewer** | Type part of its title or database name in the search of the **Table** picker and press <kbd>Enter</kbd> to open the first one found; <kbd>Esc</kbd> closes the picker |
+| Import a package (**Admin → Import / Export / Transfer**) | Drop the ZIP or JSON file on the **Import** zone, or click it to choose it |

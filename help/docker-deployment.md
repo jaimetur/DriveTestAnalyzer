@@ -9,16 +9,13 @@ Docker Compose is the recommended service deployment. Production pulls a publish
 
 | Task or topic | Go to |
 | --- | --- |
-| Before deployment | [Open section](#before-deployment) |
-| Production | [Open section](#production) |
-| Development | [Open section](#development) |
-| Example environment | [Open section](#example-environment) |
-| Persistence | [Open section](#persistence) |
-| Operations | [Open section](#operations) |
-| Safe upgrade | [Open section](#safe-upgrade) |
-| Build cache and stale-image checks | [Open section](#build-cache-and-stale-image-checks) |
-| Server-to-server connectivity | [Open section](#server-to-server-connectivity) |
-| Backup scope | [Open section](#backup-scope) |
+| Check what is needed before installing | [Before deployment](#before-deployment) |
+| Run the production service | [Production](#production) |
+| Run a development instance | [Development](#development) |
+| Keep the data across restarts | [Persistence](#persistence) · [Backup scope](#backup-scope) |
+| Start, stop and check the service | [Operations](#operations) |
+| Upgrade without losing data | [Safe upgrade](#safe-upgrade) · [Build cache and stale-image checks](#build-cache-and-stale-image-checks) |
+| Connect two servers for transfers | [Server-to-server connectivity](#server-to-server-connectivity) |
 
 ## Before deployment
 

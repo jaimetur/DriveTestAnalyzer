@@ -15,29 +15,13 @@ reporting
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentation | [Open section](#presentation) |
-| Find, generate and manage the reports | [Open section](#reports) |
-| Create or edit a report | [Open section](#the-report-editor) |
-| Generate a report and preview it | [Open section](#generate-and-preview) |
-| How the PowerPoint and Word documents are composed | [Open section](#how-a-report-is-composed) |
-| Generate a report on its own and email it | [Open section](#schedule-and-email) |
-| Email delivery | [Open section](#email-delivery) |
-| Every report generated, its files and its preview | [Open section](#history) |
-| Portability | [Open section](#portability) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-These keys and gestures speed up the reports. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-| To… | Do this |
-| --- | --- |
-| Switch between **Reports** and **History** | Click the tab, or focus a tab and press <kbd>←</kbd> / <kbd>→</kbd> |
-| Order the modules and sub-modules of a report | Drag them by their handle (⋮⋮); the window scrolls when you drag near its top or bottom edge. Or focus the handle and press <kbd>↑</kbd> / <kbd>↓</kbd> |
-| Add an Operator pattern to the common filters | Type it in the search of **Operators** (`VF*`, `-Three`) and press <kbd>Enter</kbd> |
-| Close an open list of the editor | <kbd>Esc</kbd>, or click outside it |
-| Keep working while a report is generated | **Hide**, <kbd>Esc</kbd> or **×** closes its dialog; **Follow** opens it again |
-| Read a generated report | In its preview, the wheel or <kbd>←</kbd> / <kbd>→</kbd> change the slide (a swipe on a phone); <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+wheel, a pinch or a rectangle dragged over the slide zoom (see [the slide viewer](presentations.md#using-the-slide-viewer)) |
+| Find and manage the reports | [Reports](#reports) |
+| Create or edit a report | [The report editor](#the-report-editor) |
+| Generate a report and preview it | [Generate and preview](#generate-and-preview) |
+| Know what the PowerPoint and Word documents contain | [How a report is composed](#how-a-report-is-composed) |
+| Send a report on a schedule by email | [Schedule and email](#schedule-and-email) · [Email delivery](#email-delivery) |
+| Find a report generated earlier | [History](#history) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Reports
 
@@ -203,3 +187,16 @@ Reports travel with **Admin → Import / Export / Transfer** as one element, **R
 Packages and backups of earlier versions with a **Report Schedules** element (formerly Reporting Jobs) still import, after the reports: each schedule goes to the report of the same name in the destination, as above, and the schedules of reports the destination does not have, and the Reporting Jobs whose artifacts were designed in the job, are left out, and the import summary says how many.
 
 The import preview shows what each element would add or update, comparing each report as its import would save it (its PPT Designs those of the destination): a report that would stay the same counts as unchanged, and one that would change says what it includes and what would change in it, as the editor names it, also in its schedule (*Schedule · Recurrence: Weekly on Monday at 08:00 → Daily at 08:00*, *Schedule · Recipients: +user@example.com*) and its stars (*Stars: +User A, −User B*). History and its files are generated output and travel only in a Full Workspace or Full Environment with **Include generated designs and reports**.
+
+## Tips & shortcuts
+
+These keys and gestures speed up the reports. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+| To… | Do this |
+| --- | --- |
+| Switch between **Reports** and **History** | Click the tab, or focus a tab and press <kbd>←</kbd> / <kbd>→</kbd> |
+| Order the modules and sub-modules of a report | Drag them by their handle (⋮⋮); the window scrolls when you drag near its top or bottom edge. Or focus the handle and press <kbd>↑</kbd> / <kbd>↓</kbd> |
+| Add an Operator pattern to the common filters | Type it in the search of **Operators** (`VF*`, `-Three`) and press <kbd>Enter</kbd> |
+| Close an open list of the editor | <kbd>Esc</kbd>, or click outside it |
+| Keep working while a report is generated | **Hide**, <kbd>Esc</kbd> or **×** closes its dialog; **Follow** opens it again |
+| Read a generated report | In its preview, the wheel or <kbd>←</kbd> / <kbd>→</kbd> change the slide (a swipe on a phone); <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+wheel, a pinch or a rectangle dragged over the slide zoom (see [the slide viewer](presentations.md#using-the-slide-viewer)) |

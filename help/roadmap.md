@@ -4,10 +4,10 @@
 
 | Task or topic | Go to |
 | --- | --- |
-| Roadmap presentation | [Open section](#roadmap-presentation) |
-| Available now | [Open section](#available-now) |
-| Planned product work | [Open section](#planned-product-work) |
-| Architecture considerations | [Open section](#architecture-considerations) |
+| Watch the roadmap presentation | [Roadmap presentation](#roadmap-presentation) |
+| See what is available now | [Available now](#available-now) |
+| See what is planned | [Planned product work](#planned-product-work) |
+| Read the architecture considerations | [Architecture considerations](#architecture-considerations) |
 
 ## Roadmap presentation
 

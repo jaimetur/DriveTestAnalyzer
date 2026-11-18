@@ -12,9 +12,9 @@ App Logs records meaningful application and workspace events for operational rev
 
 | Task or topic | Go to |
 | --- | --- |
-| Access and workspace scope | [Open section](#access-and-workspace-scope) |
-| App Events | [Open section](#app-events) |
-| Execution Log | [Open section](#execution-log) |
+| See who did what, and when | [App Events](#app-events) |
+| Follow the background runs and their errors | [Execution Log](#execution-log) |
+| Know which logs I can see | [Access and workspace scope](#access-and-workspace-scope) |
 
 ## Access and workspace scope
 

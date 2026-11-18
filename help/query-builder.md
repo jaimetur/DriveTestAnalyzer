@@ -18,21 +18,10 @@ builders
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentation | [Open section](#presentation) |
-| Assistance Mode | [Open section](#assistance-mode) |
-| SQL Mode | [Open section](#sql-mode) |
-| Saved queries | [Open section](#saved-queries) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-Query Builder has no shortcut of its own to run a query: use **Run query**. The shortcuts that work everywhere, such as typing letters to jump in a dropdown, are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-| To… | Do this |
-| --- | --- |
-| Filter a result column | Its filter button in the header: search its values, tick those to keep and apply |
-| Close a column filter without applying it | <kbd>Esc</kbd>, or click outside it |
-| Copy the page shown to paste it in Excel | **Copy** (tab-separated text) |
+| Build a query without writing SQL | [Assistance Mode](#assistance-mode) |
+| Write the SQL myself | [SQL Mode](#sql-mode) |
+| Save a query and reuse it | [Saved queries](#saved-queries) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Assistance Mode
 
@@ -100,3 +89,13 @@ Runs and page changes continue in the background while Query Builder checks thei
 - Use the delete button in the Saved queries library to remove a query after confirmation. The library and load picker refresh after deletion.
 - Export an individual saved query as JSON for inspection or archiving. Use a Query Builder Queries package or workspace backup/export ZIP to import saved queries into another workspace: the import replaces the queries the workspace has (found by their identity, so a query renamed on the source server is renamed here too, or by their name) and adds the others, see [Matching and creators](administrator-config.md#matching-and-creators).
 - Exported, transferred and backed-up queries carry their name, description and SQL, without CDRs: choose the CDRs when using an imported query. SQL conditions that inspect `source_dataset_name` use the file names of the CDRs chosen, so review them in another workspace.
+
+## Tips & shortcuts
+
+Query Builder has no shortcut of its own to run a query: use **Run query**. The shortcuts that work everywhere, such as typing letters to jump in a dropdown, are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+| To… | Do this |
+| --- | --- |
+| Filter a result column | Its filter button in the header: search its values, tick those to keep and apply |
+| Close a column filter without applying it | <kbd>Esc</kbd>, or click outside it |
+| Copy the page shown to paste it in Excel | **Copy** (tab-separated text) |

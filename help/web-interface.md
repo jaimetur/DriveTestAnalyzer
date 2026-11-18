@@ -12,93 +12,14 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 
 | Task or topic | Go to |
 | --- | --- |
-| Navigation | [Open section](#navigation) |
-| Header controls | [Open section](#header-controls) |
-| Demo Mode (keep the platform for a demo) | [Open section](#demo-mode) |
-| Panels | [Open section](#panels) |
-| Searchable selectors | [Open section](#searchable-selectors) |
-| Operator patterns (`VF*`, `NOT Lebara`) | [Open section](#operator-patterns) |
-| Filter Builder | [Open section](#filter-builder) |
-| Tables | [Open section](#tables) |
-| Dialogs and progress | [Open section](#dialogs-and-progress) |
-| Floating background-task cards | [Open section](#floating-background-task-cards) |
-| Unassigned values card | [Open section](#unassigned-values-card) |
-| Images of charts and tables | [Open section](#images-of-charts-and-tables) |
-| Laptop screens | [Open section](#laptop-screens) |
-| Small screens | [Open section](#small-screens) |
-| PPT navigation and overlays | [Open section](#ppt-navigation-and-overlays) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-These gestures and keys work on every page. Each module adds its own: see **Module tips** at the end of this section.
-
-**Moving around**
-
-| To… | Do this |
-| --- | --- |
-| Go back to the top of the page | Click the logo in the header, or the round button at the bottom left that appears once the page is scrolled down |
-| Go back to the top of the module you are in | Click its tab again. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+click or <kbd>Shift</kbd>+click opens it as an ordinary link (a new tab or window) |
-| Jump to a section of a module | Hover its tab, or focus it with <kbd>Tab</kbd>, and choose the section. <kbd>Esc</kbd> or scrolling closes the list |
-| Reveal the collapsed **Modules & Sections** tab | Move the pointer within 44 px of the window edge: the left edge on screens 1200 px wide or more, the right edge below. It recedes when the pointer leaves. On touch: touch within 30 px of that edge; it hides again after 5 seconds |
-
-**On a phone (bottom bar)**
-
-| To… | Do this |
-| --- | --- |
-| Show every module in rows | Swipe up on the bar, or tap the handle at its top |
-| Go back to one row | Swipe down on the bar, or tap the handle again |
-| Close **Menu**, **Builders** or **Config** | <kbd>Esc</kbd>, or tap outside the list |
-
-**Dropdowns of the application**
-
-| To… | Do this |
-| --- | --- |
-| Open a dropdown from the keyboard | Focus it and press <kbd>Space</kbd>, <kbd>Enter</kbd>, <kbd>↑</kbd>, <kbd>↓</kbd> or <kbd>F4</kbd> |
-| Jump to an option | Type its first letters (in a list without a search box) |
-| Move through the options | <kbd>↑</kbd> / <kbd>↓</kbd>; <kbd>Home</kbd> / <kbd>End</kbd> for the first and the last |
-| Choose the option marked | <kbd>Enter</kbd> |
-| Close without choosing | <kbd>Esc</kbd> or <kbd>Tab</kbd> |
-| Narrow a searchable list | Type in its search box; <kbd>↓</kbd> goes from the search into the list |
-| Add an Operator pattern | Type it in the search of an **Operator** filter (`VF*`, `NOT Lebara`) and press <kbd>Enter</kbd> (see [Operator patterns](#operator-patterns)) |
-
-**Dialogs**
-
-| To… | Do this |
-| --- | --- |
-| Accept a dialog that asks for a text | <kbd>Enter</kbd> |
-| Cancel a dialog | <kbd>Esc</kbd>, or click outside it |
-
-**Charts, maps and tables**
-
-| To… | Do this |
-| --- | --- |
-| Download or copy a picture of a card, chart, map or table | Hover it and use the two buttons at its top right corner. On touch: tap it to show them for a few seconds (see [Images of charts and tables](#images-of-charts-and-tables)) |
-| Hide or show a series of a chart | Click its entry in the legend; click it again to show it |
-| Zoom into part of a chart | Drag a rectangle over its plot area (not over its title) with the mouse; once zoomed, drag to move around |
-
-**Panels of the tasks in the background**
-
-| To… | Do this |
-| --- | --- |
-| Move a panel out of the way | Drag it by its header (not on phones); the browser remembers where |
-| Put it back in its place | Its button with four corners (**Return panel to its default position**) |
-| Minimize it or open it again | **−** / **+** |
-
-**Module tips**
-
-- [Workspace Management](workspace-management.md#tips-shortcuts) and [Workspace Config](workspace-config.md#tips-shortcuts)
-- [CDR Analysis](datasets-analysis.md#tips-shortcuts)
-- [PPT Designer](ppt-designer.md#tips-shortcuts)
-- [Scoring & GAP Analysis](scoring-gap-analysis.md#tips-shortcuts)
-- [Network Insights](network-insights.md#tips-shortcuts)
-- [Non-Qualified Calls](non-qualified-calls.md#tips-shortcuts)
-- [Reporting](reporting.md#tips-shortcuts)
-- [Chart Builder](chart-builder.md#tips-shortcuts) and [Query Builder](query-builder.md#tips-shortcuts)
-- [AI Assistant](assistant.md#tips-shortcuts)
-- [Ticket Center](ticket-center.md#tips-shortcuts)
-- [Super Admin](super-admin.md#tips-shortcuts)
-- [The slide viewer of the presentations](presentations.md#using-the-slide-viewer)
+| Move between modules and workspaces | [Navigation](#navigation) · [Header controls](#header-controls) |
+| Pick values and operators quickly (`VF*`, `NOT Lebara`) | [Searchable selectors](#searchable-selectors) · [Operator patterns](#operator-patterns) |
+| Build a filter | [Filter Builder](#filter-builder) |
+| Sort, filter and copy tables | [Tables](#tables) |
+| Follow the tasks running in the background | [Floating background-task cards](#floating-background-task-cards) |
+| Save a chart or table as an image | [Images of charts and tables](#images-of-charts-and-tables) |
+| Use the tool on a laptop or a phone | [Laptop screens](#laptop-screens) · [Small screens](#small-screens) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Navigation
 
@@ -319,3 +240,74 @@ By default the analytical tabs are ordered **CDR Analysis** → **PPT Designer**
 **Reporting** is shown only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it; on a new deployment it is in every profile. The design viewer groups charts by Slide and opens the same PPT Filters controls in a floating panel. Its dataset dialog provides pagination and CSV export.
 
 App Logs is available from the utility navigation and includes App Events for the active workspace plus the live Execution Log for the running server. See [App Logs](app-logs.md).
+
+## Tips & shortcuts
+
+These gestures and keys work on every page. Each module adds its own: see **Module tips** at the end of this section.
+
+**Moving around**
+
+| To… | Do this |
+| --- | --- |
+| Go back to the top of the page | Click the logo in the header, or the round button at the bottom left that appears once the page is scrolled down |
+| Go back to the top of the module you are in | Click its tab again. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+click or <kbd>Shift</kbd>+click opens it as an ordinary link (a new tab or window) |
+| Jump to a section of a module | Hover its tab, or focus it with <kbd>Tab</kbd>, and choose the section. <kbd>Esc</kbd> or scrolling closes the list |
+| Reveal the collapsed **Modules & Sections** tab | Move the pointer within 44 px of the window edge: the left edge on screens 1200 px wide or more, the right edge below. It recedes when the pointer leaves. On touch: touch within 30 px of that edge; it hides again after 5 seconds |
+
+**On a phone (bottom bar)**
+
+| To… | Do this |
+| --- | --- |
+| Show every module in rows | Swipe up on the bar, or tap the handle at its top |
+| Go back to one row | Swipe down on the bar, or tap the handle again |
+| Close **Menu**, **Builders** or **Config** | <kbd>Esc</kbd>, or tap outside the list |
+
+**Dropdowns of the application**
+
+| To… | Do this |
+| --- | --- |
+| Open a dropdown from the keyboard | Focus it and press <kbd>Space</kbd>, <kbd>Enter</kbd>, <kbd>↑</kbd>, <kbd>↓</kbd> or <kbd>F4</kbd> |
+| Jump to an option | Type its first letters (in a list without a search box) |
+| Move through the options | <kbd>↑</kbd> / <kbd>↓</kbd>; <kbd>Home</kbd> / <kbd>End</kbd> for the first and the last |
+| Choose the option marked | <kbd>Enter</kbd> |
+| Close without choosing | <kbd>Esc</kbd> or <kbd>Tab</kbd> |
+| Narrow a searchable list | Type in its search box; <kbd>↓</kbd> goes from the search into the list |
+| Add an Operator pattern | Type it in the search of an **Operator** filter (`VF*`, `NOT Lebara`) and press <kbd>Enter</kbd> (see [Operator patterns](#operator-patterns)) |
+
+**Dialogs**
+
+| To… | Do this |
+| --- | --- |
+| Accept a dialog that asks for a text | <kbd>Enter</kbd> |
+| Cancel a dialog | <kbd>Esc</kbd>, or click outside it |
+
+**Charts, maps and tables**
+
+| To… | Do this |
+| --- | --- |
+| Download or copy a picture of a card, chart, map or table | Hover it and use the two buttons at its top right corner. On touch: tap it to show them for a few seconds (see [Images of charts and tables](#images-of-charts-and-tables)) |
+| Hide or show a series of a chart | Click its entry in the legend; click it again to show it |
+| Zoom into part of a chart | Drag a rectangle over its plot area (not over its title) with the mouse; once zoomed, drag to move around |
+
+**Panels of the tasks in the background**
+
+| To… | Do this |
+| --- | --- |
+| Move a panel out of the way | Drag it by its header (not on phones); the browser remembers where |
+| Put it back in its place | Its button with four corners (**Return panel to its default position**) |
+| Minimize it or open it again | **−** / **+** |
+
+**Module tips**
+
+- [Workspace Management](workspace-management.md#tips-shortcuts) and [Workspace Config](workspace-config.md#tips-shortcuts)
+- [CDR Analysis](datasets-analysis.md#tips-shortcuts)
+- [PPT Designer](ppt-designer.md#tips-shortcuts)
+- [Scoring & GAP Analysis](scoring-gap-analysis.md#tips-shortcuts)
+- [Network Insights](network-insights.md#tips-shortcuts)
+- [Non-Qualified Calls](non-qualified-calls.md#tips-shortcuts)
+- [Reporting](reporting.md#tips-shortcuts)
+- [Chart Builder](chart-builder.md#tips-shortcuts) and [Query Builder](query-builder.md#tips-shortcuts)
+- [AI Assistant](assistant.md#tips-shortcuts)
+- [Ticket Center](ticket-center.md#tips-shortcuts)
+- [Super Admin](super-admin.md#tips-shortcuts)
+- [The slide viewer of the presentations](presentations.md#using-the-slide-viewer)

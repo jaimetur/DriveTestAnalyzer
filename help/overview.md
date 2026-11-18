@@ -14,25 +14,14 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 
 | Task or topic | Go to |
 | --- | --- |
-| End-to-end workflow | [Open section](#end-to-end-workflow) |
-| Header and navigation | [Open section](#header-and-navigation) |
-| Application and workspace configuration | [Open section](#application-and-workspace-configuration) |
-| Background tasks and floating cards | [Open section](#background-tasks-and-floating-cards) |
-| Workspace | [Open section](#workspace) |
-| CDR Analysis | [Open section](#cdr-analysis) |
-| Scoring & GAP Analysis | [Open section](#scoring-gap-analysis) |
-| Network Insights | [Open section](#network-insights) |
-| PPT Designer | [Open section](#ppt-designer) |
-| Non-Qualified Calls | [Open section](#non-qualified-calls) |
-| Reporting | [Open section](#reporting) |
-| Chart Builder | [Open section](#chart-builder) |
-| Query Builder | [Open section](#query-builder) |
-| AI Assistant | [Open section](#ai-assistant) |
-| Ticket Center | [Open section](#ticket-center) |
-| App Logs | [Open section](#app-logs) |
-| Administrator Config | [Open section](#administrator-config) |
-| Super Admin | [Open section](#super-admin) |
-| Roles at a glance | [Open section](#roles-at-a-glance) |
+| See the whole workflow, from the CDRs to the report | [End-to-end workflow](#end-to-end-workflow) |
+| Find my way around the header and the modules | [Header and navigation](#header-and-navigation) |
+| Load CDRs into a workspace | [Workspace](#workspace) |
+| Score the operators and find the GAPs | [Scoring & GAP Analysis](#scoring-gap-analysis) |
+| Compare the networks of the operators | [Network Insights](#network-insights) |
+| Follow up the calls that fail | [Non-Qualified Calls](#non-qualified-calls) |
+| Build PowerPoint reports and send them | [PPT Designer](#ppt-designer) · [Reporting](#reporting) |
+| Know what each role can do | [Roles at a glance](#roles-at-a-glance) |
 
 ## End-to-end workflow
 

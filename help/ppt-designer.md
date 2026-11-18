@@ -21,97 +21,14 @@ ppt-designer
 
 | I want to… | Go to |
 | --- | --- |
-| Watch the presentation of the module | [Presentation](#presentation) |
+| Create a Design from a template | [PPT Designs](#ppt-designs) |
+| Choose the campaigns, dates and operators of a Design | [PPT Scope & Filters](#ppt-scope-filters) |
+| Browse the slides and the data behind a chart | [View PPT](#view-ppt) |
+| Change the slides, charts and texts on screen | [Designer](#designer) · [Template parameters](#template-parameters) |
+| Create or edit a PPT Template | [PPT Templates](#ppt-templates) · [Report Template reference](#report-template-reference) |
+| Export the presentation to PowerPoint | [Generate PPT](#generate-ppt) · [PPT Generation Jobs](#ppt-generation-jobs) |
+| Fix empty charts or a slow preparation | [Troubleshooting](#troubleshooting) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
-| Create or change a Design | [PPT Designs](#ppt-designs) |
-| Choose the campaigns, dates and comparison scope | [PPT Scope & Filters](#ppt-scope-filters) |
-| Understand Apply versus Save | [Apply, Save, Clear and Reload](#apply-save-clear-and-reload) |
-| Explore slides and chart data | [View PPT](#view-ppt) |
-| Change slides, layouts and charts on screen, for this Design or for its template | [Designer](#designer) |
-| Choose the city, threshold or other values of a template's parameters | [Template parameters](#template-parameters) |
-| Import, create or edit PPT Templates | [PPT Templates](#ppt-templates) |
-| Write a template by hand: its columns, chart types and layouts | [Report Template reference](#report-template-reference) |
-| Export a presentation | [Generate PPT](#generate-ppt) |
-| Review exported jobs or charts | [PPT Generation Jobs](#ppt-generation-jobs) / [Charts Panel](#charts-panel) |
-| Resolve empty charts or preparation problems | [Troubleshooting](#troubleshooting) |
-
-## Tips & shortcuts
-
-Gestures and keys that save time. Keys work while the viewer has the focus and you are not typing in a field.
-
-### Viewer and larger view
-
-| To… | Do this |
-| --- | --- |
-| Go to the next slide | <kbd>→</kbd>, <kbd>↓</kbd>, <kbd>Page Down</kbd> or <kbd>Space</kbd>, or turn the mouse wheel down over the slide (one slide per turn). On touch: swipe left. |
-| Go to the previous slide | <kbd>←</kbd>, <kbd>↑</kbd> or <kbd>Page Up</kbd>, or turn the wheel up over the slide. On touch: swipe right. |
-| Go to the first or last slide | <kbd>Home</kbd> or <kbd>End</kbd> |
-| Read the value of a point | Point at it: a tooltip names its label, series and value (on a CDF, its cumulative %) |
-| See the tools of a chart (**Dataset**, **Expand**, **Zoom**) | Point at the chart or focus it. On touch: tap it; they show for 3 seconds. |
-| Open a chart larger | Double-click it, or **Expand** |
-| Go to the next or previous chart of the larger view | <kbd>→</kbd> or <kbd>←</kbd>. On touch: swipe left or right. |
-| Close the larger view or a dialog | <kbd>Esc</kbd>, or click the dark backdrop around it |
-| Zoom a chart at the pointer | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + mouse wheel, or pinch on the touchpad |
-| Zoom into one area of a chart | With the mouse, drag a rectangle over the plot (at 100%; not from the title or the legend) |
-| Move around a zoomed chart | Drag it, or use its direction arrows |
-| Hide or show a value on every slide | Click its entry in the legend |
-| Keep only, hide or show values of a legend or an axis | Right-click a legend entry or an axis label. In the menu, <kbd>→</kbd> opens a **Show** submenu, <kbd>←</kbd> goes back and <kbd>Esc</kbd> closes it. |
-| Undo the last hide or show | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>, or **Hidden (N)** → **Undo** |
-| Copy or download a chart or the slide as an image | Point at the chart for its copy and download buttons; the slide has two blue buttons beside the slide selector. On touch: tap; the buttons show for 5 seconds. |
-| Add a slide comment | Type it and press <kbd>Enter</kbd>; an edited comment is saved with <kbd>Enter</kbd> or by leaving it |
-| Close the viewer | <kbd>Esc</kbd>, when no Presentation runs and no dialog is open |
-
-### During a Presentation
-
-| To… | Do this |
-| --- | --- |
-| Start the Presentation at once | <kbd>F8</kbd> (with the settings of the **Presentation mode** dialog) |
-| Pause or resume it | <kbd>F8</kbd> or <kbd>Space</kbd>, or the floating Pause/Resume button |
-| Go to the previous or next slide and keep playing | <kbd>F7</kbd> or <kbd>F9</kbd>, the arrow and Page keys, the wheel or a swipe |
-| Stop it | <kbd>Esc</kbd> or **Stop presentation** |
-
-> [!TIP]
-> **Buttons stop, keys do not.** **First / Previous / Next / Last**, the slide selector and opening a chart larger stop the Presentation; keys, the wheel and swipes move through it while it keeps playing.
-
-### In the Designer
-
-| To… | Do this |
-| --- | --- |
-| Choose a chart, KPI card, text box or picture | Click it |
-| Open its menu (Duplicate, Copy, Cut, Paste, Delete, Fill the free places…) | Right-click it, or its **⋯** menu in the panel |
-| Open the menu of a slide | Right-click its thumbnail at the left, or its **⋯** menu |
-| Move a slide | Drag its thumbnail |
-| Move a chart, or swap two charts | Drag its **⠿** handle onto a free place or onto another chart |
-| Copy, cut or paste the element chosen | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>C</kbd>, <kbd>X</kbd>, <kbd>V</kbd> (it is pasted on the first free place of the slide shown, also on another slide) |
-| Delete the element chosen | <kbd>Delete</kbd> or <kbd>Backspace</kbd> |
-| Undo or redo | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>; <kbd>Shift</kbd>+<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Y</kbd> |
-| Edit the slide title or subtitle in place | Click it in the header of the viewer; <kbd>Enter</kbd> or leaving it keeps it, <kbd>Esc</kbd> cancels |
-| Widen or narrow the panel | Drag its left edge (kept for your next visits); double-click the edge for its usual width; with the edge focused, <kbd>←</kbd>/<kbd>→</kbd> change it by 24 px |
-| Pick a grid layout | Point at the cells of **Grid** to preview its rows × columns, then click |
-| Step back | <kbd>Esc</kbd> leaves a field, then closes a menu, then Chart Type, then leaves the element chosen; a click outside the charts and the panel also leaves it |
-
-### Charts in the Designer
-
-These work on the chart already chosen.
-
-| To… | Do this |
-| --- | --- |
-| Change the colour, width, line or opacity of a series | Click its entry in the legend. On a chart not chosen, the click hides the series in the whole Design, as in the viewer. |
-| Change the range of a numeric axis | Click its labels: drag the two ends of the slider (**Automatic** gives it back) |
-| Choose the values of a text axis | Click its labels: untick values, **Only** one, or **Show all** |
-| Change the order of the values of Rows or Columns | Drag an axis label, header or row label before or after another; a purple bar shows where it goes (**Default order** gives it back) |
-| Put a field before, after or in place of a pill | Drop it near the edge of the pill, or on its middle to replace it |
-| Choose the chart type | Click the **Chart Type** tab on the right edge of the chart; <kbd>Esc</kbd> or a click outside closes it, and the wheel scrolls it |
-| Draw the chart again from its CDRs | **Refresh chart**, shown over the chart while designing |
-
-### Adjust places
-
-| To… | Do this |
-| --- | --- |
-| Resize rows or columns | Drag the lines between them |
-| Choose several places (to **Merge** them) | Click a place, then <kbd>Shift</kbd>+click another: the places between them are chosen |
-| Empty the places chosen | <kbd>Delete</kbd> or <kbd>Backspace</kbd>, or **Delete** |
-| Put a place back in an empty cell | Click its **+** |
 
 ## Before creating a Design
 
@@ -1755,3 +1672,81 @@ For **Vendor (All Operators Combined)**, web charts/tables and PowerPoint report
 In multivendor charts, operator-only identities such as **EE - All** retain the colour assigned to that operator in Operator mappings. This applies to web and newly generated PPT charts; the display suffix does not create a new colour identity. Real vendors retain their configured vendor colours.
 
 The default Campaign is **Latest 2 campaigns** for **Operator Comparison** and multivendor **Vendor (All Operators Combined)**, and **Latest campaign** for multivendor **Operator_Vendor**. Changing the vendor comparison updates a Campaign that still has the default; a chosen Campaign is retained.
+
+## Tips & shortcuts
+
+Gestures and keys that save time. Keys work while the viewer has the focus and you are not typing in a field.
+
+### Viewer and larger view
+
+| To… | Do this |
+| --- | --- |
+| Go to the next slide | <kbd>→</kbd>, <kbd>↓</kbd>, <kbd>Page Down</kbd> or <kbd>Space</kbd>, or turn the mouse wheel down over the slide (one slide per turn). On touch: swipe left. |
+| Go to the previous slide | <kbd>←</kbd>, <kbd>↑</kbd> or <kbd>Page Up</kbd>, or turn the wheel up over the slide. On touch: swipe right. |
+| Go to the first or last slide | <kbd>Home</kbd> or <kbd>End</kbd> |
+| Read the value of a point | Point at it: a tooltip names its label, series and value (on a CDF, its cumulative %) |
+| See the tools of a chart (**Dataset**, **Expand**, **Zoom**) | Point at the chart or focus it. On touch: tap it; they show for 3 seconds. |
+| Open a chart larger | Double-click it, or **Expand** |
+| Go to the next or previous chart of the larger view | <kbd>→</kbd> or <kbd>←</kbd>. On touch: swipe left or right. |
+| Close the larger view or a dialog | <kbd>Esc</kbd>, or click the dark backdrop around it |
+| Zoom a chart at the pointer | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + mouse wheel, or pinch on the touchpad |
+| Zoom into one area of a chart | With the mouse, drag a rectangle over the plot (at 100%; not from the title or the legend) |
+| Move around a zoomed chart | Drag it, or use its direction arrows |
+| Hide or show a value on every slide | Click its entry in the legend |
+| Keep only, hide or show values of a legend or an axis | Right-click a legend entry or an axis label. In the menu, <kbd>→</kbd> opens a **Show** submenu, <kbd>←</kbd> goes back and <kbd>Esc</kbd> closes it. |
+| Undo the last hide or show | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>, or **Hidden (N)** → **Undo** |
+| Copy or download a chart or the slide as an image | Point at the chart for its copy and download buttons; the slide has two blue buttons beside the slide selector. On touch: tap; the buttons show for 5 seconds. |
+| Add a slide comment | Type it and press <kbd>Enter</kbd>; an edited comment is saved with <kbd>Enter</kbd> or by leaving it |
+| Close the viewer | <kbd>Esc</kbd>, when no Presentation runs and no dialog is open |
+
+### During a Presentation
+
+| To… | Do this |
+| --- | --- |
+| Start the Presentation at once | <kbd>F8</kbd> (with the settings of the **Presentation mode** dialog) |
+| Pause or resume it | <kbd>F8</kbd> or <kbd>Space</kbd>, or the floating Pause/Resume button |
+| Go to the previous or next slide and keep playing | <kbd>F7</kbd> or <kbd>F9</kbd>, the arrow and Page keys, the wheel or a swipe |
+| Stop it | <kbd>Esc</kbd> or **Stop presentation** |
+
+> [!TIP]
+> **Buttons stop, keys do not.** **First / Previous / Next / Last**, the slide selector and opening a chart larger stop the Presentation; keys, the wheel and swipes move through it while it keeps playing.
+
+### In the Designer
+
+| To… | Do this |
+| --- | --- |
+| Choose a chart, KPI card, text box or picture | Click it |
+| Open its menu (Duplicate, Copy, Cut, Paste, Delete, Fill the free places…) | Right-click it, or its **⋯** menu in the panel |
+| Open the menu of a slide | Right-click its thumbnail at the left, or its **⋯** menu |
+| Move a slide | Drag its thumbnail |
+| Move a chart, or swap two charts | Drag its **⠿** handle onto a free place or onto another chart |
+| Copy, cut or paste the element chosen | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>C</kbd>, <kbd>X</kbd>, <kbd>V</kbd> (it is pasted on the first free place of the slide shown, also on another slide) |
+| Delete the element chosen | <kbd>Delete</kbd> or <kbd>Backspace</kbd> |
+| Undo or redo | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>; <kbd>Shift</kbd>+<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Y</kbd> |
+| Edit the slide title or subtitle in place | Click it in the header of the viewer; <kbd>Enter</kbd> or leaving it keeps it, <kbd>Esc</kbd> cancels |
+| Widen or narrow the panel | Drag its left edge (kept for your next visits); double-click the edge for its usual width; with the edge focused, <kbd>←</kbd>/<kbd>→</kbd> change it by 24 px |
+| Pick a grid layout | Point at the cells of **Grid** to preview its rows × columns, then click |
+| Step back | <kbd>Esc</kbd> leaves a field, then closes a menu, then Chart Type, then leaves the element chosen; a click outside the charts and the panel also leaves it |
+
+### Charts in the Designer
+
+These work on the chart already chosen.
+
+| To… | Do this |
+| --- | --- |
+| Change the colour, width, line or opacity of a series | Click its entry in the legend. On a chart not chosen, the click hides the series in the whole Design, as in the viewer. |
+| Change the range of a numeric axis | Click its labels: drag the two ends of the slider (**Automatic** gives it back) |
+| Choose the values of a text axis | Click its labels: untick values, **Only** one, or **Show all** |
+| Change the order of the values of Rows or Columns | Drag an axis label, header or row label before or after another; a purple bar shows where it goes (**Default order** gives it back) |
+| Put a field before, after or in place of a pill | Drop it near the edge of the pill, or on its middle to replace it |
+| Choose the chart type | Click the **Chart Type** tab on the right edge of the chart; <kbd>Esc</kbd> or a click outside closes it, and the wheel scrolls it |
+| Draw the chart again from its CDRs | **Refresh chart**, shown over the chart while designing |
+
+### Adjust places
+
+| To… | Do this |
+| --- | --- |
+| Resize rows or columns | Drag the lines between them |
+| Choose several places (to **Merge** them) | Click a place, then <kbd>Shift</kbd>+click another: the places between them are chosen |
+| Empty the places chosen | <kbd>Delete</kbd> or <kbd>Backspace</kbd>, or **Delete** |
+| Put a place back in an empty cell | Click its **+** |

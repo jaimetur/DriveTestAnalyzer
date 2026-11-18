@@ -18,136 +18,16 @@ dt-analyzer-rca
 
 | I want to… | Go to |
 | --- | --- |
-| Watch the presentations of the module and of the DT Analyzer RCA | [Presentations](#presentations) |
-| Learn the tips and shortcuts: the maps, the ruler and elevation profile, the signalling timeline, the call, the table and the charts | [Tips & shortcuts](#tips-shortcuts) |
-| Know which calls are listed and how they are indexed | [Which calls are Non-Qualified](#which-calls-are-non-qualified) |
-| Understand Daily, cumulative and Final CDRs of the same call | [Daily and Final CDRs](#daily-and-final-cdrs) |
-| Choose the calls I work with | [Filters](#filters) |
-| Download or copy a panel, chart or table as an image | [Images of the panels](#images-of-the-panels) |
-| Go to each panel | [Sections bar](#sections-bar) |
-| See how many calls fail and where they concentrate | [Summary](#summary) |
-| Know which calls to analyse first: the scoring points they lose, the repeated issues and the Voice and Data queues of the teams | [NQ Prioritization](#nq-prioritization) |
-| See the failures that repeat close in time, in distance or both | [NQ Hotspots, Clustered & Time-Window Issues](#nq-hotspots-clustered-time-window-issues) |
-| See every filtered call, its CDR and its Layer3 Logs on one map, from the whole country down to one call | [NQ Maps](#nq-maps) |
-| See the NQ calls of a site to review and of the sites around it, with their `JOIN_ID`s | [Map of a site](#map-of-a-site) |
-| Choose the strategy of the workspace: Dual Queue (Cities first), Dual Queue (Roads first), Dual Queue (Scoring Based), Vodafone Proposal or one of your own | [Strategies](#strategies) |
-| Choose which calls are prioritized, by service, NR Mode and operator, and the Priority they take | [Prioritization Rules](#prioritization-rules) |
-| Compare the NQ rate of campaigns and operators | [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) |
-| See how and where the calls fail: result, technology, serving Vendor and sites | [Failures by Type, Technology & Serving Cell](#failures-by-type-technology-serving-cell) |
-| Compare the DT Analyzer RCA, the NetCheck RCA, the Ericsson RCA and the analysts | [Root Cause Sources](#root-cause-sources) |
-| See where the calls fail by root domain, category and cause | [Root Cause Analysis](#root-cause-analysis) |
-| Follow the calls through their statuses and phases | [Lifecycle & Phases](#lifecycle-phases) |
-| Track the follow-up over time, by team and by analyst | [Progress View](#progress-view) |
-| Set the status, team, analyst or root cause of calls | [NQ Calls panel](#nq-calls-panel) |
-| Analyse one call, comment it or read its history | [Call details and activity](#call-details-and-activity) |
-| See where a call failed: its cells and sites, the sites and Non-Qualified Calls around and the RSRP / SINR of the tests around | [Map of the call](#map-of-the-call) |
-| Configure fields, statuses, teams, rules and the root cause catalog | [NQ Analysis Configuration](#nq-analysis-configuration) |
-| Know how the DT Analyzer RCA finds the root cause of every call, and change its rules | [DT Analyzer RCA](#dt-analyzer-rca) |
-| Read every rule of the DT Analyzer RCA and the root domains, categories and causes it gives | [Default rules](#default-rules) |
-| Import the Ericsson RCA results | [Ericsson RCA results](#ericsson-rca-results) |
-| Import the analyses of the previous tool | [Previous NQ Analyses](#previous-nq-analyses) |
-| Link the analysts and reviewers without account to their user accounts | [Link Analysts to Accounts](#link-analysts-to-accounts) |
-| Export the calls to Excel, PowerPoint or Word | [Exports](#exports) |
-| Send the reports on a schedule | [Scheduled reports](#scheduled-reports) |
-| Copy the follow-up to another workspace or server | [Storage and portability](#storage-and-portability) |
-| Solve a problem | [Troubleshooting](#troubleshooting) |
-
-## Tips & shortcuts
-
-The gestures and keys that save time on this page. Use ⌘ instead of Ctrl and Option instead of Alt on a Mac.
-
-**Maps** — the map of a call (in the call and larger), [NQ Maps](#nq-maps) and the [map of a site](#map-of-a-site) share them.
-
-| To… | Do this |
-| --- | --- |
-| Move the map | Drag it, with the left or the middle button (the middle button moves it even while you hold <kbd>Ctrl</kbd>). On touch: one finger. |
-| Zoom the map in the call or in the NQ Maps panel | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + wheel, or pinch the trackpad. The wheel alone scrolls the page, and a short note says how to zoom. On touch: pinch with two fingers (it also moves the map). |
-| Zoom the larger map or the map of a site | The wheel alone zooms towards the pointer. |
-| Zoom into an area | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + drag a rectangle. |
-| Open the map larger | Double-click the map in the call or in NQ Maps (on touch: double tap), or **Map of the call** in the Failure Details and Call Details tabs. |
-| Zoom in ×2 | Double-click the larger map or the map of a site (on touch: double tap). |
-| Close the larger map or the map of a site | <kbd>Esc</kbd>, or click outside it. |
-| See every place again | **Fit**; **−** and **+** zoom out and in. |
-| Know which gesture is ready | Hold <kbd>Alt</kbd> and the pointer turns into a ruler; hold <kbd>Ctrl</kbd>/<kbd>⌘</kbd> and it turns into a crosshair. |
-| Read an element | Hover it: up to 18 of its values. Where several NQ calls failed at one point, the first line reads *At this point: N NQ calls*. |
-| Choose an element | Click it: its panel opens and the distance measured is cleared. A click beside every element keeps the chosen one; its **×** closes it. |
-| Move the panel of the element chosen in the larger map | Drag its title. It stays there for the next elements. |
-| Move, resize or keep open **CDR Info**, **LOGS Info** or **Legend** | Drag the header to move the card and its corner to resize it. **Restore** puts it back; the **pin** keeps it open on every map. A click on the header folds it; a click outside folds it unless it is pinned. |
-| Change the map under the layers | **Map**, at the right of the controls above the map. |
-
-**Elevation profile & ruler**
-
-| To… | Do this |
-| --- | --- |
-| Measure a distance and its bearing | <kbd>Alt</kbd> + drag on the map. The **elevation profile** of the ground between both ends opens over the bottom of the map. Needs a keyboard. |
-| Read a point of the profile | Hover the profile: the distance, elevation and slope of that point, marked on the map. |
-| Keep only the figures of the profile | Click its header (again to unfold it). |
-| Clear the ruler | <kbd>Esc</kbd>, a plain click on the map, the **×** of the profile, or <kbd>Alt</kbd> + click without moving. |
-
-**Layer3 signalling timeline** — below the map of a call with [Layer3 Logs](#layer3-logs-on-the-map).
-
-| To… | Do this |
-| --- | --- |
-| Follow the UE along the session | Drag along the timeline: the cursor shows where each UE was, and the map follows it. |
-| Step through the session | Click the timeline (or reach it with <kbd>Tab</kbd>), then <kbd>←</kbd>/<kbd>→</kbd> for 0.5 s, <kbd>Shift</kbd> + <kbd>←</kbd>/<kbd>→</kbd> for 5 s. |
-| Jump to the start or the end of the session | <kbd>Home</kbd> / <kbd>End</kbd>. |
-| Remove the cursor | <kbd>Esc</kbd>, or the **×** of the cursor. |
-| Find a message or event on the map | Hover its marker: a ring shows its place. Click it to centre the map on it and read its values. |
-| Fold or hide the timeline | Click its header to fold it; its **×** hides it, and **Signalling timeline** in **LOGS Info** shows it again. |
-| Follow one carrier or cell | **+** of a layer in **LOGS Info** lists it by channel, each with its switch and its PCIs as chips. |
-
-**Call panel**
-
-| To… | Do this |
-| --- | --- |
-| Close the call | <kbd>Esc</kbd>, a click outside it, or **×**. It asks first when changes are not saved. |
-| Go to the previous or next call of the list | **‹** / **›** in the header. |
-| Open any call | Paste its `JOIN_ID` (or call ID) in **Go to a JOIN_ID…**. In the **Recent JOIN_IDs** list: <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Esc</kbd>. |
-| Copy the `JOIN_ID` or the IDs of the provider | The copy button beside each one. |
-| Show a cell of the call on the map | Click (or <kbd>Enter</kbd>) a cell in **Cells of the call**, below the map: the map centres on its site. |
-| Show another NQ call on the map | Click (or <kbd>Enter</kbd>) it in **Non-Qualified Calls around**: the map centres on it. **Open** opens it. |
-| Show a test of its drive on the map | Click its row in **Its drive**. |
-| Show where a Diagnosis hint points | Click the hint (a site, or the moment of the Layer3 Logs). |
-| Post a comment | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd>. |
-| Leave only what the analysts fill | **Only the fields the analysts fill**, above the tabs (remembered in the browser). |
-
-**NQ Calls table**
-
-| To… | Do this |
-| --- | --- |
-| Find calls by their IDs | Paste one or more IDs in **Join ID**, separated by commas, spaces or lines. |
-| Sort by a column | Click a header name (or <kbd>Enter</kbd> / <kbd>Space</kbd>); again to reverse it. **Default order** comes back. |
-| Move a column | Drag its header onto another one. **Default column order** comes back. |
-| Filter a column | The funnel beside its name. <kbd>Esc</kbd> or a click outside closes it. |
-| Choose a value in the row (status, team, analyst, root cause…) | Type to search, <kbd>↑</kbd>/<kbd>↓</kbd> to move, <kbd>Enter</kbd> takes the first match (or **+ Add “…”** when nothing matches), <kbd>Esc</kbd> closes. |
-| Read the seconds of a call, or the subcategory of a failure | Hover its start time, or its failure. |
-| Change many calls at once | Tick their checkboxes, or the header checkbox for the whole page. |
-| Open a call | Click its row, or **›** beside its comments. |
-
-**Charts & indicators**
-
-| To… | Do this |
-| --- | --- |
-| Filter by a card, bar, slice or legend entry | Click it (or <kbd>Enter</kbd> / <kbd>Space</kbd> on a card); click it again to remove the filter. |
-| Filter by the root domain of a root category | Click the domain tag on its bar in **Root Cause Analysis**. |
-| Read every value of a period | Hover the period in the Progress View timeline; click it to filter the calls detected then. |
-| Open a stalled call | Click (or <kbd>Enter</kbd>) its row in **Stalled Open Calls**. |
-| Reorder the Priority groups of a strategy | Drag the **⠿** handle, or focus it and press <kbd>↑</kbd>/<kbd>↓</kbd>. |
-| Open the configuration | Hover **NQ Analysis Configuration** (<kbd>Esc</kbd> closes it). |
-| Save or copy a panel, chart or table as an image | Hover it (on touch: tap it) and use its image buttons. |
-
-**Text editors** — comments and long texts, as in [Ticket Center](ticket-center.md#writing-descriptions-and-comments).
-
-| To… | Do this |
-| --- | --- |
-| Bold, italic, code, link | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>B</kbd>, <kbd>I</kbd>, <kbd>E</kbd>, <kbd>K</kbd> |
-| Strikethrough, highlight | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>, <kbd>H</kbd> |
-| Numbered list, bullets, tasks | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>7</kbd>, <kbd>8</kbd>, <kbd>9</kbd> |
-| Heading 1 to 3, or back to text | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Alt</kbd> + <kbd>1</kbd>–<kbd>3</kbd>, or <kbd>0</kbd> |
-| Nest a line or bring it back | <kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd>; <kbd>Enter</kbd> goes on at the same level. |
-| Undo, redo | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd>, <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> |
-| Open a link in the text | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + click it. |
-| Post the comment, or save the comment edited | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd> |
+| Set up the statuses, teams, rules and root cause catalog | [NQ Analysis Configuration](#nq-analysis-configuration) · [DT Analyzer RCA](#dt-analyzer-rca) |
+| Bring in the Ericsson RCA results or the analyses of the previous tool | [Ericsson RCA results](#ericsson-rca-results) · [Previous NQ Analyses](#previous-nq-analyses) |
+| Choose the campaigns, operators and services I work with | [Filters](#filters) |
+| See how many calls fail and where | [Summary](#summary) · [NQ Maps](#nq-maps) |
+| Find which calls to analyse first | [NQ Prioritization](#nq-prioritization) · [Strategies](#strategies) |
+| Find out why the calls fail | [Root Cause Analysis](#root-cause-analysis) · [Root Cause Sources](#root-cause-sources) |
+| Analyse one call: its details, map, Layer3 Logs and comments | [Call details and activity](#call-details-and-activity) · [Map of the call](#map-of-the-call) |
+| Assign the calls and track the follow-up by team and analyst | [NQ Calls panel](#nq-calls-panel) · [Progress View](#progress-view) |
+| Share the calls in Excel, PowerPoint or Word, also on a schedule | [Exports](#exports) · [Scheduled reports](#scheduled-reports) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Which calls are Non-Qualified
 
@@ -1763,3 +1643,100 @@ The page stays quick with tens of thousands of calls: the latest version of ever
 | The NetCheck RCA values differ from the CDR | Spellings of one value are shown as one (see [NetCheck RCA values](#netcheck-rca-values)); the CDR keeps them as written. |
 | The Scoring Impact of a call is Not scored | Hover the badge of the NQ Prioritization & Queues panel: its campaign waits for the Scoring History, has no CDR in the combined CDR tables, or the workspace has no methodology. It is scored once the reason is solved (or now with **Recalculate**). |
 | The Priority of a call is not filled by its step | The call is closed, someone chose or cleared its Priority by hand (the strategy then keeps it), its analysis started with another Priority, the call is out of scope or no step of the [strategy](#strategies) takes it, the Priority list lacks the value, or **Fill the Priority of the open calls** is off in the [Prioritization Rules](#prioritization-rules). |
+
+## Tips & shortcuts
+
+The gestures and keys that save time on this page. Use ⌘ instead of Ctrl and Option instead of Alt on a Mac.
+
+**Maps** — the map of a call (in the call and larger), [NQ Maps](#nq-maps) and the [map of a site](#map-of-a-site) share them.
+
+| To… | Do this |
+| --- | --- |
+| Move the map | Drag it, with the left or the middle button (the middle button moves it even while you hold <kbd>Ctrl</kbd>). On touch: one finger. |
+| Zoom the map in the call or in the NQ Maps panel | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + wheel, or pinch the trackpad. The wheel alone scrolls the page, and a short note says how to zoom. On touch: pinch with two fingers (it also moves the map). |
+| Zoom the larger map or the map of a site | The wheel alone zooms towards the pointer. |
+| Zoom into an area | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + drag a rectangle. |
+| Open the map larger | Double-click the map in the call or in NQ Maps (on touch: double tap), or **Map of the call** in the Failure Details and Call Details tabs. |
+| Zoom in ×2 | Double-click the larger map or the map of a site (on touch: double tap). |
+| Close the larger map or the map of a site | <kbd>Esc</kbd>, or click outside it. |
+| See every place again | **Fit**; **−** and **+** zoom out and in. |
+| Know which gesture is ready | Hold <kbd>Alt</kbd> and the pointer turns into a ruler; hold <kbd>Ctrl</kbd>/<kbd>⌘</kbd> and it turns into a crosshair. |
+| Read an element | Hover it: up to 18 of its values. Where several NQ calls failed at one point, the first line reads *At this point: N NQ calls*. |
+| Choose an element | Click it: its panel opens and the distance measured is cleared. A click beside every element keeps the chosen one; its **×** closes it. |
+| Move the panel of the element chosen in the larger map | Drag its title. It stays there for the next elements. |
+| Move, resize or keep open **CDR Info**, **LOGS Info** or **Legend** | Drag the header to move the card and its corner to resize it. **Restore** puts it back; the **pin** keeps it open on every map. A click on the header folds it; a click outside folds it unless it is pinned. |
+| Change the map under the layers | **Map**, at the right of the controls above the map. |
+
+**Elevation profile & ruler**
+
+| To… | Do this |
+| --- | --- |
+| Measure a distance and its bearing | <kbd>Alt</kbd> + drag on the map. The **elevation profile** of the ground between both ends opens over the bottom of the map. Needs a keyboard. |
+| Read a point of the profile | Hover the profile: the distance, elevation and slope of that point, marked on the map. |
+| Keep only the figures of the profile | Click its header (again to unfold it). |
+| Clear the ruler | <kbd>Esc</kbd>, a plain click on the map, the **×** of the profile, or <kbd>Alt</kbd> + click without moving. |
+
+**Layer3 signalling timeline** — below the map of a call with [Layer3 Logs](#layer3-logs-on-the-map).
+
+| To… | Do this |
+| --- | --- |
+| Follow the UE along the session | Drag along the timeline: the cursor shows where each UE was, and the map follows it. |
+| Step through the session | Click the timeline (or reach it with <kbd>Tab</kbd>), then <kbd>←</kbd>/<kbd>→</kbd> for 0.5 s, <kbd>Shift</kbd> + <kbd>←</kbd>/<kbd>→</kbd> for 5 s. |
+| Jump to the start or the end of the session | <kbd>Home</kbd> / <kbd>End</kbd>. |
+| Remove the cursor | <kbd>Esc</kbd>, or the **×** of the cursor. |
+| Find a message or event on the map | Hover its marker: a ring shows its place. Click it to centre the map on it and read its values. |
+| Fold or hide the timeline | Click its header to fold it; its **×** hides it, and **Signalling timeline** in **LOGS Info** shows it again. |
+| Follow one carrier or cell | **+** of a layer in **LOGS Info** lists it by channel, each with its switch and its PCIs as chips. |
+
+**Call panel**
+
+| To… | Do this |
+| --- | --- |
+| Close the call | <kbd>Esc</kbd>, a click outside it, or **×**. It asks first when changes are not saved. |
+| Go to the previous or next call of the list | **‹** / **›** in the header. |
+| Open any call | Paste its `JOIN_ID` (or call ID) in **Go to a JOIN_ID…**. In the **Recent JOIN_IDs** list: <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Esc</kbd>. |
+| Copy the `JOIN_ID` or the IDs of the provider | The copy button beside each one. |
+| Show a cell of the call on the map | Click (or <kbd>Enter</kbd>) a cell in **Cells of the call**, below the map: the map centres on its site. |
+| Show another NQ call on the map | Click (or <kbd>Enter</kbd>) it in **Non-Qualified Calls around**: the map centres on it. **Open** opens it. |
+| Show a test of its drive on the map | Click its row in **Its drive**. |
+| Show where a Diagnosis hint points | Click the hint (a site, or the moment of the Layer3 Logs). |
+| Post a comment | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd>. |
+| Leave only what the analysts fill | **Only the fields the analysts fill**, above the tabs (remembered in the browser). |
+
+**NQ Calls table**
+
+| To… | Do this |
+| --- | --- |
+| Find calls by their IDs | Paste one or more IDs in **Join ID**, separated by commas, spaces or lines. |
+| Sort by a column | Click a header name (or <kbd>Enter</kbd> / <kbd>Space</kbd>); again to reverse it. **Default order** comes back. |
+| Move a column | Drag its header onto another one. **Default column order** comes back. |
+| Filter a column | The funnel beside its name. <kbd>Esc</kbd> or a click outside closes it. |
+| Choose a value in the row (status, team, analyst, root cause…) | Type to search, <kbd>↑</kbd>/<kbd>↓</kbd> to move, <kbd>Enter</kbd> takes the first match (or **+ Add “…”** when nothing matches), <kbd>Esc</kbd> closes. |
+| Read the seconds of a call, or the subcategory of a failure | Hover its start time, or its failure. |
+| Change many calls at once | Tick their checkboxes, or the header checkbox for the whole page. |
+| Open a call | Click its row, or **›** beside its comments. |
+
+**Charts & indicators**
+
+| To… | Do this |
+| --- | --- |
+| Filter by a card, bar, slice or legend entry | Click it (or <kbd>Enter</kbd> / <kbd>Space</kbd> on a card); click it again to remove the filter. |
+| Filter by the root domain of a root category | Click the domain tag on its bar in **Root Cause Analysis**. |
+| Read every value of a period | Hover the period in the Progress View timeline; click it to filter the calls detected then. |
+| Open a stalled call | Click (or <kbd>Enter</kbd>) its row in **Stalled Open Calls**. |
+| Reorder the Priority groups of a strategy | Drag the **⠿** handle, or focus it and press <kbd>↑</kbd>/<kbd>↓</kbd>. |
+| Open the configuration | Hover **NQ Analysis Configuration** (<kbd>Esc</kbd> closes it). |
+| Save or copy a panel, chart or table as an image | Hover it (on touch: tap it) and use its image buttons. |
+
+**Text editors** — comments and long texts, as in [Ticket Center](ticket-center.md#writing-descriptions-and-comments).
+
+| To… | Do this |
+| --- | --- |
+| Bold, italic, code, link | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>B</kbd>, <kbd>I</kbd>, <kbd>E</kbd>, <kbd>K</kbd> |
+| Strikethrough, highlight | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>, <kbd>H</kbd> |
+| Numbered list, bullets, tasks | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>7</kbd>, <kbd>8</kbd>, <kbd>9</kbd> |
+| Heading 1 to 3, or back to text | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Alt</kbd> + <kbd>1</kbd>–<kbd>3</kbd>, or <kbd>0</kbd> |
+| Nest a line or bring it back | <kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd>; <kbd>Enter</kbd> goes on at the same level. |
+| Undo, redo | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd>, <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> |
+| Open a link in the text | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + click it. |
+| Post the comment, or save the comment edited | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd> |

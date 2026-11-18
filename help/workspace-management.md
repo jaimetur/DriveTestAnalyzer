@@ -16,42 +16,12 @@ workspace-config
 
 | Task or topic | Go to |
 | --- | --- |
-| Watch the presentations of the module and of Workspace Config | [Open section](#presentations) |
-| Workspace Lifecycle | [Open section](#workspace-lifecycle) |
-| Data Ingestion | [Open section](#data-ingestion) |
-| NetCheck CDR Support | [Open section](#netcheck-cdr-support) |
-| Dataset Inspection and Enrichment | [Open section](#dataset-inspection-and-enrichment) |
-| Troubleshooting | [Open section](#troubleshooting) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-These gestures save clicks while loading and inspecting data. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts); those of the mappings and Auto-calculated Fields are in [Workspace Config](workspace-config.md#tips-shortcuts).
-
-**Loading data**
-
-| To… | Do this |
-| --- | --- |
-| Add files to upload | Drop them on the **Drop workbooks or browse** zone of Data Ingestion, or click it to choose them |
-| Select every CDR of a campaign, week or day | Tick the box of its group in the CDR tables (folded or not) |
-| Select every dataset of a table | Tick the box in its ID header |
-
-**Map of Regions, Clusters and Vendors** (their Preview)
-
-| To… | Do this |
-| --- | --- |
-| Zoom in or out | Mouse wheel |
-| Move the map | Drag it |
-| See every polygon again | Double-click the map |
-| Find a polygon on the map | Hover its name in the legend: its polygon is highlighted |
-
-**Dataset Preview**
-
-| To… | Do this |
-| --- | --- |
-| Scroll a wide table sideways | <kbd>Shift</kbd> + mouse wheel over the table |
-| Read how a field is calculated | Hover its `Derived`, `Auto-calculated` or `Analysis-derived` badge |
-| See the complete rule of a field | Click its badge; <kbd>Esc</kbd>, its close button or a click outside closes the panel |
+| Create, open or delete a workspace | [Workspace Lifecycle](#workspace-lifecycle) |
+| Upload CDRs, mappings, inventories and polygons | [Data Ingestion](#data-ingestion) |
+| Understand how the NetCheck CDRs are processed | [NetCheck CDR Support](#netcheck-cdr-support) |
+| Look at the rows of a CDR and enrich it | [Dataset Inspection and Enrichment](#dataset-inspection-and-enrichment) |
+| Fix a failed upload | [Troubleshooting](#troubleshooting) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Workspace Lifecycle
 
@@ -534,3 +504,32 @@ The Auto-calculated Fields of the workspace, fields worked out for every CDR row
 - Vendor Comparison disabled: every selected CDR must have mapping applied.
 - Expected campaign missing: inspect the resolved `Campaign` field in Preview.
 - Expected city missing: check both the source geographic columns and the normalised field used by the template.
+
+## Tips & shortcuts
+
+These gestures save clicks while loading and inspecting data. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts); those of the mappings and Auto-calculated Fields are in [Workspace Config](workspace-config.md#tips-shortcuts).
+
+**Loading data**
+
+| To… | Do this |
+| --- | --- |
+| Add files to upload | Drop them on the **Drop workbooks or browse** zone of Data Ingestion, or click it to choose them |
+| Select every CDR of a campaign, week or day | Tick the box of its group in the CDR tables (folded or not) |
+| Select every dataset of a table | Tick the box in its ID header |
+
+**Map of Regions, Clusters and Vendors** (their Preview)
+
+| To… | Do this |
+| --- | --- |
+| Zoom in or out | Mouse wheel |
+| Move the map | Drag it |
+| See every polygon again | Double-click the map |
+| Find a polygon on the map | Hover its name in the legend: its polygon is highlighted |
+
+**Dataset Preview**
+
+| To… | Do this |
+| --- | --- |
+| Scroll a wide table sideways | <kbd>Shift</kbd> + mouse wheel over the table |
+| Read how a field is calculated | Hover its `Derived`, `Auto-calculated` or `Analysis-derived` badge |
+| See the complete rule of a field | Click its badge; <kbd>Esc</kbd>, its close button or a click outside closes the panel |

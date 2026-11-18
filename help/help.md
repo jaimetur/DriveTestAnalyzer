@@ -53,12 +53,10 @@ full-presentation
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentations | [Open section](#presentations) |
-| Module presentations | [Open section](#module-presentations) |
-| Full presentation | [Open section](#full-presentation) |
-| Choose where to start | [Open section](#choose-where-to-start) |
-| Documentation map | [Open section](#documentation-map) |
-| Fast troubleshooting | [Open section](#fast-troubleshooting) |
+| Present the tool to an audience | [Presentations](#presentations) |
+| Find the chapter for my task | [Choose where to start](#choose-where-to-start) |
+| See every chapter | [Documentation map](#documentation-map) |
+| Solve a common problem | [Fast troubleshooting](#fast-troubleshooting) |
 
 ## Choose where to start
 

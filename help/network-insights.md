@@ -42,57 +42,14 @@ network-insights
 
 | I want to… | Go to |
 | --- | --- |
-| Watch the presentation of the module | [Presentation](#presentation) |
 | Run an analysis | [Launch Analysis](#launch-analysis) |
-| Compare coverage and interference per Operator | [Overview and RF Quality](#overview-and-rf-quality) |
-| Read the benchmark views of the Data tests (signal at the test, bandwidth, technology and bands in use) | [Key Findings](#key-findings) |
-| Change the colours of the charts, tables and exports | [Theme](#theme) |
-| Locate weak-coverage or high-interference areas | [Coverage and Interference Maps](#coverage-and-interference-maps) |
-| Count sites and eNodeBs | [Cluster Sites Density](#cluster-sites-density) |
-| Compare Low, Mid and High (TDD) spectrum | [Spectrum](#spectrum) |
-| Count the sites with NR TDD and NR FDD, logical and physical | [Spectrum](#spectrum) |
-| Compare the bandwidth of each band and the primary bandwidth (LTE + NR) of the tests in Cities, Towns, and Roads and railways | [Spectrum](#spectrum) |
-| Compare the latency, packet loss and jitter of the gaming and video chat tests | [Latency & Interactivity](#latency-interactivity) |
-| Measure the distance to the serving sites and find overshooting cells | [Serving Cells](#serving-cells) |
-| Find 5G sites whose samples get no NR | [5G Availability](#5g-availability) |
-| Find the NR cell of NSA samples or compare the MIMO of the cells with the reported rank | [Serving Cells](#serving-cells) |
-| Check locked, halted, disabled or planned cells near the weak areas | [Coverage and Interference Maps](#coverage-and-interference-maps) |
-| Compare inventory snapshots, host networks and inventory quality | [Network Snapshot](#network-snapshot) |
-| Count NNS, eMOCN or shared sites | [Network Deployment](#network-deployment) |
-| Present RSRP and SINR slides in a Design | [RF Quality template and Design](#rf-quality-template-and-design) |
-| Check which CDR fields are used | [Data sources](#data-sources) |
-| Know which inputs are still missing | [Pending inputs](#pending-inputs) |
+| Compare the operators at a glance | [Key Findings](#key-findings) · [Overview and RF Quality](#overview-and-rf-quality) |
+| Find weak-coverage or high-interference areas | [Coverage and Interference Maps](#coverage-and-interference-maps) |
+| Find overshooting cells and 5G sites that give no NR | [Serving Cells](#serving-cells) · [5G Availability](#5g-availability) |
+| Compare the spectrum, bandwidth and sites of the operators | [Spectrum](#spectrum) · [Network Deployment](#network-deployment) |
+| Compare the latency of the gaming and video chat tests | [Latency & Interactivity](#latency-interactivity) |
 | Export the analysis to PowerPoint or Word | [Export](#export) |
-| View and export complete site/cell inventories or deployment counts as CSV | [Network Deployment](#network-deployment) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-The maps and charts of the page react to the mouse and the keyboard as below. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-**Maps** (on the page and in the larger view)
-
-| To… | Do this |
-| --- | --- |
-| Move the map | Drag it, also with the middle mouse button |
-| Zoom in or out | Mouse wheel, towards the pointer; or **−** / **+** at its top right (**Fit** shows the whole area) |
-| Zoom into an area | Hold <kbd>Ctrl</kbd>/<kbd>⌘</kbd> (the pointer turns into a crosshair) and drag a rectangle |
-| Measure a distance and its bearing | Hold <kbd>Alt</kbd>/<kbd>Option</kbd> (the pointer turns into a ruler) and drag between two places |
-| Clear the measured line | <kbd>Esc</kbd>, or click the map |
-| Open the map larger | Double-click it |
-| Zoom in ×2 in the larger map | Double-click it |
-| Hide or show the sites of a vendor, a ring or a quality class | Click its entry in the legend |
-| Go to a weak area or a flagged site | Select its row in the table below the map; **Show Whole Area** goes back |
-
-**Charts and tables**
-
-| To… | Do this |
-| --- | --- |
-| Open a chart or table larger | Double-click it |
-| Hide or show a series | Click its entry in the legend; click it again to show it |
-| Zoom into part of a chart | Drag a rectangle over its plot area; once zoomed, drag or use the arrows to pan, and **1:1** resets |
-| Read a value | Hover a point, bar or curve |
-| Save or copy a picture | Hover the chart, map or table and use the buttons at its top right corner |
 
 ## Launch Analysis
 
@@ -368,3 +325,31 @@ Network Insights remembers the selected CDRs, NR Mode, Technology, grouping, fil
 - **A map is empty**: the selected CDRs carry no coordinates or no values for the selected Technology; the status line says which.
 - **NR curves are empty**: NSA CDRs report NR values only while the device is attached to NR; check the NR RSRP samples column in the RF Quality table.
 - **The Licensed spectrum panel shows Pending input**: add Spectrum Holdings in Workspace Config.
+
+## Tips & shortcuts
+
+The maps and charts of the page react to the mouse and the keyboard as below. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+**Maps** (on the page and in the larger view)
+
+| To… | Do this |
+| --- | --- |
+| Move the map | Drag it, also with the middle mouse button |
+| Zoom in or out | Mouse wheel, towards the pointer; or **−** / **+** at its top right (**Fit** shows the whole area) |
+| Zoom into an area | Hold <kbd>Ctrl</kbd>/<kbd>⌘</kbd> (the pointer turns into a crosshair) and drag a rectangle |
+| Measure a distance and its bearing | Hold <kbd>Alt</kbd>/<kbd>Option</kbd> (the pointer turns into a ruler) and drag between two places |
+| Clear the measured line | <kbd>Esc</kbd>, or click the map |
+| Open the map larger | Double-click it |
+| Zoom in ×2 in the larger map | Double-click it |
+| Hide or show the sites of a vendor, a ring or a quality class | Click its entry in the legend |
+| Go to a weak area or a flagged site | Select its row in the table below the map; **Show Whole Area** goes back |
+
+**Charts and tables**
+
+| To… | Do this |
+| --- | --- |
+| Open a chart or table larger | Double-click it |
+| Hide or show a series | Click its entry in the legend; click it again to show it |
+| Zoom into part of a chart | Drag a rectangle over its plot area; once zoomed, drag or use the arrows to pan, and **1:1** resets |
+| Read a value | Hover a point, bar or curve |
+| Save or copy a picture | Hover the chart, map or table and use the buttons at its top right corner |

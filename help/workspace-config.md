@@ -20,49 +20,14 @@ workspace-config
 
 | Task or topic | Go to |
 | --- | --- |
-| Presentation | [Open section](#presentation) |
-| Access and active workspace | [Open section](#access-and-active-workspace) |
-| Mappings & Reference Data | [Open section](#mappings-reference-data) |
-| Campaign Maps | [Open section](#campaign-maps) |
-| Unassigned values warning | [Open section](#unassigned-values-warning) |
-| Map Areas | [Open section](#map-areas) |
-| Spectrum Holdings | [Open section](#spectrum-holdings) |
-| Serving Networks | [Open section](#serving-networks) |
-| CDR Field Dictionary | [Open section](#cdr-field-dictionary) |
-| Auto-calculated Fields | [Open section](#auto-calculated-fields) |
-| CDR type | [Open section](#cdr-type) |
-| Main Cities | [Open section](#main-cities) |
-| Portable operations | [Open section](#portable-operations) |
-| Scoring & GAP Analysis Setup | [Open section](#scoring-gap-analysis-setup) |
-| Scoring Export Panels | [Open section](#scoring-export-panels) |
-| AI Assistant Glossary | [Open section](#ai-assistant-glossary) |
-| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
-
-## Tips & shortcuts
-
-These keys and gestures speed up the mappings and the Auto-calculated Fields. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
-
-**Operator and Vendor Maps**
-
-| To… | Do this |
-| --- | --- |
-| See the CDRs or the names behind a CDR count, a name chip or a **Merges N** badge | Hover it |
-| Keep that list open | Click it; **×**, <kbd>Esc</kbd> or a click outside closes it |
-| Type a new label in the list of a name | Choose **+ New label…**, type it and press <kbd>Enter</kbd> (<kbd>Esc</kbd> cancels) |
-| Save one label | Press <kbd>Enter</kbd> in it (**Save Labels** saves every changed label) |
-
-**Auto-calculated Fields**
-
-| To… | Do this |
-| --- | --- |
-| Open a field from its card | Click the card, or focus it and press <kbd>Enter</kbd> or <kbd>Space</kbd> |
-| Move through the **⋯** menu | <kbd>↑</kbd> / <kbd>↓</kbd>; <kbd>Esc</kbd> closes it |
-| Save the field | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> |
-| Insert a field in a formula | Type `[` and choose it |
-| Indent a line of a formula | <kbd>Tab</kbd> adds two spaces (while no suggestion list is open) |
-| Add a value to a condition with several values | Type it and press <kbd>Enter</kbd> or <kbd>,</kbd> |
-| Remove the last value of that condition | <kbd>Backspace</kbd> in its empty box |
-| Close the suggestions, then the editor | <kbd>Esc</kbd> (the editor asks first while the field has changes not saved) |
+| Name the operators, vendors and campaigns of the CDRs | [Mappings & Reference Data](#mappings-reference-data) · [Campaign Maps](#campaign-maps) |
+| Fix values that are still unassigned | [Unassigned values warning](#unassigned-values-warning) |
+| Add map areas, postal codes or spectrum holdings | [Map Areas](#map-areas) · [Spectrum Holdings](#spectrum-holdings) |
+| Add fields calculated from the CDR columns | [Auto-calculated Fields](#auto-calculated-fields) |
+| Set up the scoring methodology of the workspace | [Scoring & GAP Analysis Setup](#scoring-gap-analysis-setup) |
+| Choose the panels of the scoring exports | [Scoring Export Panels](#scoring-export-panels) |
+| Copy the configuration to another workspace | [Portable operations](#portable-operations) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Access and active workspace
 
@@ -378,3 +343,29 @@ Across the application, values follow the Operator Maps and Vendor Maps order: `
 CDR catalogue caches retain the `Operator_Vendor`, `Vendor`, `Region`, `Cluster`, `City`, `Campaign` and `Operator` universes. CDR processing refreshes them from their source columns, and catalogues of CDRs processed before Cluster existed are backfilled once. The caches remain part of workspace database backups and restores.
 
 Operator mapping colours also apply to operators without a vendor in multivendor charts, including Vendor labels displayed as **Operator - All**. Vendor mapping colours apply to actual vendors.
+
+## Tips & shortcuts
+
+These keys and gestures speed up the mappings and the Auto-calculated Fields. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+**Operator and Vendor Maps**
+
+| To… | Do this |
+| --- | --- |
+| See the CDRs or the names behind a CDR count, a name chip or a **Merges N** badge | Hover it |
+| Keep that list open | Click it; **×**, <kbd>Esc</kbd> or a click outside closes it |
+| Type a new label in the list of a name | Choose **+ New label…**, type it and press <kbd>Enter</kbd> (<kbd>Esc</kbd> cancels) |
+| Save one label | Press <kbd>Enter</kbd> in it (**Save Labels** saves every changed label) |
+
+**Auto-calculated Fields**
+
+| To… | Do this |
+| --- | --- |
+| Open a field from its card | Click the card, or focus it and press <kbd>Enter</kbd> or <kbd>Space</kbd> |
+| Move through the **⋯** menu | <kbd>↑</kbd> / <kbd>↓</kbd>; <kbd>Esc</kbd> closes it |
+| Save the field | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> |
+| Insert a field in a formula | Type `[` and choose it |
+| Indent a line of a formula | <kbd>Tab</kbd> adds two spaces (while no suggestion list is open) |
+| Add a value to a condition with several values | Type it and press <kbd>Enter</kbd> or <kbd>,</kbd> |
+| Remove the last value of that condition | <kbd>Backspace</kbd> in its empty box |
+| Close the suggestions, then the editor | <kbd>Esc</kbd> (the editor asks first while the field has changes not saved) |

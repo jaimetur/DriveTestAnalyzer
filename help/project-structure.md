@@ -4,13 +4,11 @@
 
 | Task or topic | Go to |
 | --- | --- |
-| Repository tree | [Open section](#repository-tree) |
-| Python application layer | [Open section](#python-application-layer) |
-| Browser layer | [Open section](#browser-layer) |
-| Persistent data layout | [Open section](#persistent-data-layout) |
-| Bundled assets | [Open section](#bundled-assets) |
-| Documentation | [Open section](#documentation) |
-| Tests, tooling and delivery | [Open section](#tests-tooling-and-delivery) |
+| Find my way around the repository | [Repository tree](#repository-tree) |
+| Find the server or browser code of a feature | [Python application layer](#python-application-layer) · [Browser layer](#browser-layer) |
+| Know where the data is stored | [Persistent data layout](#persistent-data-layout) |
+| Find the bundled assets and the documentation | [Bundled assets](#bundled-assets) · [Documentation](#documentation) |
+| Run the tests and deliver a release | [Tests, tooling and delivery](#tests-tooling-and-delivery) |
 
 ## Repository tree
 
