@@ -399,8 +399,10 @@ _NQ_DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'nq_call_update': _nq_call_update,
     'nq_calls_bulk_update': _nq_bulk_update,
     'nq_field_copied_to_group': lambda details: (
-        f"{details.get('field')} {_quoted(details.get('value'))} of the {_nq_call(details)} copied to the "
-        f"{details.get('group_calls')} calls of the {details.get('group')} ({details.get('changed')} changed)"
+        f"{details.get('field')} {_quoted(details.get('value'))} of the {_nq_call(details)} copied to "
+        + (f"{details['chosen_calls']} of the {details.get('group_calls')} calls" if 'chosen_calls' in details
+           else f"the {details.get('group_calls')} calls")
+        + f" of the {details.get('group')} ({details.get('changed')} changed)"
         + (f". JOIN_IDs {value_text(details['join_ids'])}." if details.get('join_ids') else '.')),
     'nq_comment_add': lambda details: f"Comment added to the {_nq_call(details)}: {_quoted(details.get('text'))}.",
     'nq_comment_edit': lambda details: (

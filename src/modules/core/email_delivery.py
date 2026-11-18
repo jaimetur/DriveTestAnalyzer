@@ -50,9 +50,11 @@ EMAIL_ENVIRONMENT_DEFAULTS = {
     'link_days': 'EMAIL_LINK_DAYS',
 }
 # Saved switches (no deployment default): which emails the tool sends on its own.
-EMAIL_SWITCHES = {'notify_access_requests': True, 'notify_tickets': True}
+EMAIL_SWITCHES = {'notify_access_requests': True, 'notify_tickets': True, 'notify_nq_calls': True}
 # The users (by username) emailed every ticket, new ones included, as its reporter is; nobody's by default.
 EVERY_TICKET_KEY = 'every_ticket_users'
+# The users (by username) emailed of every NQ call completed or changing a status, as its reviewer is (ticket #187).
+EVERY_NQ_CALL_KEY = 'every_nq_call_users'
 # The values that are secrets: never shown, kept when the form leaves them empty.
 EMAIL_SECRETS = ('password', 'webhook_url')
 
@@ -121,6 +123,7 @@ def email_delivery_settings(repository: Any, *, include_password: bool = False) 
         'link_days': min(MAX_LINK_DAYS, max(1, _int(values.get('link_days'), DEFAULT_LINK_DAYS))),
         **{key: _switch(stored.get(key), default) for key, default in EMAIL_SWITCHES.items()},
         EVERY_TICKET_KEY: _usernames(stored.get(EVERY_TICKET_KEY)),
+        EVERY_NQ_CALL_KEY: _usernames(stored.get(EVERY_NQ_CALL_KEY)),
     }
     settings['configured'] = (settings['webhook_configured'] if settings['transport'] == 'webhook'
                               else bool(settings['host'] and settings['from_address']))
@@ -169,6 +172,7 @@ def save_email_delivery_settings(repository: Any, values: dict[str, Any], *, kee
         **{key: _switch(values[key], False) if key in values else _switch(previous.get(key), default)
            for key, default in EMAIL_SWITCHES.items()},
         EVERY_TICKET_KEY: _usernames(values[EVERY_TICKET_KEY] if EVERY_TICKET_KEY in values else previous.get(EVERY_TICKET_KEY)),
+        EVERY_NQ_CALL_KEY: _usernames(values[EVERY_NQ_CALL_KEY] if EVERY_NQ_CALL_KEY in values else previous.get(EVERY_NQ_CALL_KEY)),
     }
     repository.set_application_state(EMAIL_DELIVERY_STATE_KEY, json.dumps(stored, sort_keys=True))
     return email_delivery_settings(repository)

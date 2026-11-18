@@ -168,6 +168,16 @@
           </select>
           <span class="table-help">These users get an email of every new ticket and of every change to any ticket, even when they did not open or comment it.</span>
         </label>
+        <label class="configuration-toggle">
+          <input type="checkbox" name="notify_nq_calls" value="true" {% if email_delivery.notify_nq_calls %}checked{% endif %}>
+          <span><strong>Non-Qualified Calls</strong><small>The reviewer of an NQ call is told when all its analyst fields are filled and when its NQ Call Status or the status of a phase changes, with the fields filled and those still empty; the users of Email Every NQ Call Change To get them too.</small></span>
+        </label>
+        <label>Email Every NQ Call Change To
+          <select name="every_nq_call_users" multiple size="1" data-multiselect-empty-label="Nobody" aria-label="Email every NQ call change to">
+            {% for person in email_users %}<option value="{{ person.username }}" {% if person.every_nq_call %}selected{% endif %}>{{ person.label }}</option>{% endfor %}
+          </select>
+          <span class="table-help">These users get the emails of every NQ call completed or changing a status, of every workspace, even when they are not its reviewer.</span>
+        </label>
       </section>
       <div class="form-actions configuration-field-wide">
         <button type="submit">Save Email Delivery</button>

@@ -2729,17 +2729,42 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .nq-l3-grid { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font-weight: 700; }
 .nq-l3-grid select { flex: 1; min-width: 9rem; padding: .2rem .35rem; border: 1px solid #c9dade; border-radius: 6px; background: #fff; font: inherit; }
 .nq-l3-area-note { margin: 0; color: #6b8189; font-size: .7rem; }
-/* The pill inside a field of the analysts that copies its value to the calls of a group of the call (ticket #184). */
-.nq-drawer .nq-group-copy-frame { position: relative; display: grid; min-width: 0; }
-.nq-drawer .nq-group-copy { position: absolute; right: .55rem; bottom: .45rem; z-index: 2; display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; min-width: 0; min-height: 0; padding: 0; border: 1px solid rgba(21, 90, 101, .35); border-radius: 999px; background: #ffffffe6; color: #155a65; box-shadow: none; cursor: pointer; opacity: .85; }
+/* The tools inside a field of the analysts: N/A (ticket #186) and Copy to group (ticket #184), small, so its value stays readable. */
+.nq-drawer .nq-group-copy-frame { position: relative; display: grid; min-width: 0; --nq-tools: 1; }
+.nq-drawer .nq-group-copy-frame[data-tools="2"] { --nq-tools: 2; }
+.nq-drawer .nq-field-tools { position: absolute; right: .5rem; bottom: .45rem; z-index: 2; display: inline-flex; align-items: center; gap: .3rem; }
+.nq-drawer .nq-analysis-field:is(.is-list, .is-yes_no) .nq-field-tools { right: 2.5rem; bottom: auto; top: 50%; transform: translateY(-50%); }
+.nq-drawer .nq-group-copy, .nq-drawer .nq-na-toggle { display: inline-grid; place-items: center; height: 1.6rem; min-width: 1.6rem; min-height: 0; padding: 0; border: 1px solid rgba(21, 90, 101, .35); border-radius: 999px; background: #ffffffe6; color: #155a65; box-shadow: none; cursor: pointer; opacity: .85; }
+.nq-drawer .nq-group-copy { width: 1.6rem; }
 .nq-drawer .nq-group-copy svg { width: 1rem; height: 1rem; }
-.nq-drawer .nq-group-copy:hover, .nq-drawer .nq-group-copy:focus-visible { opacity: 1; background: #eef7f9; transform: none; }
-.nq-drawer .nq-analysis-field:is(.is-list, .is-yes_no) .nq-group-copy { right: 2.5rem; bottom: auto; top: 50%; transform: translateY(-50%); }
-.nq-drawer .nq-analysis-field:is(.is-list, .is-yes_no) .nq-group-copy:hover { transform: translateY(-50%); }
+.nq-drawer .nq-na-toggle { padding: 0 .45rem; font-size: .66rem; font-weight: 800; letter-spacing: .02em; }
+.nq-drawer .nq-na-toggle[aria-pressed="true"] { border-color: #8a949c; background: #8a949c; color: #fff; opacity: 1; }
+.nq-drawer :is(.nq-group-copy, .nq-na-toggle):hover, .nq-drawer :is(.nq-group-copy, .nq-na-toggle):focus-visible { opacity: 1; transform: none; }
+.nq-drawer :is(.nq-group-copy, .nq-na-toggle[aria-pressed="false"]):hover { background: #eef7f9; }
 .nq-group-copy-choices { display: grid; gap: .35rem; margin: .5rem 0; }
 .nq-group-copy-choice { display: flex; align-items: center; justify-content: flex-start; gap: .5rem; text-align: left; padding: .45rem .7rem; border: 1px solid rgba(21, 90, 101, .25); border-radius: 10px; background: #f6fafb; font-weight: 700; cursor: pointer; }
 .nq-group-copy-choice:has(input:checked) { border-color: #155a65; background: #e3f1f4; }
 .nq-group-copy-choice input { flex: none; width: auto; min-width: 0; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
-/* The value of a field never runs under its Copy to group pill: it ends before it (shortened with … when long). */
-.nq-drawer .nq-group-copy-frame .nq-choice { padding-right: 4.5rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.nq-drawer .nq-group-copy-frame > :is(input, select) { padding-right: 2.6rem; text-overflow: ellipsis; }
+/* The value of a field never runs under its tools: it ends before them (shortened with … when long). */
+.nq-drawer .nq-group-copy-frame .nq-choice { padding-right: calc(2.9rem + var(--nq-tools) * 1.9rem); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nq-drawer .nq-group-copy-frame > :is(input, select) { padding-right: calc(.8rem + var(--nq-tools) * 2.4rem); text-overflow: ellipsis; }
+/* A field that does not apply to the call: N/A chosen (grey, italic) or found by its conditions (N/A (Auto), dimmed). */
+.nq-drawer .nq-analysis-field.is-na :is(input, .nq-rich-text, textarea) { color: #6b7780; font-style: italic; background: #f1f3f4; }
+.nq-drawer .nq-analysis-field.is-na-auto { opacity: .62; }
+.nq-drawer .nq-analysis-field.is-na-auto:is(:hover, :focus-within) { opacity: 1; }
+.nq-drawer .nq-na-auto { margin-left: .35rem; padding: .05rem .4rem; border-radius: 999px; background: #e6e9eb; color: #56636c; font-size: .62rem; font-weight: 800; letter-spacing: .03em; }
+.nq-group-copy-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .4rem 0; font-size: .8rem; color: #56636c; }
+.nq-group-copy-calls { display: grid; gap: .3rem; max-height: min(50vh, 420px); overflow: auto; padding-right: .2rem; text-align: left; }
+.nq-group-copy-call { display: grid; grid-template-columns: auto minmax(8rem, 1.2fr) auto minmax(6rem, 1fr) auto minmax(5rem, 1fr); align-items: center; gap: .5rem; padding: .4rem .6rem; border: 1px solid rgba(21, 90, 101, .2); border-radius: 10px; background: #f8fbfc; font-size: .78rem; cursor: pointer; }
+.nq-group-copy-call:has(input:checked) { border-color: #155a65; background: #e3f1f4; }
+.nq-group-copy-call.is-current { cursor: default; }
+.nq-group-copy-call input { flex: none; width: auto; min-width: 0; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+.nq-group-copy-join { font-weight: 800; font-family: ui-monospace, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nq-group-copy-join em { margin-left: .3rem; font-family: inherit; font-style: normal; color: #155a65; }
+.nq-group-copy-when, .nq-group-copy-place { color: #56636c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nq-group-copy-status { padding: .05rem .45rem; border-radius: 999px; background: var(--nq-chip); color: #fff; font-weight: 700; font-size: .7rem; white-space: nowrap; }
+.nq-group-copy-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.nq-group-copy-value.is-empty { color: #9aa5ad; font-style: italic; font-weight: 400; }
+@media (max-width: 720px) { .nq-group-copy-call { grid-template-columns: auto 1fr auto; } .nq-group-copy-when, .nq-group-copy-place { display: none; } }
+.confirm-overlay.confirm-variant-nq-group-copy .confirm-panel { width: min(58rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto; }
+.confirm-overlay.confirm-variant-nq-group-copy .confirm-panel #confirm-copy { max-height: none; overflow: visible; white-space: normal; }

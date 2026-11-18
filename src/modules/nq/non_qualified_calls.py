@@ -358,6 +358,7 @@ V49_FORMER_COLORS = (('IMS/E2E', '#b85b20'), ('Indeterminate', '#b08a3e'), ('Inv
 # Analysis, and the default Status Rules a workspace still has take the new ones, once: a finished analysis no longer
 # closes a call (Implementation Status Implemented or Not Applicable does).
 ANALYSIS_CENTER_V50_STATE_KEY = 'nq_analysis_center_v50'
+ANALYSIS_CENTER_V51_STATE_KEY = 'nq_analysis_center_v51'
 V50_FORMER_CLOSED_RULES = (
     {'status': 'Closed', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': ['Implemented']}]},
     {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']},
@@ -381,7 +382,7 @@ DTA_ERICSSON_STATE_KEY = 'nq_dta_rca_ericsson'
 DTA_ERICSSON_MAX_PENDING = 900
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-18.1'
+SCHEMA_VERSION = '2026-11-18.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -605,7 +606,8 @@ CREATE TABLE IF NOT EXISTS {NQ_FIELDS_TABLE} (
     source TEXT NOT NULL DEFAULT 'user',
     source_ref TEXT NOT NULL DEFAULT '',
     in_export INTEGER NOT NULL DEFAULT 1,
-    suggest_from TEXT NOT NULL DEFAULT ''
+    suggest_from TEXT NOT NULL DEFAULT '',
+    applies_when_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS {NQ_FIELD_VALUES_TABLE} (
     call_key TEXT NOT NULL,
@@ -846,7 +848,7 @@ def ensure_nq_tables(task_repository: Any) -> None:
         definitions = _columns_of(connection, NQ_FIELDS_TABLE)
         for column, definition in (('section', "TEXT NOT NULL DEFAULT 'analysis'"), ('source', "TEXT NOT NULL DEFAULT 'user'"),
                                    ('source_ref', "TEXT NOT NULL DEFAULT ''"), ('in_export', 'INTEGER NOT NULL DEFAULT 1'),
-                                   ('suggest_from', "TEXT NOT NULL DEFAULT ''")):
+                                   ('suggest_from', "TEXT NOT NULL DEFAULT ''"), ('applies_when_json', "TEXT NOT NULL DEFAULT '[]'")):
             if definitions and column not in definitions:
                 connection.execute(f'ALTER TABLE {NQ_FIELDS_TABLE} ADD COLUMN {column} {definition}')
         indexed = _columns_of(connection, NQ_CALLS_TABLE)
@@ -1088,6 +1090,9 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V50_STATE_KEY):
         _upgrade_statuses_v50(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V50_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V51_STATE_KEY):
+        _upgrade_applies_when_v51(task_repository)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V51_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -1098,6 +1103,33 @@ def _rule_signature(rule: Any) -> str:
     return json.dumps([str(rule.get('status') or '').casefold(), [
         [str(condition.get('field') or ''), str(condition.get('op') or ''), sorted(str(value).casefold() for value in condition.get('values') or [])]
         for condition in rule.get('conditions') or [] if isinstance(condition, dict)]])
+
+
+def _upgrade_applies_when_v51(task_repository: Any) -> None:
+    """Once (ticket #186): the default fields that only apply to some calls (Failed Party and Vendor 2 when Failure to
+    the calls between two UEs, Planned Date and Planned FY to the planned measures) take their default conditions, those
+    whose fields and values the workspace still has."""
+    with task_repository.connection() as connection:
+        rows = {str(row['field_key']): row for row in connection.execute(
+            f'SELECT field_key, field_type, options_json, source, applies_when_json FROM {NQ_FIELDS_TABLE}').fetchall()}
+        for key, conditions in nq_catalog.DEFAULT_APPLIES_WHEN.items():
+            row = rows.get(key)
+            if row is None or str(row['source']) != 'user' or _json_list(row['applies_when_json']):
+                continue
+            kept = []
+            for condition in conditions:
+                if condition['field'].startswith('@'):
+                    kept.append(condition)
+                    continue
+                target = rows.get(condition['field'])
+                names = {str(item.get('name') or '').casefold(): str(item.get('name')) for item in _json_list(target['options_json'])
+                         if isinstance(item, dict)} if target is not None else {}
+                values = [names[value.casefold()] for value in condition['values'] if value.casefold() in names]
+                if values:
+                    kept.append({**condition, 'values': values})
+            if len(kept) == len(conditions):
+                connection.execute(f'UPDATE {NQ_FIELDS_TABLE} SET applies_when_json = ? WHERE field_key = ?',
+                                   (json.dumps(kept, ensure_ascii=False), key))
 
 
 def _upgrade_statuses_v50(task_repository: Any) -> None:
@@ -4226,6 +4258,7 @@ def _read_fields(task_repository: Any) -> list[dict[str, Any]]:
             'source_ref': str(row['source_ref'] if 'source_ref' in keys else '') or '',
             'in_export': bool(row['in_export'] if 'in_export' in keys else 1),
             'suggest_from': str(row['suggest_from'] if 'suggest_from' in keys else '') or '',
+            'applies_when': _json_list(row['applies_when_json'] if 'applies_when_json' in keys else '[]'),
         })
     # The lists of the NQ Prioritization take their values from it (the rules are the values of Prioritization Rule).
     priority = [field for field in fields if field['source'] == 'priority']
@@ -4237,20 +4270,29 @@ def _read_fields(task_repository: Any) -> list[dict[str, Any]]:
     return fields
 
 
+def _json_list(text: Any) -> list[Any]:
+    try:
+        value = json.loads(text or '[]')
+    except (TypeError, ValueError):
+        return []
+    return value if isinstance(value, list) else []
+
+
 def _store_fields(task_repository: Any, fields: list[dict[str, Any]]) -> None:
     with task_repository.connection() as connection:
         connection.execute(f'DELETE FROM {NQ_FIELDS_TABLE}')
         connection.executemany(
             f'INSERT INTO {NQ_FIELDS_TABLE} (field_key, label, field_type, options_json, position, in_table, in_summary, '
-            'required_to_close, description, section, source, source_ref, in_export, suggest_from) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'required_to_close, description, section, source, source_ref, in_export, suggest_from, applies_when_json) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [(field['key'], field['label'], field['type'],
               json.dumps([{'name': option['name'], 'color': option.get('color', ''),
                            **({'keywords': option['keywords']} if option.get('keywords') else {}),
                            **({'final': True} if option.get('final') else {})}
                           for option in field['options']], ensure_ascii=False),
               index, int(field['in_table']), int(field['in_summary']), int(field['required_to_close']), field['description'],
-              field['section'], field['source'], field['source_ref'], int(field.get('in_export', True)), field.get('suggest_from', ''))
+              field['section'], field['source'], field['source_ref'], int(field.get('in_export', True)), field.get('suggest_from', ''),
+              json.dumps(field.get('applies_when') or [], ensure_ascii=False))
              for index, field in enumerate(fields)],
         )
 
@@ -4310,6 +4352,7 @@ def save_fields(task_repository: Any, items: Any, username: str, *, defaults: bo
                         f'UPDATE {NQ_FIELD_VALUES_TABLE} SET value = ? WHERE field_key = ? AND value = ? COLLATE NOCASE',
                         (name, field['key'], old[key]))
     rules = nq_catalog.rules_after_field_changes(status_rules(task_repository), list(existing.values()), normalized)
+    nq_catalog.applies_when_after_field_changes(normalized, list(existing.values()))
     _store_fields(task_repository, normalized)
     task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
     recompute_statuses(task_repository, username)
@@ -4423,6 +4466,9 @@ def _field_value(field: dict[str, Any], value: Any) -> str:
         return ''
     if field['source'] != 'user':
         raise ValueError(f'{field["label"]} is set automatically.')
+    # Not applicable to the call: a value of every type (ticket #186).
+    if text.casefold() == nq_catalog.NOT_APPLICABLE.casefold():
+        return nq_catalog.NOT_APPLICABLE
     kind = field['type']
     if kind == 'list':
         names = {option['name'].casefold(): option['name'] for option in field['options']}
@@ -5298,7 +5344,19 @@ def _status_inputs(call: Any, stored: dict[str, str], fields: list[dict[str, Any
     values[ATTENDED_FIELD] = 'Yes' if attended else 'No'
     for ref in ('team', 'analyst', 'reviewer', 'root_category', 'root_cause'):
         values[f'@{ref}'] = str(tracking.get(ref) or '')
+    # The call type (Voice, Speech or Data), which says when some fields apply.
+    values['@service'] = str(_row_value(call, 'service') or '')
     return values
+
+
+def _row_value(row: Any, name: str) -> Any:
+    """A value of a call given as a row or a dict ('' when it has none)."""
+    if row is None:
+        return ''
+    try:
+        return row[name] if name in row.keys() else ''
+    except AttributeError:
+        return row.get(name, '') if isinstance(row, dict) else ''
 
 
 def untracked_status(task_repository: Any, options: dict[str, list[dict[str, Any]]] | None = None) -> str:
@@ -8102,6 +8160,9 @@ def call_detail(task_repository: Any, call_key: str) -> dict[str, Any] | None:
     # Its identifiers in the provider's tools (NetCheck CloudNM: Session_ID_A and B, Test_ID and Session_id), beside its JOIN_ID.
     call['provider_ids'] = call_provider_ids(workspace_field_profile(task_repository), str(call.get('service') or ''), call['extra'])
     call['values'] = {field['key']: catalog_value(field, call, call.get('rca'), call.get('fields')) for field in definitions}
+    # The fields of the analysts that do not apply to the call (ticket #186): they count as filled.
+    call['not_applicable'] = sorted(nq_catalog.not_applicable_keys(
+        definitions, _status_inputs(call, call.get('fields') or {}, definitions, call, False)))
     # Values of the CDR proposed for the empty fields that name one (for example the failure position).
     call['proposals'] = {field['key']: _text(_call_value(call, field['suggest_from'])) for field in definitions
                          if field['source'] == 'user' and field.get('suggest_from') and not (call.get('fields') or {}).get(field['key'])
@@ -8250,6 +8311,126 @@ def group_members(task_repository: Any, call_key: str, kind: str) -> tuple[dict[
     return {'kind': kind, 'id': nq_prioritization.group_id(letter, key), 'key': key, 'calls': len(keys)}, keys
 
 
+# What the analysts fill in a call, as the bar of its panel counts it (ticket #121): the Team, Analyst, Reviewer, Root Category
+# and Root Cause of its header and every field of the analysts but the Initial Classification of the RCA, the identifier of
+# the previous tool and the Priority (filled by the NQ Prioritization).
+FILL_HEADER = (('team', 'Team'), ('analyst', 'Analyst'), ('reviewer', 'Reviewer'), ('root_category', 'Root Category'),
+               ('root_cause', 'Root Cause'))
+FILL_SKIPPED_FIELDS = ('unique_id',)
+
+
+def fill_fields(definitions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The fields of the analysts the bar of a call counts."""
+    return [field for field in definitions if field['source'] == 'user' and field['section'] != 'rca'
+            and field['key'] not in FILL_SKIPPED_FIELDS and not (field['key'] == 'priority' and field['type'] == 'list')]
+
+
+def phase_status_fields(definitions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The status of each phase (Analysis Status, Implementation Status, Planned Status): the first list of its section."""
+    return [field for section in PHASE_SECTIONS for field in [next((item for item in definitions if item['section'] == section
+            and item['type'] == 'list' and item['source'] in {'user', 'derived'}), None)] if field]
+
+
+def analyst_fill_states(task_repository: Any, keys: list[str]) -> dict[str, dict[str, Any]]:
+    """For each call, what its analysts filled (ticket #187): its follow-up, the values filled by section (a field that does
+    not apply to the call counts as filled, ticket #186) and those still empty, and whether every one is filled."""
+    keys = [str(key) for key in dict.fromkeys(keys) if str(key)]
+    if not keys:
+        return {}
+    definitions = list_fields(task_repository)
+    counted = fill_fields(definitions)
+    sections = {section['key']: section['label'] for section in list_sections(task_repository)}
+    default = untracked_status(task_repository)
+    states: dict[str, dict[str, Any]] = {}
+    with task_repository.connection() as connection:
+        values = field_values(connection, keys)
+        for start in range(0, len(keys), 500):
+            chunk = keys[start:start + 500]
+            marks = ', '.join('?' for _ in chunk)
+            rows = connection.execute(
+                f"SELECT l.call_key, COALESCE(l.service, '') AS service, COALESCE(l.join_id, '') AS join_id, "
+                f"COALESCE(l.operator, '') AS operator, COALESCE(l.campaign, '') AS campaign, COALESCE(l.start_time, '') AS start_time, "
+                f"COALESCE(t.status, '') AS status, COALESCE(t.team, '') AS team, COALESCE(t.analyst, '') AS analyst, "
+                f"COALESCE(t.reviewer, '') AS reviewer, COALESCE(t.root_category, '') AS root_category, "
+                f"COALESCE(t.root_cause, '') AS root_cause FROM {NQ_CALL_LATEST_TABLE} l "
+                f"LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = l.call_key WHERE l.call_key IN ({marks})", chunk).fetchall()
+            for row in rows:
+                key = str(row['call_key'])
+                tracking = {name: str(row[name] or '') for name in ('team', 'analyst', 'reviewer', 'root_category', 'root_cause')}
+                stored = values.get(key, {})
+                skipped = nq_catalog.not_applicable_keys(definitions, _status_inputs(dict(row), stored, definitions, tracking, False))
+                filled: list[tuple[str, str, str]] = []
+                missing: list[tuple[str, str]] = []
+                for ref, label in FILL_HEADER:
+                    (filled.append(('Header', label, tracking[ref])) if tracking[ref] else missing.append(('Header', label)))
+                for field in counted:
+                    group = 'Header' if field['section'] == 'general' else sections.get(field['section'], field['section'])
+                    value = str(stored.get(field['key']) or '').strip()
+                    if value:
+                        filled.append((group, field['label'], value))
+                    elif field['key'] in skipped:
+                        filled.append((group, field['label'], f'{nq_catalog.NOT_APPLICABLE} (Auto)'))
+                    else:
+                        missing.append((group, field['label']))
+                states[key] = {'call_key': key, 'join_id': str(row['join_id']), 'operator': str(row['operator']),
+                               'campaign': str(row['campaign']), 'service': str(row['service']), 'start_time': str(row['start_time']),
+                               'status': str(row['status'] or default), 'priority': str(stored.get('priority') or ''), **tracking,
+                               'filled': filled, 'missing': missing, 'complete': not missing}
+    return states
+
+
+# The calls of each group the analysts copied the fields of a call to (ticket #185), by group (``kind:key``): the next copy
+# in the group starts from them, for every analyst of the workspace.
+GROUP_COPY_STATE_KEY = 'nq_group_copy_selections'
+GROUP_COPY_KEPT = 2000
+
+
+def group_copy_selection(task_repository: Any, group: dict[str, Any]) -> list[str]:
+    """The calls of a group chosen the last time a field was copied to it."""
+    try:
+        stored = json.loads(task_repository.get_workspace_state(GROUP_COPY_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        stored = {}
+    chosen = stored.get(f"{group['kind']}:{group['key']}") if isinstance(stored, dict) else None
+    return [str(key) for key in chosen] if isinstance(chosen, list) else []
+
+
+def remember_group_copy_selection(task_repository: Any, group: dict[str, Any], call_keys: list[str]) -> None:
+    try:
+        stored = json.loads(task_repository.get_workspace_state(GROUP_COPY_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        stored = {}
+    stored = stored if isinstance(stored, dict) else {}
+    entry = f"{group['kind']}:{group['key']}"
+    stored.pop(entry, None)
+    stored[entry] = list(dict.fromkeys(call_keys))
+    while len(stored) > GROUP_COPY_KEPT:
+        stored.pop(next(iter(stored)))
+    task_repository.set_workspace_state(GROUP_COPY_STATE_KEY, json.dumps(stored))
+
+
+def group_member_rows(task_repository: Any, call_key: str, kind: str, field_key: str) -> dict[str, Any]:
+    """The calls of a group of a call to choose those a field is copied to (ticket #185): each with its JOIN_ID, start,
+    place, status and value of the field, the open call first, and the calls chosen the last time."""
+    group, keys = group_members(task_repository, call_key, kind)
+    default = untracked_status(task_repository)
+    with task_repository.connection() as connection:
+        rows = connection.execute(
+            f"SELECT l.call_key, COALESCE(l.join_id, '') AS join_id, COALESCE(l.start_time, '') AS start_time, "
+            f"COALESCE(p.place_label, '') AS place_label, COALESCE(t.status, '') AS status, COALESCE(t.analyst, '') AS analyst, "
+            f"COALESCE(v.value, '') AS value FROM {NQ_CALL_LATEST_TABLE} l "
+            f"JOIN {nq_prioritization.PRIORITY_TABLE} p ON p.call_key = l.call_key "
+            f"LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = l.call_key "
+            f"LEFT JOIN {NQ_FIELD_VALUES_TABLE} v ON v.call_key = l.call_key AND v.field_key = ? "
+            f"WHERE l.call_key IN (SELECT value FROM json_each(?))", (field_key, json.dumps(keys))).fetchall()
+    calls = [{'call_key': str(row['call_key']), 'join_id': str(row['join_id']), 'start_time': str(row['start_time']),
+              'place': str(row['place_label']), 'status': str(row['status'] or default), 'analyst': str(row['analyst']),
+              'value': str(row['value']), 'current': str(row['call_key']) == call_key} for row in rows]
+    calls.sort(key=lambda item: (not item['current'], item['start_time'], item['call_key']))
+    remembered = [key for key in group_copy_selection(task_repository, group) if key in set(keys) and key != call_key]
+    return {'group': group, 'calls': calls, 'selected': remembered}
+
+
 def update_tracking(
     task_repository: Any, call_keys: list[str], changes: dict[str, Any], username: str, users: set[str],
     expected_version: int | None = None, report: dict[str, dict[str, list[str]]] | None = None,
@@ -8346,7 +8527,9 @@ def update_tracking(
                     and ('status' in differences or 'root_category' in differences)):
                 raise ValueError(f'Choose a root category before closing a call as {current["status"]}.')
             if closing and required:
-                missing = [field['label'] for field in required if not merged.get(field['key'])]
+                # A field that does not apply to the call needs no value (ticket #186).
+                skipped = nq_catalog.not_applicable_keys(definitions, _status_inputs(row, merged, definitions, current, attended))
+                missing = [field['label'] for field in required if not merged.get(field['key']) and field['key'] not in skipped]
                 if missing and ('status' in differences or field_differences):
                     raise ValueError(f'Fill {", ".join(missing)} before closing a call as {current["status"]}.')
             connection.execute(
@@ -11246,6 +11429,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         group: str = ''
         field: str = ''
         value: str = ''
+        # The calls of the group to copy to (ticket #185); the open call always takes the value.
+        call_keys: list[str] = Field(default_factory=list)
 
     class CommentPayload(BaseModel):
         body: str = ''
@@ -11609,6 +11794,24 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def change_labels(repository: Any) -> dict[str, str]:
         """The name App Events gives each value a call can change: its follow-up and the fields of the catalog."""
         return {**TRACKING_LABELS, **{f"field:{field['key']}": field['label'] for field in list_fields(repository)}}
+
+    def tell_reviewers(request: Request, user: Any, repository: Any, before: dict[str, dict[str, Any]],
+                       report: dict[str, dict[str, list[str]]]) -> None:
+        """Email the reviewers (and Email Every NQ Call Change To) of the calls a change completed or whose NQ Call Status
+        or the status of a phase it changed (ticket #187), in the background; never fails the change."""
+        from src.modules.nq import nq_call_emails
+
+        try:
+            keys = [key for key, values in report.items() if values]
+            if not keys:
+                return
+            watched = {'status', *(f"field:{field['key']}" for field in phase_status_fields(list_fields(repository)))}
+            events = nq_call_emails.call_events(before, analyst_fill_states(repository, keys), report, change_labels(repository), watched)
+            nq_call_emails.notify_call_changes(core.repository, getattr(core, '__app_name__', 'DriveTest Analyzer'),
+                                               str(getattr(core.active_workspace, 'name', '') or ''), user.username, events,
+                                               core.email_base_url(request))
+        except Exception as exc:  # noqa: BLE001 - the change is saved; the email is recorded as failed.
+            core.repository.try_add_log(user.username, 'email_failed', json.dumps({'kind': 'nq_call', 'error': str(exc)}))
 
     def readable_changes(labels: dict[str, str], changes: dict[str, list[str]]) -> dict[str, list[str]]:
         return {labels.get(name, name): values for name, values in changes.items()}
@@ -12321,11 +12524,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse({'record': record})
 
     @core.app.patch('/api/non-qualified-calls/calls/{call_key}')
-    def nq_update_call(call_key: str, payload: TrackingPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_update_call(call_key: str, payload: TrackingPayload, request: Request, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
         report: dict[str, dict[str, list[str]]] = {}
+        before = analyst_fill_states(repository, [call_key])
         changed = translate(lambda: update_tracking(repository, [call_key], payload.changes, user.username,
                                                     set(workspace_users()), payload.version, report=report))
+        tell_reviewers(request, user, repository, before, report)
         if changed:
             log_action(repository, user, 'nq_call_update', {
                 **nq_app_events.call_identity(repository, call_key), 'fields': sorted(payload.changes),
@@ -12333,15 +12538,17 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse(call_detail(repository, call_key))
 
     @core.app.post('/api/non-qualified-calls/calls/bulk')
-    def nq_bulk_update(payload: BulkTrackingPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_bulk_update(payload: BulkTrackingPayload, request: Request, user=Depends(editor_user)) -> JSONResponse:
         if not payload.call_keys:
             raise HTTPException(400, 'Select at least one call.')
         if len(payload.call_keys) > 5000:
             raise HTTPException(400, 'Change at most 5000 calls at once.')
         repository = workspace_repository(user)
         report: dict[str, dict[str, list[str]]] = {}
+        before = analyst_fill_states(repository, payload.call_keys)
         changed = translate(lambda: update_tracking(repository, payload.call_keys, payload.changes, user.username,
                                                     set(workspace_users()), report=report))
+        tell_reviewers(request, user, repository, before, report)
         if changed:
             # Each value changed, with how many calls went from each previous value to the new one.
             labels = change_labels(repository)
@@ -12356,20 +12563,33 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                 'join_ids': nq_app_events.join_ids(repository, changed)})
         return JSONResponse({'changed': len(changed)})
 
+    @core.app.get('/api/non-qualified-calls/calls/{call_key}/group-calls')
+    def nq_group_calls(call_key: str, group: str = '', field: str = '', user=Depends(editor_user)) -> JSONResponse:
+        """The calls of a group of the call to choose those a field is copied to, and those chosen the last time."""
+        return JSONResponse(translate(lambda: group_member_rows(workspace_repository(user), call_key, group, field)))
+
     @core.app.post('/api/non-qualified-calls/calls/{call_key}/copy-to-group')
-    def nq_copy_field_to_group(call_key: str, payload: GroupCopyPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_copy_field_to_group(call_key: str, payload: GroupCopyPayload, request: Request, user=Depends(editor_user)) -> JSONResponse:
         """The value of a field of the analysts copied to every call of the hotspot, cluster or time window of the call."""
         repository = workspace_repository(user)
         definition = next((field for field in list_fields(repository) if field['key'] == payload.field), None)
         if definition is None or definition['source'] != 'user':
             raise HTTPException(400, 'Choose a field the analysts fill.')
-        group, keys = translate(lambda: group_members(repository, call_key, payload.group))
+        group, members = translate(lambda: group_members(repository, call_key, payload.group))
+        chosen = [key for key in dict.fromkeys(payload.call_keys) if key in set(members) and key != call_key]
+        if not chosen:
+            raise HTTPException(400, 'Choose the calls of the group to copy the value to.')
+        keys = [call_key, *chosen]
+        remember_group_copy_selection(repository, group, chosen)
         report: dict[str, dict[str, list[str]]] = {}
+        before = analyst_fill_states(repository, keys)
         changed = translate(lambda: update_tracking(repository, keys, {'fields': {payload.field: payload.value}}, user.username,
                                                     set(workspace_users()), report=report))
+        tell_reviewers(request, user, repository, before, report)
         log_action(repository, user, 'nq_field_copied_to_group', {
             **nq_app_events.call_identity(repository, call_key), 'group': f"{GROUP_EVENT_LABELS.get(group['kind'], group['kind'])} {group['id']}",
-            'group_calls': group['calls'], 'field': definition['label'], 'value': nq_app_events.short_text(payload.value),
+            'group_calls': group['calls'], 'chosen_calls': len(chosen), 'field': definition['label'],
+            'value': nq_app_events.short_text(payload.value),
             'changed': len(changed), 'join_ids': nq_app_events.join_ids(repository, changed)})
         return JSONResponse({'changed': len(changed), 'group': group, 'call': call_detail(repository, call_key)})
 

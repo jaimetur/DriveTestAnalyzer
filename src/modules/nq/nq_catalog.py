@@ -169,7 +169,7 @@ def _field(key: str, label: str, section: str, field_type: str, source: str = 'u
     return {
         'key': key, 'label': label, 'section': section, 'type': field_type, 'source': source, 'source_ref': ref,
         'options': [dict(option) for option in options], 'in_table': in_table, 'in_export': True, 'in_summary': in_summary,
-        'required_to_close': False, 'suggest_from': suggest_from, 'description': description,
+        'required_to_close': False, 'suggest_from': suggest_from, 'description': description, 'applies_when': [],
     }
 
 
@@ -348,6 +348,21 @@ DEFAULT_FIELDS = (
     _field('planned_fy', 'Planned FY', 'planning', 'list', options=tuple(_option(f'FY{year}') for year in range(26, 32)),
            description='The fiscal year (FY27) the measure is planned for, when there is no exact date.'),
 )
+
+# The value of a field of the analysts that does not apply to a call (ticket #186): it counts as filled, as any value.
+NOT_APPLICABLE = 'N/A'
+# The call types a condition reads (``@service``): Voice and Speech calls have two parties (UE A and UE B), Data tests one.
+CALL_TYPES = ('Voice', 'Speech', 'Data')
+_TWO_PARTIES = [{'field': '@service', 'op': 'in', 'values': ['Voice', 'Speech']}]
+_PLANNED = [{'field': 'planned_status', 'op': 'in', 'values': ['Planned']}]
+# When the fields of the analysts apply (every condition holds); a call they do not apply to counts them as filled
+# (*Not applicable (Auto)*) unless an analyst fills them. The party and the second vendor of the failure only exist in a
+# call between two UEs, and the date and fiscal year of a plan only when the measure is planned.
+DEFAULT_APPLIES_WHEN = {'failed_party': _TWO_PARTIES, 'vendor_2_when_failure': _TWO_PARTIES,
+                        'planned_date': _PLANNED, 'planned_fy': _PLANNED}
+for _default_field in DEFAULT_FIELDS:
+    _default_field['applies_when'] = [dict(condition, values=list(condition['values']))
+                                      for condition in DEFAULT_APPLIES_WHEN.get(_default_field['key'], [])]
 
 # -- statuses, teams and status rules ---------------------------------------------------------
 # (name, colour, closed). A call given a team or an analyst and not attended yet is Assigned (it still waits in its
@@ -880,6 +895,9 @@ def normalize_fields(items: Any, existing: dict[str, dict[str, Any]], call_field
             'required_to_close': bool(item.get('required_to_close')) and editable,
             'suggest_from': str(item.get('suggest_from') or '') if editable and str(item.get('suggest_from') or '') in call_fields else '',
             'description': str(item.get('description') or '').strip()[:300],
+            # (A catalog of before #186 has no conditions: the field keeps its own.)
+            'applies_when': (normalize_conditions(item['applies_when'] if 'applies_when' in item else previous.get('applies_when'), label)
+                             if editable else []),
         })
     return normalized
 
@@ -1009,7 +1027,8 @@ def normalize_status_rules(rules: Any, statuses: list[str], fields: list[dict[st
 
 def condition_fields(fields: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """The fields a status rule can read, with the values it can choose."""
-    known: dict[str, dict[str, Any]] = {ATTENDED_FIELD: {'label': 'Attended (followed up or commented)', 'values': list(YES_NO)}}
+    known: dict[str, dict[str, Any]] = {ATTENDED_FIELD: {'label': 'Attended (followed up or commented)', 'values': list(YES_NO)},
+                                        '@service': {'label': 'Call type', 'values': list(CALL_TYPES)}}
     for field in fields:
         if field['source'] == 'tracking' and field['source_ref'] in {'team', 'analyst', 'reviewer', 'root_category', 'root_cause'}:
             known[f"@{field['source_ref']}"] = {'label': field['label'], 'values': []}
@@ -1060,6 +1079,60 @@ def rules_after_status_changes(rules: list[dict[str, Any]], renamed: dict[str, s
         if status.casefold() in names:
             result.append({**rule, 'status': status})
     return result
+
+
+def normalize_conditions(conditions: Any, label: str) -> list[dict[str, Any]]:
+    """The conditions of when a field applies, as those of a status rule (field, operator and values)."""
+    if not conditions:
+        return []
+    if not isinstance(conditions, list):
+        raise ValueError(f'The conditions of "{label}" are invalid.')
+    result = []
+    for condition in conditions:
+        if not isinstance(condition, dict) or not str(condition.get('field') or '').strip():
+            raise ValueError(f'Every condition of "{label}" needs a field.')
+        op = str(condition.get('op') or 'in')
+        if op not in RULE_OPERATORS:
+            raise ValueError(f'A condition of "{label}" has an unknown operator.')
+        values = [str(value).strip() for value in condition.get('values') or [] if str(value).strip()]
+        if op in {'in', 'not_in'} and not values:
+            raise ValueError(f'Choose the values of every condition of "{label}".')
+        result.append({'field': str(condition['field']).strip(), 'op': op, 'values': values if op in {'in', 'not_in'} else []})
+    return result
+
+
+def conditions_text(conditions: list[dict[str, Any]]) -> str:
+    """The conditions of a field as the catalog workbook writes them: ``planned_status in Planned; @service in Voice|Speech``."""
+    return '; '.join(' '.join(part for part in (condition['field'], condition['op'], '|'.join(condition.get('values') or [])) if part)
+                     for condition in conditions)
+
+
+def conditions_from_text(text: Any) -> list[dict[str, Any]]:
+    """The conditions of a field read from the catalog workbook (see ``conditions_text``)."""
+    conditions = []
+    for part in str(text or '').split(';'):
+        words = part.strip().split(' ', 2)
+        if len(words) >= 2 and words[1] in RULE_OPERATORS:
+            values = [value.strip() for value in (words[2] if len(words) > 2 else '').split('|') if value.strip()]
+            conditions.append({'field': words[0], 'op': words[1], 'values': values})
+    return conditions
+
+
+def applies_when_after_field_changes(fields: list[dict[str, Any]], before: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The fields with the conditions of when they apply following the list values renamed, without the values removed
+    and the fields no longer there (a condition left without values goes, and the field applies to more calls)."""
+    for field in fields:
+        if field.get('applies_when'):
+            kept = rules_after_field_changes([{'status': '', 'conditions': field['applies_when']}], before, fields)
+            field['applies_when'] = kept[0]['conditions'] if kept else []
+    return fields
+
+
+def not_applicable_keys(fields: list[dict[str, Any]], values: dict[str, str]) -> set[str]:
+    """The fields of the analysts that do not apply to a call (some condition of when they apply does not hold for
+    ``values``, those the status rules read), whatever the value they have."""
+    return {field['key'] for field in fields if field['source'] == 'user' and field.get('applies_when')
+            and not all(_condition_holds(condition, values) for condition in field['applies_when'])}
 
 
 def evaluate_status(rules: list[dict[str, Any]], values: dict[str, str], fallback: str) -> str:
@@ -1143,13 +1216,14 @@ def catalog_workbook(sections: list[dict[str, str]], fields: list[dict[str, Any]
     sheet('Sections', ['Key', 'Section', 'Colour'], [[section['key'], section['label'], section['color']] for section in sections],
           [18, 26, 12], colors=[section['color'] for section in sections])
     sheet('Fields', ['Order', 'Section', 'Field', 'Key', 'Type', 'Source', 'Source Reference', 'In Table', 'In Excel', 'In Summary',
-                     'Required to Close', 'Suggest From', 'Description'],
+                     'Required to Close', 'Suggest From', 'Description', 'Applies When'],
           [[index + 1, by_section.get(field['section'], {}).get('label', field['section']), field['label'], field['key'],
             field['type'], field['source'], field['source_ref'], 'Yes' if field['in_table'] else 'No',
             'Yes' if field.get('in_export', True) else 'No', 'Yes' if field['in_summary'] else 'No',
-            'Yes' if field['required_to_close'] else 'No', field.get('suggest_from', ''), field.get('description', '')]
+            'Yes' if field['required_to_close'] else 'No', field.get('suggest_from', ''), field.get('description', ''),
+            conditions_text(field.get('applies_when') or [])]
            for index, field in enumerate(fields)],
-          [7, 16, 34, 30, 11, 10, 26, 9, 9, 11, 10, 14, 60],
+          [7, 16, 34, 30, 11, 10, 26, 9, 9, 11, 10, 14, 60, 40],
           colors=[by_section.get(field['section'], {}).get('color', '') for field in fields])
     list_rows = [[field['key'], option['name'], option.get('color', ''), ', '.join(option.get('keywords') or []),
                   'Yes' if option.get('final') else '']
@@ -1232,6 +1306,8 @@ def read_catalog_workbook(content: bytes) -> dict[str, Any]:
             'in_table': _flag(row.get('in table')), 'in_export': _flag(row.get('in excel')) if row.get('in excel') is not None else True,
             'in_summary': _flag(row.get('in summary')), 'required_to_close': _flag(row.get('required to close')),
             'suggest_from': str(row.get('suggest from') or '').strip(), 'description': str(row.get('description') or '').strip(),
+            # (A workbook of before #186 has no Applies When: the fields keep their conditions.)
+            **({'applies_when': conditions_from_text(row.get('applies when'))} if 'applies when' in row else {}),
         })
     catalog['fields'] = fields
     if 'root catalog' in names:

@@ -1338,11 +1338,36 @@
   };
   // Yes and No in their colours.
   const YES_NO_COLORS = {Yes: '#245a96', No: '#9aa5ad'};
+  // The value of a field of the analysts that does not apply to the call (ticket #186): it counts as filled.
+  const NOT_APPLICABLE = 'N/A';
+  const NOT_APPLICABLE_COLOR = '#8a949c';
+  // A condition of when a field applies, as the Status Rules read it (nq_catalog._condition_holds).
+  const conditionHolds = (condition, values) => {
+    const value = String(values[condition.field] ?? '').trim();
+    const wanted = new Set((condition.values || []).map((item) => String(item).toLowerCase()));
+    if (condition.op === 'empty') return !value;
+    if (condition.op === 'not_empty') return Boolean(value);
+    if (condition.op === 'not_in') return !wanted.has(value.toLowerCase());
+    return wanted.has(value.toLowerCase());
+  };
+  // The fields of the analysts that do not apply to a call with its values not saved yet (``pending``): those with a
+  // condition of when they apply that does not hold. They count as filled (Not applicable (Auto)) while they are empty.
+  const notApplicableKeys = (call, pending = {}) => {
+    const values = {...(call.values || {}), ...(call.fields || {}), ...pending, '@service': call.service || '',
+      '@attended': call.attended_at || call.comment_count ? 'Yes' : 'No'};
+    ['team', 'analyst', 'reviewer', 'root_category', 'root_cause'].forEach((ref) => { values[`@${ref}`] = call[ref] || ''; });
+    return new Set(state.fields.filter((field) => field.source === 'user' && (field.applies_when || []).length
+      && !field.applies_when.every((condition) => conditionHolds(condition, values))).map((field) => field.key));
+  };
+  // Whether a field of the analysts counts as filled: it has a value (N/A included) or does not apply to the call.
+  const countsFilled = (key, value, skipped) => Boolean(String(value ?? '').trim()) || skipped.has(key);
   const fieldChoices = (field, value = '') => {
     const names = field.type === 'yes_no' ? ['Yes', 'No'] : field.options.map((option) => option.name);
-    if (value && !names.includes(value)) names.push(value);
+    if (value && value !== NOT_APPLICABLE && !names.includes(value)) names.push(value);
+    // A field of the analysts can always say it does not apply to the call (ticket #186), last and in grey.
+    const notApplicable = field.source === 'user' ? [{value: NOT_APPLICABLE, label: 'N/A (Not applicable)', color: NOT_APPLICABLE_COLOR}] : [];
     return [{value: '', label: '—'}, ...names.map((name) => ({value: name, label: name,
-      color: field.type === 'yes_no' ? YES_NO_COLORS[name] : optionColorOf(field, name)}))];
+      color: field.type === 'yes_no' ? YES_NO_COLORS[name] : optionColorOf(field, name)})), ...notApplicable];
   };
   // A list field of the analysts takes a new value typed in its list (user-editor and above, as in Fields & Sections):
   // it joins the values of the field (the Planned FY writes a year as a fiscal year: 2030 is FY30).
@@ -4834,12 +4859,13 @@
     ['root_cause', 'Root Cause']];
   const fillProgress = (call, ignored = []) => {
     const pending = drawer.classList.contains('is-open') ? changedFields() : {};
+    const skipped = notApplicableKeys(call, pending);
     const items = [
       ...HEADER_TO_FILL.map(([key, label]) => ({key, label, group: 'Header', filled: Boolean(call[key])})),
       ...state.fields.filter((field) => field.source === 'user' && fieldOrigin(field) === 'analyst' && !HEADER_FIELDS.includes(field.key)
         && !isOptionalField(field))
         .map((field) => ({key: field.key, label: field.label, group: field.section === 'general' ? 'Header' : sectionOf(field.section).label,
-          filled: Boolean(String((field.key in pending ? pending[field.key] : call.fields?.[field.key]) ?? '').trim())})),
+          filled: countsFilled(field.key, field.key in pending ? pending[field.key] : call.fields?.[field.key], skipped)})),
     ].filter((item) => !ignored.includes(item.key));
     const missingItems = items.filter((item) => !item.filled);
     const header = items.filter((item) => item.group === 'Header');
@@ -5026,7 +5052,8 @@
     }
     const detailFields = state.fields.filter((item) => item.section === 'failure_event' && item.source === 'user');
     if (detailFields.length && state.sections.some((section) => section.key === 'failure_event')) {
-      const filled = detailFields.filter((item) => call.fields?.[item.key]).length;
+      const skipped = notApplicableKeys(call);
+      const filled = detailFields.filter((item) => countsFilled(item.key, call.fields?.[item.key], skipped)).length;
       const progress = !filled ? '' : filled < detailFields.length ? `In progress · ${filled}/${detailFields.length}` : `Completed · ${filled}/${filled}`;
       phaseStep('failure_event', sectionOf('failure_event').label, progress, !filled ? '' : filled < detailFields.length ? '#F08A24' : '#2E8B57',
         `${filled} of the ${detailFields.length} fields of ${sectionOf('failure_event').label} filled in`);
@@ -5356,7 +5383,9 @@
   // saved yet, so they follow the analyst as they fill the fields in.
   const renderFillCounters = (call) => {
     const pending = changedFields();
-    const valueOf = (key) => String((key in pending ? pending[key] : call.fields?.[key]) ?? '').trim();
+    const skipped = notApplicableKeys(call, pending);
+    const valueOf = (key) => countsFilled(key, key in pending ? pending[key] : call.fields?.[key], skipped);
+    refreshApplicability(call, skipped);
     drawerTabs().filter((group) => group.key !== 'rca').forEach((group) => {
       const badge = drawer.querySelector(`[data-nq-tab="${CSS.escape(group.key)}"] .nq-tab-badge`);
       if (!badge) return;
@@ -5398,6 +5427,7 @@
     let proposal = editable ? call.proposals?.[field.key] : '';
     if (proposal && field.type === 'list') proposal = field.options.find((option) => option.name.toLowerCase() === proposal.toLowerCase())?.name;
     const optional = isOptionalField(field);
+    if (optional) wrapper.dataset.optional = '1';
     title.append(originBadge(fieldSource, proposal || '', optional));
     if (field.required_to_close) title.append(node('small', 'required to close', 'nq-required-tag'));
     if (field.description) wrapper.title = field.description;
@@ -5421,7 +5451,8 @@
     if (!optional) {
       wrapper.addEventListener('change', () => {
         const current = control.value ?? control.querySelector?.('[data-field-key]')?.value ?? '';
-        wrapper.classList.toggle('is-to-fill', !String(current || '').trim());
+        wrapper.classList.toggle('is-to-fill', !String(current || '').trim() && !wrapper.classList.contains('is-na-auto'));
+        wrapper.classList.toggle('is-na', current === NOT_APPLICABLE);
       });
     }
     // The proposed value fills the empty field at a click.
@@ -5441,14 +5472,82 @@
       wrapper.append(use);
     }
     wrapper.fieldControl = control;
-    // A call of a hotspot, cluster or time window copies the value of the field to every call of one of its groups,
-    // with a pill inside the field (the field and the pill share a frame of their own).
-    if (state.user.can_edit && (call.groups || []).length) {
+    // The tools inside the field (the field and its tools share a frame of their own): N/A, for a field that does not apply
+    // to the call (ticket #186; a list has it among its values), and Copy to group for a call of a hotspot, cluster or time
+    // window, which copies the value to every call of one of its groups.
+    const tools = [];
+    const isList = ['list', 'yes_no'].includes(field.type);
+    if (!isList) {
+      if (value === NOT_APPLICABLE) markNotApplicable(control, true);
+      if (state.user.can_edit) tools.push(notApplicableToggle(field, control));
+    }
+    if (state.user.can_edit && (call.groups || []).length) tools.push(groupCopyPill(field, call, control));
+    if (tools.length) {
       const frame = node('div', undefined, 'nq-group-copy-frame');
+      frame.dataset.tools = String(tools.length);
+      const box = node('span', undefined, 'nq-field-tools');
+      box.append(...tools);
       control.replaceWith(frame);
-      frame.append(control, groupCopyPill(field, call, control));
+      frame.append(control, box);
     }
     return wrapper;
+  };
+  // A text, number or date field set to N/A shows it as text, read only, until N/A is clicked again; a long text holds it.
+  const markNotApplicable = (control, on) => {
+    if (control.setValue || control.tagName !== 'INPUT') return;
+    if (on) {
+      if (!control.dataset.inputType) control.dataset.inputType = control.type;
+      control.type = 'text';
+      control.value = NOT_APPLICABLE;
+      control.readOnly = true;
+    } else {
+      control.type = control.dataset.inputType || control.type;
+      control.readOnly = false;
+      control.value = '';
+    }
+    control.closest('.nq-analysis-field')?.classList.toggle('is-na', on);
+  };
+  const notApplicableToggle = (field, control) => {
+    const button = node('button', 'N/A', 'nq-na-toggle');
+    button.type = 'button';
+    const sync = () => {
+      const on = controlValue(control) === NOT_APPLICABLE;
+      button.setAttribute('aria-pressed', String(on));
+      button.title = on ? `${field.label} does not apply to this call: click to fill it in`
+        : `${field.label} does not apply to this call (counts as filled)`;
+    };
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const on = controlValue(control) !== NOT_APPLICABLE;
+      if (control.setValue) control.setValue(on ? NOT_APPLICABLE : '');
+      else markNotApplicable(control, on);
+      const target = control.matches?.('[data-field-key]') ? control : control.querySelector?.('[data-field-key]') || control;
+      target.dispatchEvent(new Event('input', {bubbles: true}));
+      target.dispatchEvent(new Event('change', {bubbles: true}));
+      sync();
+    });
+    sync();
+    return button;
+  };
+  // The fields that do not apply to the call (``skipped``) and are empty show it, and stop asking to be filled.
+  const refreshApplicability = (call, skipped) => {
+    drawer.querySelectorAll('.nq-analysis-field[data-field-block]').forEach((block) => {
+      const control = block.fieldControl;
+      if (!control) return;
+      const value = controlValue(control).trim();
+      const auto = skipped.has(block.dataset.fieldBlock) && !value;
+      block.classList.toggle('is-na-auto', auto);
+      block.classList.toggle('is-na', value === NOT_APPLICABLE);
+      if (auto) block.classList.remove('is-to-fill');
+      else if (!value && block.dataset.optional !== '1') block.classList.add('is-to-fill');
+      let mark = block.querySelector('.nq-na-auto');
+      if (auto && !mark) {
+        mark = node('small', 'N/A (Auto)', 'nq-na-auto');
+        mark.title = 'This field does not apply to this call (see When it applies in Fields & Sections): it counts as filled; filling it keeps the value';
+        block.querySelector('.nq-field-title')?.append(mark);
+      } else if (!auto && mark) mark.remove();
+    });
   };
   // The current value of a field control of the call panel (a list keeps it in its hidden input).
   const controlValue = (control) => String(control.value ?? control.querySelector?.('[data-field-key]')?.value ?? '');
@@ -5463,7 +5562,7 @@
     pill.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15.5V6.5A2.5 2.5 0 0 1 7.5 4h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M11.5 14h5M14 11.5v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
     pill.setAttribute('aria-label', groups.length > 1 ? 'Copy to group…' : `Copy to ${GROUP_LABELS[groups[0].kind]}`);
     pill.type = 'button';
-    pill.title = `Copy to group: copy this value of ${field.label} to every call of ${groups.length > 1 ? 'a group of the call: '
+    pill.title = `Copy to group: copy this value of ${field.label} to the calls you choose of ${groups.length > 1 ? 'a group of the call: '
       : 'the group of the call: '}${groups.map(groupCopyLabel).join(', ')}`;
     pill.addEventListener('click', async (event) => {
       event.preventDefault();
@@ -5471,19 +5570,54 @@
       const value = controlValue(control);
       const shown = value ? `“${value.length > 120 ? `${value.slice(0, 117)}…` : value}”` : 'empty';
       let group = groups[0];
-      if (groups.length === 1) {
-        const message = `Set ${field.label} to ${shown} in the ${number(group.calls)} calls of ${GROUP_LABELS[group.kind]} ${group.id}? `
-          + 'Their current values are replaced.';
-        if (!await window.showConfirmDialog(message, {title: 'Copy to the group', confirmLabel: 'Copy'})) return;
-      } else {
-        // The groups of the call to choose from (the first one chosen), in the confirmation itself.
+      if (groups.length > 1) {
+        // The groups of the call to choose from (the first one chosen).
         const choices = groups.map((item, index) => `<label class="nq-group-copy-choice"><input type="radio" name="nq-group-copy" value="${index}"${
           index ? '' : ' checked'}> ${escapeHtml(groupCopyLabel(item))}</label>`).join('');
-        const copyHtml = `<p>Set <strong>${escapeHtml(field.label)}</strong> to <strong>${escapeHtml(shown)}</strong> in every call of:</p>`
-          + `<div class="nq-group-copy-choices">${choices}</div><p>Their current values are replaced.</p>`;
-        if (!await window.showConfirmDialog('', {title: 'Copy to a group', copyHtml, confirmLabel: 'Copy'})) return;
+        const copyHtml = `<p>Copy <strong>${escapeHtml(field.label)}</strong> (<strong>${escapeHtml(shown)}</strong>) to calls of:</p>`
+          + `<div class="nq-group-copy-choices">${choices}</div>`;
+        if (!await window.showConfirmDialog('', {title: 'Copy to a group', copyHtml, confirmLabel: 'Choose the calls'})) return;
         const chosen = document.querySelector('input[name="nq-group-copy"]:checked');
         group = groups[Number(chosen?.value || 0)] || groups[0];
+      }
+      // The calls of the group to copy to (ticket #185): not every call of a group has the same problem. Those chosen the
+      // last time in the group come chosen; the open call always takes the value.
+      let members;
+      try {
+        members = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(call.call_key)}/group-calls?group=${
+          encodeURIComponent(group.kind)}&field=${encodeURIComponent(field.key)}`);
+      } catch (error) {
+        toast(error.message, 'error');
+        return;
+      }
+      const remembered = new Set(members.selected || []);
+      const rows = members.calls.map((item) => {
+        const when = String(item.start_time || '').replace('T', ' ').slice(0, 16);
+        const status = `<span class="nq-group-copy-status" style="--nq-chip:${escapeHtml(optionColor('status', item.status) || '#7b8790')}">${
+          escapeHtml(item.status)}</span>`;
+        const current = item.value ? `<span class="nq-group-copy-value" title="${escapeHtml(item.value)}">${escapeHtml(item.value)}</span>`
+          : '<span class="nq-group-copy-value is-empty">empty</span>';
+        return `<label class="nq-group-copy-call${item.current ? ' is-current' : ''}"><input type="checkbox" name="nq-group-copy-call" value="${
+          escapeHtml(item.call_key)}"${item.current || remembered.has(item.call_key) ? ' checked' : ''}${item.current ? ' disabled' : ''}>`
+          + `<span class="nq-group-copy-join">${escapeHtml(item.join_id || item.call_key)}${item.current ? ' <em>This call</em>' : ''}</span>`
+          + `<span class="nq-group-copy-when">${escapeHtml(when)}</span><span class="nq-group-copy-place">${escapeHtml(item.place)}</span>`
+          + `${status}${current}</label>`;
+      }).join('');
+      const copyHtml = `<p>Set <strong>${escapeHtml(field.label)}</strong> to <strong>${escapeHtml(shown)}</strong> in the calls of `
+        + `<strong>${escapeHtml(groupCopyLabel(group))}</strong> with the same problem; the others keep their value.</p>`
+        + `<div class="nq-group-copy-tools"><button type="button" class="nq-link-action" data-group-copy-all>Select all</button>`
+        + `<button type="button" class="nq-link-action" data-group-copy-none>Select none</button>`
+        + `<span>${remembered.size ? 'The calls chosen the last time in this group are selected.' : ''}</span></div>`
+        + `<div class="nq-group-copy-calls">${rows}</div>`;
+      const asked = window.showConfirmDialog('', {title: 'Copy to the calls of the group', copyHtml, confirmLabel: 'Copy', variant: 'nq-group-copy'});
+      const boxes = () => [...document.querySelectorAll('input[name="nq-group-copy-call"]:not(:disabled)')];
+      document.querySelector('[data-group-copy-all]')?.addEventListener('click', () => boxes().forEach((box) => { box.checked = true; }));
+      document.querySelector('[data-group-copy-none]')?.addEventListener('click', () => boxes().forEach((box) => { box.checked = false; }));
+      if (!await asked) return;
+      const chosenCalls = boxes().filter((box) => box.checked).map((box) => box.value);
+      if (!chosenCalls.length) {
+        toast('Choose the calls of the group to copy the value to.', 'error');
+        return;
       }
       pill.disabled = true;
       try {
@@ -5491,7 +5625,7 @@
         const pending = changedFields();
         delete pending[field.key];
         const result = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(call.call_key)}/copy-to-group`, {
-          method: 'POST', body: JSON.stringify({group: group.kind, field: field.key, value}),
+          method: 'POST', body: JSON.stringify({group: group.kind, field: field.key, value, call_keys: chosenCalls}),
         });
         renderDetail(result.call);
         Object.entries(pending).forEach(([key, pendingValue]) => {
@@ -5503,7 +5637,8 @@
             target.dispatchEvent(new Event('change', {bubbles: true}));
           }
         });
-        toast(`${field.label} copied to ${GROUP_LABELS[group.kind]} ${group.id}: ${number(result.changed)} calls updated.`);
+        const calls = (count) => `${number(count)} call${count === 1 ? '' : 's'}`;
+        toast(`${field.label} copied to ${calls(chosenCalls.length)} of ${GROUP_LABELS[group.kind]} ${group.id}: ${calls(result.changed)} updated.`);
         loadCalls({quiet: true});
       } catch (error) {
         toast(error.message, 'error');
@@ -7354,7 +7489,8 @@
       : source === 'cdr' ? [...state.callFields.map((name) => [name, name]), ...state.cdrColumns.map((name) => [`column:${name}`, `CDR column ${name}`])]
         : source === 'derived' ? state.callFields.map((name) => [name, name]) : []);
   const fieldDefinition = (field = {key: '', label: '', type: 'list', source: 'user', source_ref: '', section: fieldSection || 'analysis',
-    options: [], in_table: false, in_export: true, in_summary: false, required_to_close: false, suggest_from: '', description: ''}) => {
+    options: [], in_table: false, in_export: true, in_summary: false, required_to_close: false, suggest_from: '', description: '',
+    applies_when: []}) => {
     const block = node('li', undefined, 'nq-root-domain nq-field-def');
     block.dataset.key = field.key || '';
     // Whether the field is a column of the table and of the Excel of the workspace layout: chosen in Columns, kept here.
@@ -7412,7 +7548,16 @@
     });
     values.append(list, add);
     const description = textInput(field.description, 'Description (shown when hovering the field)', 'nq-field-description');
-    more.append(summary, ref, suggest, values, description);
+    // When the field applies to a call (ticket #186): every condition holds; the other calls count it as filled, N/A (Auto).
+    const applies = node('div', undefined, 'nq-field-setting nq-field-applies');
+    const conditions = node('ul', undefined, 'nq-conditions');
+    conditions.append(...(field.applies_when || []).map((condition) => conditionRow(condition)));
+    const addCondition = node('button', 'Add Condition', 'nq-link-action');
+    addCondition.type = 'button';
+    addCondition.addEventListener('click', () => conditions.append(conditionRow({field: '@service', op: 'in', values: []})));
+    applies.append(node('span', 'When it applies (every condition holds; the other calls count it as filled, N/A (Auto); none: every call)'),
+      conditions, addCondition);
+    more.append(summary, ref, suggest, applies, values, description);
     const sync = () => {
       const kind = source.value;
       if (kind === 'derived') type.value = 'list';
@@ -7428,6 +7573,7 @@
         return option;
       }));
       suggest.hidden = kind !== 'user';
+      applies.hidden = kind !== 'user';
       const lists = type.value === 'list' && ['user', 'derived'].includes(kind);
       values.hidden = !lists;
       const keywords = kind === 'derived';
@@ -7484,6 +7630,10 @@
     required_to_close: block.querySelector('[data-flag="required_to_close"]').checked,
     suggest_from: block.querySelector('.nq-field-suggest').value,
     description: block.querySelector('.nq-field-description').value.trim(),
+    applies_when: block.dataset.source === 'user' ? [...block.querySelectorAll('.nq-field-applies .nq-condition')].map((row) => ({
+      field: row.querySelector('.nq-condition-field').value, op: row.querySelector('.nq-condition-op').value,
+      values: [...row.querySelectorAll('.nq-condition-values input:checked')].map((box) => box.value),
+    })) : [],
   }));
   // The section chips and the text filter show part of the fields; the order stays the order of every field.
   const filterFieldDefs = () => {
