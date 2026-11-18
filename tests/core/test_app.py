@@ -9340,7 +9340,7 @@ def test_top_navigation_shows_document_links(client) -> None:
     login(client)
     response = client.get("/workspace")
     assert response.status_code == 200
-    assert "<h1>DriveTest Analyzer</h1>" in response.text
+    assert "title=\"Open the Changelog\">DriveTest Analyzer</a></h1>" in response.text
     assert f"v{__version__} · {__release_date__}" in response.text
     assert 'href="/documents/view/readme"' in response.text
     assert 'href="/documents/view/changelog"' in response.text
@@ -9493,6 +9493,8 @@ def test_the_version_badge_opens_about_and_the_logo_takes_the_page_to_its_top(cl
     assert 'class="brand-mark-button" data-scroll-top title="Back to the top of the page"' in page
     assert "document.querySelectorAll('[data-scroll-top]').forEach((logo) => logo.addEventListener('click', backToTopOfPage));" in app_script
     assert "button.addEventListener('click', backToTopOfPage);" in app_script
+    # The title opens the Changelog.
+    assert '<h1><a class="brand-title-link" href="/documents/view/changelog" title="Open the Changelog">' in page
 
 
 def test_the_red_card_stands_at_the_left_above_the_task_cards_and_below_the_open_drawer() -> None:
