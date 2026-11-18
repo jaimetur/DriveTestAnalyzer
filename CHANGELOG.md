@@ -10,7 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
-- **Web Interface:** the version badge of the header opens **About** instead of the Changelog, and the logo of the application takes the page back to its top.
+- **Web Interface:** the version badge of the header opens **About** instead of the Changelog, and the logo of the application takes the page back to its top ([ticket #169](https://108.132.147.165:8443/tickets/169)).
 
 #### 🐛 Bug fixes:
 - **Non-Qualified Calls:** a Non-Qualified Calls indexing no longer runs for hours, holding up every other write of the workspace (a Scoring calculation among them), after a Reindex that a restart stopped while it replaced the population of the calls: the indexes of the population missing and the tables a Reindex left are put right once the application starts and as each indexing starts (App Event `nq_population_indexes_restored`), and a Reindex builds the indexes of the population of the tool's schema ([ticket #167](https://108.132.147.165:8443/tickets/167)).
