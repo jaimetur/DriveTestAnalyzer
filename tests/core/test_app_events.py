@@ -355,8 +355,8 @@ def test_app_events_are_filtered_and_paged_on_the_server(client) -> None:
     from src.modules.core.repository import APP_EVENTS_LIMIT, Repository
 
     login(client)
-    # App Events shows the newest 10,000 events (every event is kept); one named limit.
-    assert APP_EVENTS_LIMIT == 10_000 and inspect.signature(Repository.list_logs).parameters['limit'].default == APP_EVENTS_LIMIT
+    # App Events shows the newest 100,000 events (every event is kept); one named limit.
+    assert APP_EVENTS_LIMIT == 100_000 and inspect.signature(Repository.list_logs).parameters['limit'].default == APP_EVENTS_LIMIT
     with core.repository.connection() as conn:
         conn.execute('DELETE FROM audit_logs')
         conn.executemany('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', [
@@ -517,3 +517,43 @@ def test_app_events_filter_lists_are_tall_and_compact() -> None:
     # Below the button, or above it when the window has more room there, and inside the window.
     assert "menu.classList.toggle('opens-upwards', upwards);" in script
     assert 'Math.min(window.innerHeight * 0.7, upwards ? above : below)' in script
+
+
+def test_the_events_added_join_the_app_events_built_in_their_place(client) -> None:
+    """New events are built alone and join the list in their place; an edit or deletion builds it all again."""
+    login(client)
+    with core.repository.connection() as conn:
+        conn.execute('DELETE FROM audit_logs')
+        conn.executemany('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', [
+            ('super', 'login', '{}', f'2026-11-0{1 + index % 5} 10:00:00') for index in range(30)])
+    core._APP_EVENTS_CACHE.clear()
+    core.cached_app_logs()
+
+    def full() -> list:
+        core._APP_EVENTS_CACHE.clear()
+        return core.cached_app_logs()[1]
+
+    # Added events, one of them imported with an older time: the same list as built from nothing.
+    with core.repository.connection() as conn:
+        conn.executemany('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', [
+            ('super', 'logout', '{"a": 1}', '2026-11-09 12:00:00'), ('super', 'logout', '{"b": 22}', '2026-11-02 09:00:00')])
+    calls = []
+    original = core.build_app_logs
+    core.build_app_logs = lambda rows=None: calls.append(None if rows is None else len(list(rows))) or original(rows)
+    try:
+        incremental = core.cached_app_logs()[1]
+    finally:
+        core.build_app_logs = original
+    assert calls == [2]
+    assert [log['id'] for log in incremental] == [log['id'] for log in full()]
+    # An edited event builds everything again.
+    with core.repository.connection() as conn:
+        conn.execute("UPDATE audit_logs SET details = '{\"edited\": true}' WHERE id = (SELECT MIN(id) FROM audit_logs)")
+    calls.clear()
+    core.build_app_logs = lambda rows=None: calls.append(None if rows is None else len(list(rows))) or original(rows)
+    try:
+        rebuilt = core.cached_app_logs()[1]
+    finally:
+        core.build_app_logs = original
+    assert calls == [30 + 2] and [log['id'] for log in rebuilt] == [log['id'] for log in full()]
+

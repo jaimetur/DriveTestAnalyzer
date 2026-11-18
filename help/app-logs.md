@@ -49,7 +49,7 @@ Each event says who triggered it and where it ran:
 
 ### The table
 
-- Shows the newest 10,000 events of the workspace, 100 a page with a pager below; every event is kept, and exports and backups include them all.
+- Shows the newest 100,000 events of the workspace, 100 a page with a pager below; every event is kept, and exports and backups include them all.
 - The server filters the events; the count beside **Refresh** shows how many there are, or how many match the filters.
 - Refreshes automatically every five seconds, fetching the events again only when one was added, imported or deleted.
 - **Details** describes each event in one sentence; **Raw details**, folded by default, unfolds the data recorded with it, for troubleshooting.

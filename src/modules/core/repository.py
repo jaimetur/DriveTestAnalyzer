@@ -47,8 +47,9 @@ CDR_ROWS_IN_COPY_MESSAGE = ('These CDR rows are kept in the columnar copy of the
                             'they were imported.')
 MAIN_CITIES_STATE_KEY = 'dashboard_main_cities'
 SCORING_CONFIGURATION_STATE_KEY = 'scoring_configuration'
-# How many of the newest App Events the App Events table shows (every event is kept, exported and backed up).
-APP_EVENTS_LIMIT = 10_000
+# How many of the newest App Events the App Events table shows (every event is kept, exported and backed up): with
+# twenty and more users a day, the events of several weeks.
+APP_EVENTS_LIMIT = 100_000
 # Where the App Events written now run (their origin): a request sets how to tell its page (see app_event_details).
 APP_EVENT_ORIGIN: ContextVar[Callable[[], str] | None] = ContextVar('app_event_origin', default=None)
 # The workspace connections that Repository.shared_connection() lends to every connection() of its block, by database.
@@ -6164,12 +6165,21 @@ class Repository:
         places the events imported from another workspace among the others."""
         order = 'julianday(created_at) DESC, id DESC' if by_time else 'id DESC'
         with self.connection() as conn:
+            # (Its julianday orders the events by their time as the query does, also when App Events adds new ones.)
+            columns = 'id, username, action, details, created_at, origin, julianday(created_at) AS moment'
             if limit is None:
-                return list(conn.execute(f"SELECT id, username, action, details, created_at, origin FROM audit_logs ORDER BY {order}").fetchall())
+                return list(conn.execute(f"SELECT {columns} FROM audit_logs ORDER BY {order}").fetchall())
             return list(conn.execute(
-                f"SELECT id, username, action, details, created_at, origin FROM audit_logs ORDER BY {order} LIMIT ?",
+                f"SELECT {columns} FROM audit_logs ORDER BY {order} LIMIT ?",
                 (limit,),
             ).fetchall())
+
+    def list_logs_after(self, last_id: int) -> list[sqlite3.Row]:
+        """The App Events added after the event ``last_id`` (the newest first by time), with their julianday."""
+        with self.connection() as conn:
+            return list(conn.execute(
+                'SELECT id, username, action, details, created_at, origin, julianday(created_at) AS moment FROM audit_logs '
+                'WHERE id > ? ORDER BY julianday(created_at) DESC, id DESC', (int(last_id),)).fetchall())
 
     def logs_signature(self) -> str:
         """A token that changes whenever an App Event is added, imported, edited or deleted (cheap to read)."""

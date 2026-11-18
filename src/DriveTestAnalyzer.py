@@ -15294,8 +15294,9 @@ def classify_workspace_log_entry(log: dict[str, Any]) -> str:
     return 'Info'
 
 
-def build_app_logs() -> list[dict[str, Any]]:
-    """Format the audit trail for the App Logs view: the newest APP_EVENTS_LIMIT events (every one is kept)."""
+def build_app_logs(rows: Iterable[Any] | None = None) -> list[dict[str, Any]]:
+    """Format the audit trail for the App Logs view: the newest APP_EVENTS_LIMIT events (every one is kept), or the
+    ``rows`` given (the events added since the view was built)."""
     if not active_workspace:
         return []
     logs: list[dict[str, Any]] = []
@@ -15306,7 +15307,7 @@ def build_app_logs() -> list[dict[str, Any]]:
         for account in repository.list_users()
     }
     module_titles = app_event_module_titles()
-    for row in repository.list_logs(by_time=True):
+    for row in repository.list_logs(by_time=True) if rows is None else rows:
         details_text = str(row['details'] or '')
         action = str(row['action'] or '').replace('_report_catalogue', '_report_template')
         details_text = re.sub(r'"catalogue_name"\s*:', '"template_name":', details_text)
@@ -15378,10 +15379,21 @@ APP_EVENT_FILTER_FIELDS = {
 # The Last Day choice of the Date filter: the newest date of the events, whatever day it is.
 APP_EVENTS_LAST_DAY = '@last-day'
 _APP_EVENTS_CACHE: dict[str, tuple[str, list[dict[str, Any]]]] = {}
+# The time and id of each event built (in the order of the list), so that the events added since join it in their place.
+_APP_EVENTS_ORDER: dict[str, list[tuple[float, int]]] = {}
+
+
+def _signature_parts(signature: str) -> tuple[int, int, int, int] | None:
+    try:
+        count, last_id, ids, sizes = (int(part) for part in signature.split(':'))
+    except (AttributeError, ValueError):
+        return None
+    return count, last_id, ids, sizes
 
 
 def cached_app_logs() -> tuple[str, list[dict[str, Any]]]:
-    """The App Events of the active workspace with their signature, built again only when they change."""
+    """The App Events of the active workspace with their signature, built again only when they change: the events only
+    added since are built alone and join the list in their place (an edit, deletion or import builds it all again)."""
     if not active_workspace:
         return '', []
     signature = repository.logs_signature()
@@ -15389,7 +15401,21 @@ def cached_app_logs() -> tuple[str, list[dict[str, Any]]]:
     cached = _APP_EVENTS_CACHE.get(key)
     if cached and cached[0] == signature:
         return cached
-    _APP_EVENTS_CACHE[key] = (signature, build_app_logs())
+    before, now = _signature_parts(cached[0]) if cached else None, _signature_parts(signature)
+    if cached and before and now and key in _APP_EVENTS_ORDER and now[1] > before[1]:
+        added = repository.list_logs_after(before[1])
+        if (now[0] == before[0] + len(added) and now[2] == before[2] + sum(int(row['id']) for row in added)
+                and now[3] == before[3] + sum(len(str(row['details'] or '')) for row in added if row['details'] is not None)):
+            pairs = [*zip(((float(row['moment'] or 0), int(row['id'])) for row in added), build_app_logs(added)),
+                     *zip(_APP_EVENTS_ORDER[key], cached[1])]
+            pairs.sort(key=lambda pair: pair[0], reverse=True)
+            pairs = pairs[:APP_EVENTS_LIMIT]
+            _APP_EVENTS_ORDER[key] = [order for order, _log in pairs]
+            _APP_EVENTS_CACHE[key] = (signature, [log for _order, log in pairs])
+            return _APP_EVENTS_CACHE[key]
+    rows = repository.list_logs(by_time=True)
+    _APP_EVENTS_ORDER[key] = [(float(row['moment'] or 0), int(row['id'])) for row in rows]
+    _APP_EVENTS_CACHE[key] = (signature, build_app_logs(rows))
     return _APP_EVENTS_CACHE[key]
 
 
