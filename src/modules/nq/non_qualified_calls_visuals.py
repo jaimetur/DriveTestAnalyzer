@@ -266,15 +266,18 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
     colours = _option_colours(options)
     cards = [
         # Every statistic counts the calls in a queue: the tracked calls (in no queue) are shown apart, in the last card.
-        # The calls in a queue not attended yet, In Queues and Assigned as Lifecycle & Phases counts them, then the attended.
-        ('In Queues', _number(summary.get('in_queues', summary.get('not_attended'))),
-         f"{_share(summary.get('in_queues', summary.get('not_attended')) or 0, int(summary.get('queued') or 0))} of the calls in a queue",
+        # The prioritized calls by their NQ Call Status, as Lifecycle & Phases counts them (tickets #172, #173): the first
+        # status and Assigned, waiting, then the attended and, of them, those still in their queue (Under Analysis).
+        (str(progress.get('first_status') or 'Not Attended'), _number(summary.get('in_queues', summary.get('not_attended'))),
+         f"{_share(summary.get('in_queues', summary.get('not_attended')) or 0, int(summary.get('queued') or 0))} of the prioritized calls, nobody has them yet",
          'total'),
         ('Assigned', _number(summary.get('not_attended_assigned')),
          f"{_share(summary.get('not_attended_assigned') or 0, int(summary.get('queued') or 0))} given a team or an analyst, not attended yet",
          'team'),
         ('Attended', _number(summary.get('attended')),
-         f"{_share(summary.get('queued_attended') or 0, int(summary.get('queued') or 0))} of the calls in a queue", 'open'),
+         f"{_share(summary.get('queued_attended') or 0, int(summary.get('queued') or 0))} of the prioritized calls", 'open'),
+        ('Under Analysis', _number(summary.get('in_analysis')),
+         f"{_share(summary.get('in_analysis') or 0, int(summary.get('queued') or 0))} attended, still in their queue", 'attended'),
         ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
          f"{_number(summary.get('queued_closed'))} of {_number(summary.get('queued'))} in a queue closed", 'closed'),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),
@@ -981,7 +984,10 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
         ('Calls', _number(total), f'{_number(queued)} in a queue · {_number(total - queued)} tracked', 'total'),
         ('Automatic Status', _number(modes.get('auto', 0)), f"{_share(modes.get('auto', 0), total)} follow the Status Rules", 'team'),
         ('Status by Hand', _number(modes.get('manual', 0)), f"{_share(modes.get('manual', 0), total)} chosen by an analyst", 'commented'),
-        *([('In Queues', _number(waiting['count']),
+        # In Queues: the calls the queues list (the statuses marked In Queue), then the first status.
+        ('In Queues', _number(lifecycle.get('in_queues_now', 0)),
+         f"{_share(lifecycle.get('in_queues_now', 0), queued)} waiting or under analysis", 'total'),
+        *([(str(waiting['status']), _number(waiting['count']),
             f"{_share(waiting['count'], queued)} waiting, not assigned yet{_tracked(waiting.get('tracked'))}",
             waiting.get('color') or '#9aa5ad')] if waiting else []),
         ('Open', _number(open_total), f'{_share(open_total, queued)} attended and not closed{_tracked(open_tracked)}', 'open'),
@@ -1026,8 +1032,7 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
             panel.draw.rounded_rectangle([_px(x + 0.01), _px(card_top + 0.08), _px(x + width - 0.01), _px(card_bottom - 0.01)],
                                          radius=_px(0.1), fill='#f7fbf8')
         inner = width - 0.28
-        # The first status is In Queues: its calls wait in their queue for somebody.
-        name = 'In Queues' if waiting and item['status'] == waiting['status'] else str(item['status'])
+        name = str(item['status'])
         panel.text(x + 0.14, head_top, name.upper(), 7.5, bold=True, color=MUTED, width=inner)
         panel.text(x + 0.14, head_top + 0.2, _number(item['count']), 18, bold=True, color=DARK, width=inner)
         age = '' if item.get('avg_age_days') is None else f" · {item['avg_age_days']} d old on average"

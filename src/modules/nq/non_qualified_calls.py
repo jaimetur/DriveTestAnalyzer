@@ -466,6 +466,8 @@ STATUS_STATE_SQL = {
     'queued_assigned': "(queue <> '' AND status IN ({waiting}) AND status NOT IN ({first}))",
     # Under analysis in a queue: in a status of the queues the calls nobody attended yet are not in.
     'queued_analysis': "(queue <> '' AND status IN ({in_queue}) AND status NOT IN ({waiting}))",
+    # In Queues: the calls the queues list, waiting or under analysis (the In Queues badge of the panels).
+    'queued_now': "(queue <> '' AND status IN ({in_queue}))",
 }
 STATE_SQL = {
     'in_queue': "queue <> ''",
@@ -6489,8 +6491,12 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
         base, base_params = _materialized(connection, base, base_params, bool(_scope(filters)))
         filtered = f'WITH calls AS ({base}) SELECT * FROM calls{where}'
         all_params = [*base_params, *params]
-        # The calls that match the filters, and those of them in a queue of the NQ Prioritization (not tracked).
-        counted = connection.execute(f"SELECT COUNT(*), SUM(queue <> '') FROM ({filtered})", all_params).fetchone()
+        # The calls that match the filters, and those of them the queues of the NQ Prioritization list: prioritized and in
+        # a status marked In Queue (tickets #172, #173), as Lifecycle & Phases and Progress View count them.
+        listed = queue_statuses(options, status_rules(task_repository))['in_queue']
+        counted = connection.execute(
+            f"SELECT COUNT(*), SUM(queue <> '' AND status IN ({', '.join('?' for _ in listed) or "''"})) FROM ({filtered})",
+            [*listed, *all_params]).fetchone()
         total, in_queue = int(counted[0] or 0), int(counted[1] or 0)
         pages = max(1, math.ceil(total / page_size))
         page = min(max(1, int(request.get('page') or 1)), pages)
@@ -6865,6 +6871,8 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         'periods': periods,
         # The moves to each open status (those to a closed status are the closures of the Closed column).
         'statuses': [item['name'] for item in options['statuses'] if not item['closed']],
+        # The first status, which names the card of the calls nobody has yet.
+        'first_status': lists['first'][0] if lists['first'] else '',
         'teams': queued['teams'],
         'analysts': queued['analysts'],
         'activity': queued['activity'],
