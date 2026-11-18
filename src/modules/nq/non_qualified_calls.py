@@ -354,6 +354,17 @@ ANALYSIS_CENTER_V48_STATE_KEY = 'nq_analysis_center_v48'
 # still have their former default ones, once: (domain, former colour).
 ANALYSIS_CENTER_V49_STATE_KEY = 'nq_analysis_center_v49'
 V49_FORMER_COLORS = (('IMS/E2E', '#b85b20'), ('Indeterminate', '#b08a3e'), ('Invalid', '#4b5563'))
+# The NQ Call Status decides which calls are in the queues (tickets #172, #173): Analysis Finished goes after Under
+# Analysis, and the default Status Rules a workspace still has take the new ones, once: a finished analysis no longer
+# closes a call (Implementation Status Implemented or Not Applicable does).
+ANALYSIS_CENTER_V50_STATE_KEY = 'nq_analysis_center_v50'
+V50_FORMER_CLOSED_RULES = (
+    {'status': 'Closed', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': ['Implemented']}]},
+    {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']},
+                                        {'field': 'planned_status', 'op': 'not_in', 'values': ['Planned']},
+                                        {'field': 'implementation_status', 'op': 'not_in',
+                                         'values': ['Not yet evaluated', 'Under evaluation', 'Evaluated']}]},
+)
 # The follow-up changes that only assign a call: they leave it waiting in its queue (not attended).
 ASSIGNMENT_FIELDS = ('team', 'analyst', 'reviewer')
 # The fields that only sort the queues (the Priority, which the NQ Prioritization also fills) do not attend a call either.
@@ -370,7 +381,7 @@ DTA_ERICSSON_STATE_KEY = 'nq_dta_rca_ericsson'
 DTA_ERICSSON_MAX_PENDING = 900
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-13.5'
+SCHEMA_VERSION = '2026-11-18.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -443,14 +454,21 @@ KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state', 'netc
 ROOT_SOURCES = ('analysts', 'netcheck', 'script', 'dta')
 # The RCA sources whose root domain, category and cause filter the calls (computed per call).
 RCA_FILTER_SOURCES = ('netcheck', 'script', 'dta')
-_ATTENDED_SQL = "(attended_at <> '' OR comment_count > 0)"
-STATE_SQL = {
-    'attended': _ATTENDED_SQL, 'not_attended': f'NOT {_ATTENDED_SQL}', 'in_queue': "queue <> ''",
+# The states told by the NQ Call Status of the calls (tickets #172, #173), as Lifecycle & Phases counts them: not attended,
+# a waiting status (the first one, or one the Status Rules give only by the team or analyst, such as Assigned); attended,
+# any other. ``{waiting}`` and ``{first}`` take the statuses of the workspace (see queue_statuses).
+STATUS_STATE_SQL = {
+    'attended': 'status NOT IN ({waiting})', 'not_attended': 'status IN ({waiting})',
     # Not attended in a queue: the calls waiting in a queue of the NQ Prioritization (the tracked ones are in none).
-    'queued_not_attended': f"(queue <> '' AND NOT {_ATTENDED_SQL})",
-    # In Queues: those not given a team or an analyst yet; Assigned in a queue: those given one, not attended yet.
-    'in_queues': f"(queue <> '' AND NOT {_ATTENDED_SQL} AND team = '' AND analyst = '')",
-    'queued_assigned': f"(queue <> '' AND NOT {_ATTENDED_SQL} AND (team <> '' OR analyst <> ''))",
+    'queued_not_attended': "(queue <> '' AND status IN ({waiting}))",
+    # In Queues: those in the first status; Assigned in a queue: those in another waiting status.
+    'in_queues': "(queue <> '' AND status IN ({first}))",
+    'queued_assigned': "(queue <> '' AND status IN ({waiting}) AND status NOT IN ({first}))",
+    # Under analysis in a queue: in a status of the queues the calls nobody attended yet are not in.
+    'queued_analysis': "(queue <> '' AND status IN ({in_queue}) AND status NOT IN ({waiting}))",
+}
+STATE_SQL = {
+    'in_queue': "queue <> ''",
     # Tracked: the calls in no queue (Track only), left out of the statistics of the Progress View.
     'tracked': "queue = ''", 'with_team': "team <> ''",
     'assigned': "analyst <> ''", 'commented': 'comment_count > 0', 'labelled': "root_domain <> ''",
@@ -640,6 +658,7 @@ CREATE TABLE IF NOT EXISTS {NQ_CALL_OPTIONS_TABLE} (
     color TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     is_closed INTEGER NOT NULL DEFAULT 0,
+    in_queue INTEGER,
     PRIMARY KEY (kind, name)
 );
 CREATE TABLE IF NOT EXISTS {NQ_TEAM_MEMBERS_TABLE} (
@@ -763,7 +782,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V41_STATE_KEY, ANALYSIS_CENTER_V42_STATE_KEY, ANALYSIS_CENTER_V43_STATE_KEY,
                 ANALYSIS_CENTER_V44_STATE_KEY, ANALYSIS_CENTER_V45_STATE_KEY,
                 ANALYSIS_CENTER_V46_STATE_KEY, ANALYSIS_CENTER_V47_STATE_KEY, ANALYSIS_CENTER_V48_STATE_KEY,
-                ANALYSIS_CENTER_V49_STATE_KEY)
+                ANALYSIS_CENTER_V49_STATE_KEY, ANALYSIS_CENTER_V50_STATE_KEY)
         states ={str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -869,6 +888,10 @@ def ensure_nq_tables(task_repository: Any) -> None:
         # (A Reindex stopped by a restart while it replaced the population leaves its tables apart: they go.)
         _drop_reindex_leftovers(connection)
         connection.executescript(SCHEMA)
+        # Whether the prioritized calls of a status are in their queue (tickets #172, #173); NULL takes the default.
+        option_columns = _columns_of(connection, NQ_CALL_OPTIONS_TABLE)
+        if option_columns and 'in_queue' not in option_columns:
+            connection.execute(f'ALTER TABLE {NQ_CALL_OPTIONS_TABLE} ADD COLUMN in_queue INTEGER')
         nq_prioritization.ensure_columns(connection)
         if not existed:
             connection.executemany(
@@ -1058,7 +1081,69 @@ def ensure_nq_tables(task_repository: Any) -> None:
                 connection.execute(f"UPDATE {NQ_ROOT_CATALOG_TABLE} SET color = ? WHERE kind = 'domain' AND name = ? COLLATE NOCASE "
                                    'AND lower(color) = ?', (colors[name], name, former))
         task_repository.set_workspace_state(ANALYSIS_CENTER_V49_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V50_STATE_KEY):
+        _upgrade_statuses_v50(task_repository)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V50_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
+
+
+def _rule_signature(rule: Any) -> str:
+    """A Status Rule as text, to tell a default rule from one a workspace changed (status and values in any case)."""
+    if not isinstance(rule, dict):
+        return ''
+    return json.dumps([str(rule.get('status') or '').casefold(), [
+        [str(condition.get('field') or ''), str(condition.get('op') or ''), sorted(str(value).casefold() for value in condition.get('values') or [])]
+        for condition in rule.get('conditions') or [] if isinstance(condition, dict)]])
+
+
+def _upgrade_statuses_v50(task_repository: Any) -> None:
+    """Once (tickets #172, #173): Analysis Finished after Under Analysis (before the closed statuses when there is none),
+    and the default closing rules the workspace still has replaced by the new ones, with the rule of Analysis Finished
+    before those of Under Analysis; the automatic statuses follow the rules again."""
+    name, color, _closed = next(entry for entry in DEFAULT_STATUSES if entry[0] == 'Analysis Finished')
+    statuses = list_options(task_repository)['statuses']
+    names = [item['name'].casefold() for item in statuses]
+    added = name.casefold() not in names
+    if added:
+        position = (names.index('under analysis') + 1 if 'under analysis' in names
+                    else next((index for index, item in enumerate(statuses) if item['closed']), len(statuses)))
+        with task_repository.connection() as connection:
+            rows = connection.execute(f"SELECT name FROM {NQ_CALL_OPTIONS_TABLE} WHERE kind = 'status' ORDER BY position, name COLLATE NOCASE").fetchall()
+            for index, row in enumerate(rows):
+                connection.execute(f"UPDATE {NQ_CALL_OPTIONS_TABLE} SET position = ? WHERE kind = 'status' AND name = ?",
+                                   (index + (index >= position), row['name']))
+            connection.execute(f"INSERT OR IGNORE INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed, in_queue) "
+                               "VALUES ('status', ?, ?, ?, 0, 0)", (name, color, position))
+    try:
+        stored = json.loads(task_repository.get_workspace_state(STATUS_RULES_STATE_KEY) or '[]')
+    except (TypeError, ValueError):
+        stored = []
+    stored = stored if isinstance(stored, list) else []
+    former = [_rule_signature(rule) for rule in V50_FORMER_CLOSED_RULES]
+    signatures = [_rule_signature(rule) for rule in stored]
+    renewed = all(signature in signatures for signature in former)
+    if renewed:
+        defaults = {rule['status']: rule for rule in nq_catalog.default_status_rules()}
+        closing = next(rule for rule in nq_catalog.default_status_rules()
+                       if rule['status'] == 'Closed' and rule['conditions'][0]['field'] == 'implementation_status')
+        rules = []
+        for rule, signature in zip(stored, signatures):
+            if signature == former[0]:
+                rules.append(closing)
+            elif signature == former[1]:
+                continue
+            else:
+                if (str(rule.get('status') or '').casefold() == 'under analysis'
+                        and not any(str(item.get('status') or '').casefold() == 'analysis finished' for item in rules)):
+                    rules.append(defaults['Analysis Finished'])
+                rules.append(rule)
+        if not any(str(item.get('status') or '').casefold() == 'analysis finished' for item in rules):
+            rules.append(defaults['Analysis Finished'])
+        task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+    changed = recompute_statuses(task_repository, 'system') if added or renewed else 0
+    if (added or renewed) and hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log('system', 'nq_statuses_upgraded', json.dumps({
+            'status_added': name if added else '', 'status_rules_renewed': renewed, 'calls_changed': changed}, ensure_ascii=False))
 
 
 def _mark_final_values(task_repository: Any) -> None:
@@ -3899,7 +3984,7 @@ def list_options(task_repository: Any) -> dict[str, list[dict[str, Any]]]:
     """The statuses and the teams, each team with its members."""
     with task_repository.connection() as connection:
         rows = connection.execute(
-            f'SELECT kind, name, color, is_closed FROM {NQ_CALL_OPTIONS_TABLE} ORDER BY kind, position, name COLLATE NOCASE'
+            f'SELECT kind, name, color, is_closed, in_queue FROM {NQ_CALL_OPTIONS_TABLE} ORDER BY kind, position, name COLLATE NOCASE'
         ).fetchall()
         members: dict[str, list[str]] = {}
         for row in connection.execute(f'SELECT team, username FROM {NQ_TEAM_MEMBERS_TABLE} ORDER BY username COLLATE NOCASE'):
@@ -3908,7 +3993,11 @@ def list_options(task_repository: Any) -> dict[str, list[dict[str, Any]]]:
     for row in rows:
         item = {'name': str(row['name']), 'color': str(row['color'])}
         if row['kind'] == 'status':
-            options['statuses'].append({**item, 'closed': bool(row['is_closed'])})
+            closed = bool(row['is_closed'])
+            # In Queue: its own setting, else the default (the first status is always in the queues); never a closed one.
+            in_queue = (bool(row['in_queue']) if row['in_queue'] is not None
+                        else not options['statuses'] or item['name'].casefold() in nq_catalog.DEFAULT_IN_QUEUE)
+            options['statuses'].append({**item, 'closed': closed, 'in_queue': in_queue and not closed})
         else:
             options['teams'].append({**item, 'members': members.get(item['name'].casefold(), [])})
     return options
@@ -3918,6 +4007,21 @@ def team_members(options: dict[str, list[dict[str, Any]]]) -> dict[str, set[str]
     """Casefolded members of every team that has members."""
     return {team['name'].casefold(): {member.casefold() for member in team.get('members') or []}
             for team in options['teams'] if team.get('members')}
+
+
+def queue_statuses(options: dict[str, list[dict[str, Any]]], rules: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """The statuses the queues read (tickets #172, #173): ``in_queue``, those whose prioritized calls are in their queue;
+    ``waiting``, those of the calls nobody attended yet (the first status and those the Status Rules give only by the
+    team, analyst or reviewer of the call, such as Assigned); ``first``, the first status, a list of one."""
+    statuses = options['statuses']
+    assigning = {str(rule['status']).casefold() for rule in rules
+                 if rule.get('conditions') and all(condition.get('field') in {'@team', '@analyst', '@reviewer'}
+                                                    for condition in rule['conditions'])}
+    first = statuses[0]['name'] if statuses else ''
+    return {'in_queue': [item['name'] for item in statuses if item.get('in_queue') and not item['closed']],
+            'waiting': [item['name'] for index, item in enumerate(statuses)
+                        if not item['closed'] and (index == 0 or item['name'].casefold() in assigning)],
+            'first': [first] if first else []}
 
 
 def default_status(options: dict[str, list[dict[str, Any]]]) -> str:
@@ -3946,6 +4050,9 @@ def _normalize_option_list(items: Any, kind: str) -> list[dict[str, Any]]:
             'color': color if COLOR_PATTERN.fullmatch(color) else '#7b8790',
             'closed': bool(item.get('closed')) if kind == 'status' else False,
         }
+        # Whether its prioritized calls are in their queue; a status without it takes the default.
+        if kind == 'status':
+            option['in_queue'] = (bool(item['in_queue']) and not option['closed']) if item.get('in_queue') is not None else None
         # Teams edited without their members keep the members they have.
         if kind == 'team' and isinstance(item.get('members'), list):
             option['members'] = list(dict.fromkeys(
@@ -4021,8 +4128,9 @@ def save_options(
                     )
             connection.execute(f'DELETE FROM {NQ_CALL_OPTIONS_TABLE} WHERE kind = ?', (kind,))
             connection.executemany(
-                f'INSERT INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES (?, ?, ?, ?, ?)',
-                [(kind, item['name'], item['color'], index, int(item['closed'])) for index, item in enumerate(lists[kind])],
+                f'INSERT INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed, in_queue) VALUES (?, ?, ?, ?, ?, ?)',
+                [(kind, item['name'], item['color'], index, int(item['closed']),
+                  None if item.get('in_queue') is None else int(item['in_queue'])) for index, item in enumerate(lists[kind])],
             )
             if kind == 'team':
                 previous_members = {item['name'].casefold(): item.get('members') or [] for item in current['teams']}
@@ -5987,6 +6095,10 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
         # Open: the attended calls not closed, in neither the first status nor a closed one.
         statuses = list_options(task_repository)['statuses']
         filters = {**filters, '_first_status': statuses[0]['name'] if statuses else ''}
+    if set(states) & set(STATUS_STATE_SQL):
+        lists = queue_statuses(list_options(task_repository), status_rules(task_repository))
+        filters = {**filters, '_waiting_statuses': lists['waiting'], '_first_statuses': lists['first'],
+                   '_in_queue_statuses': lists['in_queue']}
     return _stalled_filter(task_repository, filters) if 'stalled' in states else filters
 
 
@@ -6192,6 +6304,13 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
         elif state == 'stalled':
             parts.append('call_key IN (SELECT value FROM json_each(?))')
             params.append(json.dumps(list(filters.get('_stalled_keys') or [])))
+        elif state in STATUS_STATE_SQL:
+            lists = {name: [str(value) for value in filters.get(f'_{name}_statuses') or []] for name in ('waiting', 'first', 'in_queue')}
+            # Each list in place of its name, its values in the order of the placeholders.
+            for name in re.findall(r'\{(\w+)\}', STATUS_STATE_SQL[state]):
+                params.extend(lists[name])
+            parts.append(re.sub(r'\{(\w+)\}', lambda match: ', '.join('?' for _ in lists[match.group(1)]) or "''",
+                                STATUS_STATE_SQL[state]))
         elif state in STATE_SQL:
             parts.append(STATE_SQL[state])
     if parts:
@@ -6441,16 +6560,17 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
             breakdowns.append({'field': f"field:{definition['key']}", 'label': f"By {definition['label']}", 'items': items,
                                'colors': {option['name']: option['color'] for option in definition['options'] if option['color']}})
         closed_marks = ', '.join('?' for _ in closed) or "''"
+        waiting = queue_statuses(options, status_rules(task_repository))['waiting']
         summary = connection.execute(
             f"SELECT COUNT(*) AS total, "
             f"SUM(CASE WHEN status IN ({closed_marks}) THEN 1 ELSE 0 END) AS closed, "
             f"SUM(CASE WHEN comment_count > 0 THEN 1 ELSE 0 END) AS commented, "
-            # Attended: followed up (a change other than assigning it, such as a status, root cause or field) or commented.
-            f"SUM(CASE WHEN {_ATTENDED_SQL} THEN 1 ELSE 0 END) AS attended, "
+            # Attended: in none of the statuses of the calls nobody attended yet (tickets #172, #173), as Lifecycle & Phases.
+            f"SUM(CASE WHEN status NOT IN ({', '.join('?' for _ in waiting) or "''"}) THEN 1 ELSE 0 END) AS attended, "
             f"SUM(CASE WHEN team <> '' THEN 1 ELSE 0 END) AS with_team, "
             f"SUM(CASE WHEN analyst <> '' THEN 1 ELSE 0 END) AS assigned "
             f"FROM ({counted})",
-            [*closed, *counted_params],
+            [*closed, *waiting, *counted_params],
         ).fetchone()
     summary_payload = {key: int(summary[key] or 0) for key in ('total', 'closed', 'attended', 'commented', 'with_team', 'assigned')}
     summary_payload['open'] = summary_payload['total'] - summary_payload['closed']
@@ -6708,12 +6828,13 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         comments = _rows_of_calls(connection, f'SELECT id, call_key, created_by, created_at, deleted_at FROM {NQ_CALL_COMMENTS_TABLE}',
                                   keys, order='created_at, id')
     queued_keys = {str(row['call_key']) for row in calls if str(row['queue'] or '')}
+    lists = queue_statuses(options, status_rules(task_repository))
 
     def part(in_queue: bool) -> dict[str, Any]:
         keep = (lambda key: key in queued_keys) if in_queue else (lambda key: key not in queued_keys)
         return _progress_of([row for row in calls if keep(str(row['call_key']))],
                             [row for row in history if keep(str(row['call_key']))],
-                            [row for row in comments if keep(str(row['call_key']))], options, closed_names, granularity)
+                            [row for row in comments if keep(str(row['call_key']))], options, closed_names, granularity, lists)
 
     queued, tracked = part(True), part(False)
     # The timeline of the calls in a queue, with the backlog of the tracked calls beside its own (each carried over the
@@ -6751,7 +6872,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
 
 
 def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], options: dict[str, Any], closed_names: set[str],
-                 granularity: str) -> dict[str, Any]:
+                 granularity: str, lists: dict[str, list[str]] | None = None) -> dict[str, Any]:
     """The Progress View statistics of some calls with their history and comments."""
     def distribution(field: str, empty: str, order: list[str] | None = None) -> list[dict[str, Any]]:
         counts: dict[str, int] = {}
@@ -6852,20 +6973,27 @@ def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], opti
             entry['closed' if str(row['status']).casefold() in closed_names else 'open'] += 1
         return sorted(rows.values(), key=lambda entry: (-entry['open'], -entry['total'], entry['name'].casefold()))
 
-    attended = [str(row['call_key']) for row in calls if str(row['call_key']) in first_followup]
+    # Attended or not, In Queues and Assigned: by the NQ Call Status of each call (tickets #172, #173), as Lifecycle & Phases
+    # counts them; the first follow-up of the history only times the answer.
+    lists = lists or queue_statuses(options, [])
+    waiting = {name.casefold() for name in lists['waiting']}
+    first = {name.casefold() for name in lists['first']}
+    attended = [str(row['call_key']) for row in calls if str(row['status'] or '').casefold() not in waiting]
     response_days = []
-    for key in attended:
+    for key in first_followup:
         if starts.get(key) is not None and first_followup[key] >= starts[key]:
             response_days.append((first_followup[key] - starts[key]).total_seconds() / 86400)
     total = len(calls)
     closed_total = total - len(open_calls)
-    # Of the calls not attended, those already given a team or an analyst (the Assigned of Lifecycle & Phases, out of
-    # their queue): the others are In Queues.
-    assigned = sum(1 for row in calls if str(row['call_key']) not in first_followup and (row['team'] or row['analyst']))
+    # Of the calls not attended, those in the first status are In Queues; the others (Assigned) have a team or an analyst.
+    in_first = sum(1 for row in calls if str(row['status'] or '').casefold() in first)
+    # Under analysis: attended and still in a status of the queues (the queues list them before the waiting calls).
+    listed = {name.casefold() for name in lists['in_queue']}
+    in_analysis = sum(1 for row in calls if str(row['status'] or '').casefold() in listed - waiting)
     return {
         'summary': {
-            'total': total, 'attended': len(attended), 'not_attended': total - len(attended), 'not_attended_assigned': assigned,
-            'in_queues': total - len(attended) - assigned, 'open': len(open_calls), 'closed': closed_total,
+            'total': total, 'attended': len(attended), 'not_attended': total - len(attended),
+            'not_attended_assigned': total - len(attended) - in_first, 'in_queues': in_first, 'in_analysis': in_analysis, 'open': len(open_calls), 'closed': closed_total,
             'closure_rate': round(closed_total * 100 / total, 1) if total else 0.0,
             'comments': sum(1 for row in comments if not row['deleted_at']),
             'changes': len(history), 'contributors': len(activity),
@@ -9507,11 +9635,13 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
             stalled.append({'call_key': str(row['call_key']), 'status': status, 'operator': str(row['operator'] or ''),
                             'campaign': str(row['campaign'] or ''), 'city': str(row['city'] or ''),
                             'days': days, 'followed_up': bool(row['attended_at'])})
-    pipeline = [{'status': item['name'], 'color': item['color'], 'closed': item['closed'], 'count': queued.get(item['name'], 0),
+    # (Each status says whether its prioritized calls are in their queue, tickets #172 and #173.)
+    pipeline = [{'status': item['name'], 'color': item['color'], 'closed': item['closed'], 'in_queue': bool(item.get('in_queue')),
+                 'count': queued.get(item['name'], 0),
                  'tracked': counts.get(item['name'], 0) - queued.get(item['name'], 0),
                  'avg_age_days': round(sum(ages.get(item['name'], [])) / len(ages[item['name']]), 1) if ages.get(item['name']) else None}
                 for item in statuses]
-    pipeline += [{'status': name, 'color': '', 'closed': False, 'count': queued.get(name, 0), 'tracked': count - queued.get(name, 0),
+    pipeline += [{'status': name, 'color': '', 'closed': False, 'in_queue': False, 'count': queued.get(name, 0), 'tracked': count - queued.get(name, 0),
                   'avg_age_days': None}
                  for name, count in counts.items() if name not in {item['name'] for item in statuses}]
     # The phases and RCA Identification count only the calls in a queue, as the pipeline (the tracked calls apart).
@@ -9560,7 +9690,9 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     open_statuses = [item['status'] for item in pipeline if not item['closed'] and item['status'] != first]
     waiting = next((item for item in pipeline if item['status'] == first and not item['closed']), None)
     return {
-        'total': len(rows), 'queued': sum(queued.values()), 'pipeline': pipeline, 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
+        'total': len(rows), 'queued': sum(queued.values()), 'pipeline': pipeline,
+        # The calls of the queues in a status of the queues: those the queues list (waiting or under analysis).
+        'in_queues_now': sum(item['count'] for item in pipeline if item['in_queue']), 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
         'open': sum(item['count'] for item in pipeline if item['status'] in open_statuses), 'open_statuses': open_statuses,
         'open_tracked': sum(item['tracked'] for item in pipeline if item['status'] in open_statuses),
         # In Queues: the calls in a queue in the first status, waiting for somebody (nobody has them yet).
@@ -10413,7 +10545,7 @@ def predicted_configuration(current: dict[str, Any], incoming: dict[str, Any]) -
 CONFIGURATION_LABELS = {
     'label': 'Label', 'section': 'Section', 'type': 'Type', 'in_table': 'Table column', 'in_export': 'Excel',
     'in_summary': 'Summary breakdown', 'required_to_close': 'Required to close', 'suggest_from': 'Suggested from',
-    'description': 'Description', 'color': 'Colour', 'closed': 'Closed', 'members': 'Members', 'keywords': 'Keywords',
+    'description': 'Description', 'color': 'Colour', 'closed': 'Closed', 'in_queue': 'In Queue', 'members': 'Members', 'keywords': 'Keywords',
     'domain': 'Domain', 'category': 'Category',
 }
 
@@ -10598,8 +10730,10 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
             for item in _normalize_option_list([item for item in items if isinstance(item, dict) and item.get('name')], kind):
                 position += 1
                 connection.execute(
-                    f'INSERT OR IGNORE INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES (?, ?, ?, ?, ?)',
-                    (kind, item['name'], item['color'], position, int(item['closed'])),
+                    f'INSERT OR IGNORE INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed, in_queue) '
+                    'VALUES (?, ?, ?, ?, ?, ?)',
+                    (kind, item['name'], item['color'], position, int(item['closed']),
+                     None if item.get('in_queue') is None else int(item['in_queue'])),
                 )
                 connection.executemany(
                     f'INSERT OR IGNORE INTO {NQ_TEAM_MEMBERS_TABLE} (team, username) VALUES (?, ?)',
@@ -11408,7 +11542,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                 'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
                 'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
                 'status_rules': status_rules(repository), 'default_status_rules': nq_catalog.default_status_rules(),
-                'default_options': {'statuses': [{'name': name, 'color': color, 'closed': closed} for name, color, closed in DEFAULT_STATUSES],
+                'default_options': {'statuses': [{'name': name, 'color': color, 'closed': closed,
+                                                  'in_queue': not closed and name.casefold() in nq_catalog.DEFAULT_IN_QUEUE}
+                                                 for name, color, closed in DEFAULT_STATUSES],
                                     'teams': [{'name': name, 'color': color, 'members': []} for name, color in DEFAULT_TEAMS]},
                 'rule_operators': nq_catalog.RULE_OPERATORS, 'condition_fields': nq_catalog.condition_fields(list_fields(repository)),
                 'rca_results': rca_results_summary(repository), 'rca_sources': source_labels(repository),

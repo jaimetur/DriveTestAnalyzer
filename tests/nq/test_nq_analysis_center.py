@@ -159,7 +159,7 @@ def test_status_follows_the_phase_fields_until_it_is_set_by_hand(client, tmp_pat
             field['options'][3]['name'] = 'Done'
     assert client.put('/api/non-qualified-calls/fields', json={'fields': fields}).status_code == 200
     rules = client.get('/api/non-qualified-calls/state').json()['status_rules']
-    assert ['Done'] in [condition['values'] for rule in rules for condition in rule['conditions']]
+    assert ['Done', 'Not Applicable'] in [condition['values'] for rule in rules for condition in rule['conditions']]
     other = calls['0xB2']
     patch(client, other, {'fields': {'planned_status': 'Planned'}})
     rules = [{'status': 'Closed', 'conditions': [{'field': 'planned_status', 'op': 'in', 'values': ['Planned']}]}]
@@ -525,7 +525,7 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     assert all(sum(item['count'] for item in phase['items']) + phase['empty'] == lifecycle['queued'] for phase in lifecycle['phases'])
     assert pipeline['Under Analysis'] == 2 and 'Open' not in pipeline and pipeline['Not Attended'] == 1
     # Open is the sum of the statuses of the calls somebody has (assigned or attended) not closed yet.
-    assert lifecycle['open_statuses'] == ['Assigned', 'Under Analysis', 'Under Implementation', 'Under Planning']
+    assert lifecycle['open_statuses'] == ['Assigned', 'Under Analysis', 'Analysis Finished', 'Under Implementation', 'Under Planning']
     assert lifecycle['open'] + lifecycle['open_tracked'] == sum(pipeline[name] for name in lifecycle['open_statuses'])
     # Not Attended: the calls in the first status, with its colour.
     waiting = lifecycle['not_attended']
@@ -788,7 +788,7 @@ def test_recommendation_engine_maps_each_source_onto_the_catalog():
     taught = nq_rca.recommend({**call, 'call_key': 'own'}, script, root, rule, learned=learned)
     sources = {source['source']: source for source in taught['sources']}
     assert sources['learned']['count'] == 2 and sources['learned']['category'] == 'Interference'
-    assert nq_catalog.evaluate_status(nq_catalog.default_status_rules(), {'analysis_status': 'Finished'}, 'Not Attended') == 'Closed'
+    assert nq_catalog.evaluate_status(nq_catalog.default_status_rules(), {'analysis_status': 'Finished'}, 'Not Attended') == 'Analysis Finished'
     assert nq_catalog.evaluate_status(nq_catalog.default_status_rules(), {'@attended': 'Yes'}, 'Not Attended') == 'Under Analysis'
 
 
@@ -1909,7 +1909,7 @@ def test_workspaces_before_make_open_the_group_of_the_phase_statuses(client, tmp
     assert (found['0xA1']['status'], found['0xA1']['status_mode']) == ('Under Analysis', 'auto')
     assert (found['0xB2']['status'], found['0xB2']['status_mode']) == ('Under Analysis', 'manual')
     assert json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY))['status'] == [
-        'Under Analysis', 'Under Implementation', 'Under Planning', 'Closed']
+        'Under Analysis', 'Analysis Finished', 'Under Implementation', 'Under Planning', 'Closed']
 
 
 def test_assigning_a_call_leaves_it_waiting_until_somebody_attends_it(client, tmp_path):
@@ -1978,11 +1978,14 @@ def test_the_progress_view_counts_the_statuses_the_rules_set(client, tmp_path):
 def test_the_default_rules_go_from_the_end_of_the_pipeline_and_invalid_analyses_are_invalidated(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     rules = nq_catalog.default_status_rules()
-    assert [rule['status'] for rule in rules] == ['Closed', 'Closed', 'Closed', 'Under Planning', 'Under Implementation',
+    assert [rule['status'] for rule in rules] == ['Closed', 'Closed', 'Under Planning', 'Under Implementation', 'Analysis Finished',
                                                  'Under Analysis', 'Under Analysis', 'Assigned', 'Assigned']
-    # A finished analysis closes the call unless it is planned or in implementation.
+    # A finished analysis waits for the decision on its implementation (tickets #172, #173): Implemented or Not Applicable
+    # closes the call, planned or in implementation it goes on.
     evaluate = lambda values: nq_catalog.evaluate_status(rules, {'@attended': 'Yes', **values}, 'Not Attended')
-    assert evaluate({'analysis_status': 'Finished'}) == 'Closed'
+    assert evaluate({'analysis_status': 'Finished'}) == 'Analysis Finished'
+    assert evaluate({'analysis_status': 'Finished', 'implementation_status': 'Not Applicable'}) == 'Closed'
+    assert evaluate({'analysis_status': 'Finished', 'implementation_status': 'Implemented'}) == 'Closed'
     assert evaluate({'analysis_status': 'Finished', 'planned_status': 'Planned'}) == 'Under Planning'
     assert evaluate({'analysis_status': 'Finished', 'implementation_status': 'Under evaluation'}) == 'Under Implementation'
     # No_Vendor_B and No_JoinID Missing of the analyses are Invalidated, the note keeping them as written.
@@ -2303,3 +2306,63 @@ def test_the_reviewers_of_the_previous_analyses_are_accounts_or_kept_without_acc
     assert translator.translate(('tracking', 'reviewer'), 'super') == ('tracking', 'reviewer', 'super')
     assert translator.translate(('tracking', 'reviewer'), 'Sujay') == ('tracking', 'reviewer', 'Sujay')
     assert list(translator.without_account['reviewer']) == ['sujay'] and not translator.without_account['analyst']
+
+
+def test_the_nq_call_status_tells_the_follow_up_states_also_when_set_back_by_hand(client, tmp_path):
+    """Tickets #172 and #173: attended or not, In Queues and Assigned go by the NQ Call Status, as Lifecycle & Phases."""
+    calls = setup_calls(client, tmp_path)
+    state = client.get('/api/non-qualified-calls/state').json()
+    in_queue = {item['name']: item['in_queue'] for item in state['options']['statuses']}
+    assert in_queue == {'Not Attended': True, 'Assigned': True, 'Under Analysis': True, 'Analysis Finished': False,
+                        'Under Implementation': False, 'Under Planning': False, 'Closed': False}
+
+    def joins(state_name: str) -> set[str]:
+        return {item['join_id'] for item in query(client, filters={'state': [state_name]})['calls']}
+
+    patch(client, calls['0xA1'], {'fields': {'analysis_status': 'Ongoing'}})
+    assert '0xA1' in joins('attended') and '0xA1' not in joins('not_attended')
+    # Set back to Not Attended by hand, it is not attended again (its history still times the first follow-up).
+    patch(client, calls['0xA1'], {'status': 'Not Attended'})
+    assert '0xA1' in joins('not_attended') and '0xA1' not in joins('attended')
+    patch(client, calls['0xA1'], {'status': 'Analysis Finished'})
+    assert '0xA1' in joins('attended')
+    # The In Queue of a status is saved with the statuses and travels in the configuration; a closed status never has it.
+    statuses = [{**item, 'previous': item['name'], 'in_queue': item['name'] in {'Not Attended', 'Closed'}}
+                for item in state['options']['statuses']]
+    teams = [{**item, 'previous': item['name'], 'members': []} for item in state['options']['teams']]
+    assert client.put('/api/non-qualified-calls/options', json={'statuses': statuses, 'teams': teams}).status_code == 200
+    saved = {item['name']: item['in_queue'] for item in nq.list_options(core.repository)['statuses']}
+    assert [name for name, value in saved.items() if value] == ['Not Attended']
+    document = json.loads(nq.export_configuration_document(core.repository))
+    assert {item['name']: item['in_queue'] for item in document['options']['statuses']} == saved
+
+
+def test_workspaces_before_get_analysis_finished_and_the_new_closing_rules_once(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    # A workspace of the previous version: no Analysis Finished, the former default rules, a call closed by Finished.
+    former = [rule for rule in nq_catalog.default_status_rules() if rule['status'] != 'Analysis Finished']
+    former[1:2] = [dict(rule) for rule in nq.V50_FORMER_CLOSED_RULES]
+    with repository.connection() as connection:
+        connection.execute(f"DELETE FROM {nq.NQ_CALL_OPTIONS_TABLE} WHERE kind = 'status' AND name = 'Analysis Finished'")
+        connection.execute(f"UPDATE {nq.NQ_CALL_OPTIONS_TABLE} SET in_queue = NULL WHERE kind = 'status'")
+    repository.set_workspace_state(nq.STATUS_RULES_STATE_KEY, json.dumps(former))
+    nq.recompute_statuses(repository, 'system')
+    patch(client, calls['0xA1'], {'fields': {'analysis_status': 'Finished'}})
+    patch(client, calls['0xB2'], {'fields': {'analysis_status': 'Finished', 'implementation_status': 'Not Applicable'}})
+    assert {item['join_id']: item['status'] for item in query(client)['calls']}['0xA1'] == 'Closed'
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V50_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    statuses = nq.list_options(repository)['statuses']
+    assert [item['name'] for item in statuses] == [name for name, _color, _closed in nq.DEFAULT_STATUSES]
+    assert [item['name'] for item in statuses if item['in_queue']] == ['Not Attended', 'Assigned', 'Under Analysis']
+    assert [rule['status'] for rule in nq.status_rules(repository)] == [rule['status'] for rule in nq_catalog.default_status_rules()]
+    found = {item['join_id']: item['status'] for item in query(client)['calls']}
+    assert (found['0xA1'], found['0xB2']) == ('Analysis Finished', 'Closed')
+    logged = [row for row in repository.list_logs() if row['action'] == 'nq_statuses_upgraded']
+    assert logged and json.loads(logged[0]['details'])['status_added'] == 'Analysis Finished'
+    # Once: rules a workspace changed afterwards are kept.
+    rules = [{'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']}]}]
+    assert client.put('/api/non-qualified-calls/status-rules', json={'rules': rules}).status_code == 200
+    nq.ensure_nq_tables(repository)
+    assert [rule['status'] for rule in nq.status_rules(repository)] == ['Closed']

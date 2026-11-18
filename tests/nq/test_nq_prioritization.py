@@ -1706,3 +1706,41 @@ def test_admins_change_the_priority_and_operators_of_each_step(strategized):
     assert any('Campaign 2 · SA Data' in line and 'Condition Hotspots → Time-Window Issues OR Cluster' in line for line in changed)
     # A step saved with Time-Window Issues and Cluster after the Hotspots took them keeps them.
     assert nq_prioritization.load_settings(core.repository)['steps']['cities_first']['campaign-2']['conditions'] == ['consecutive', 'repeated']
+
+
+def test_the_nq_call_status_keeps_a_call_in_its_queue_while_it_is_under_analysis(prioritized):
+    """Tickets #172 and #173: a prioritized call is in its queue while its status is In Queue; under analysis it is listed
+    first, Analysis Finished takes it out and set back to Not Attended by hand it waits again."""
+    client = prioritized['client']
+
+    def panel() -> dict:
+        return client.post('/api/non-qualified-calls/prioritization', json={'filters': {}}).json()
+
+    def listed(data: dict) -> dict[str, dict]:
+        return {row['call_key']: row for item in data['queues'] for row in item['rows']}
+
+    def change(key: str, changes: dict) -> dict:
+        version = client.get(f'/api/non-qualified-calls/calls/{key}').json()['call']['version']
+        response = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': changes, 'version': version})
+        assert response.status_code == 200, response.text
+        return response.json()['call']
+
+    before = panel()
+    queue = next(item for item in before['queues'] if item['rows'])
+    key = queue['rows'][-1]['call_key']
+    assert not listed(before)[key]['in_analysis'] and listed(before)[key]['status'] == 'Not Attended'
+    # Attended, it is Under Analysis and stays in its queue, listed first, no longer waiting.
+    assert change(key, {'fields': {'analysis_status': 'Ongoing'}})['status'] == 'Under Analysis'
+    data = panel()
+    item = next(entry for entry in data['queues'] if entry['name'] == queue['name'])
+    assert item['rows'][0]['call_key'] == key and item['rows'][0]['in_analysis'] and item['in_analysis'] == 1
+    assert item['total'] == queue['total']
+    progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}}).json()
+    assert progress['summary']['in_analysis'] == 1
+    # Analysis Finished takes it out of the queue.
+    assert change(key, {'fields': {'analysis_status': 'Finished'}})['status'] == 'Analysis Finished'
+    assert key not in listed(panel())
+    # Set back to Not Attended by hand, it waits in its queue again (ticket #173).
+    assert change(key, {'status': 'Not Attended'})['status'] == 'Not Attended'
+    data = panel()
+    assert key in listed(data) and not listed(data)[key]['in_analysis']

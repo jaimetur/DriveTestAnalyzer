@@ -351,23 +351,27 @@ DEFAULT_FIELDS = (
 
 # -- statuses, teams and status rules ---------------------------------------------------------
 # (name, colour, closed). A call given a team or an analyst and not attended yet is Assigned (it still waits in its
-# queue); an attended call is open: Under Analysis, then Under Implementation or Under Planning (Open, their group, is
-# their sum), until it is closed.
+# queue); an attended call is open: Under Analysis, Analysis Finished, then Under Implementation or Under Planning (Open,
+# their group, is their sum), until it is closed.
 DEFAULT_STATUSES = (
     ('Not Attended', '#9aa5ad', False),
     ('Assigned', '#2f80c8', False),
     ('Under Analysis', '#7030A0', False),
+    ('Analysis Finished', '#0E7C86', False),
     ('Under Implementation', '#C55A11', False),
     ('Under Planning', '#e0464e', False),
     ('Closed', '#2e8b57', True),
 )
+# The statuses whose prioritized calls are in their queue (tickets #172, #173): those waiting for an analyst and those
+# under analysis. A status without its own In Queue setting takes it from here (the first status is always in it).
+DEFAULT_IN_QUEUE = frozenset({'not attended', 'assigned', 'under analysis'})
 # Conditions read list and Yes / No fields of the catalog, the team and analyst, and "@attended"
 # (the call has been followed up or commented).
 ATTENDED_FIELD = '@attended'
 RULE_OPERATORS = {'in': 'is one of', 'not_in': 'is not one of', 'empty': 'is empty', 'not_empty': 'is not empty'}
 # The first rule that holds gives the status, so they go from the end of the pipeline to its start: Closed, Under
-# Planning, Under Implementation and Under Analysis (a finished analysis closes only a call neither planned nor in
-# implementation).
+# Planning, Under Implementation, Analysis Finished and Under Analysis (a finished analysis waits for the decision on its
+# implementation: Implemented or Not Applicable closes the call).
 _IMPLEMENTING = ['Not yet evaluated', 'Under evaluation', 'Evaluated']
 # A call not attended yet with an analyst or a team is Assigned (after every other rule: attending it moves it on).
 ASSIGNED_RULES = (
@@ -376,12 +380,10 @@ ASSIGNED_RULES = (
 )
 DEFAULT_STATUS_RULES = (
     {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Rejected', 'Invalidated']}]},
-    {'status': 'Closed', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': ['Implemented']}]},
-    {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']},
-                                        {'field': 'planned_status', 'op': 'not_in', 'values': ['Planned']},
-                                        {'field': 'implementation_status', 'op': 'not_in', 'values': _IMPLEMENTING}]},
+    {'status': 'Closed', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': ['Implemented', 'Not Applicable']}]},
     {'status': 'Under Planning', 'conditions': [{'field': 'planned_status', 'op': 'in', 'values': ['Planned']}]},
     {'status': 'Under Implementation', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': _IMPLEMENTING}]},
+    {'status': 'Analysis Finished', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']}]},
     {'status': 'Under Analysis', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Ongoing']}]},
     {'status': 'Under Analysis', 'conditions': [{'field': ATTENDED_FIELD, 'op': 'in', 'values': ['Yes']}]},
     *ASSIGNED_RULES,
@@ -1161,9 +1163,10 @@ def catalog_workbook(sections: list[dict[str, str]], fields: list[dict[str, Any]
     root_rows += [['Root Cause', item['name'], item['category'], item['domain'], '', ', '.join(item.get('keywords') or [])]
                   for item in stored['causes']]
     sheet('Root Catalog', ['Kind', 'Name', 'Root Category', 'Domain', 'Colour', 'Keywords'], root_rows, [16, 44, 34, 18, 12, 60])
-    option_rows = [['Status', item['name'], item['color'], 'Yes' if item.get('closed') else 'No', ''] for item in statuses]
-    option_rows += [['Team', item['name'], item['color'], '', ', '.join(item.get('members') or [])] for item in teams]
-    sheet('Statuses and Teams', ['Kind', 'Name', 'Colour', 'Closed', 'Members'], option_rows, [10, 34, 12, 9, 50])
+    option_rows = [['Status', item['name'], item['color'], 'Yes' if item.get('closed') else 'No', 'Yes' if item.get('in_queue') else 'No', '']
+                   for item in statuses]
+    option_rows += [['Team', item['name'], item['color'], '', '', ', '.join(item.get('members') or [])] for item in teams]
+    sheet('Statuses and Teams', ['Kind', 'Name', 'Colour', 'Closed', 'In Queue', 'Members'], option_rows, [10, 34, 12, 9, 10, 50])
     rule_rows = [[index + 1, rule['status'], condition['field'], condition['op'], ', '.join(condition['values'])]
                  for index, rule in enumerate(rules) for condition in rule['conditions']]
     sheet('Status Rules', ['Rule', 'Status', 'Field', 'Condition', 'Values'], rule_rows, [7, 24, 28, 12, 60])
@@ -1252,7 +1255,10 @@ def read_catalog_workbook(content: bytes) -> dict[str, Any]:
         for row in _rows(names['statuses and teams']):
             kind = normalized_text(row.get('kind'))
             if kind == 'status':
-                statuses.append({'name': row.get('name'), 'color': row.get('colour') or '', 'closed': _flag(row.get('closed'))})
+                status = {'name': row.get('name'), 'color': row.get('colour') or '', 'closed': _flag(row.get('closed'))}
+                if str(row.get('in queue') or '').strip():
+                    status['in_queue'] = _flag(row.get('in queue'))
+                statuses.append(status)
             elif kind == 'team':
                 teams.append({'name': row.get('name'), 'color': row.get('colour') or '', 'members': _split(row.get('members'))})
         catalog['statuses'], catalog['teams'] = statuses, teams

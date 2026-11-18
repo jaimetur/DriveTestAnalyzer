@@ -1277,12 +1277,6 @@ def strategy_decision(strategy: str, call: dict[str, Any], steps: list[dict[str,
 QUEUE_UNASSIGNED, QUEUE_TEAM, QUEUE_ANALYST = 'unassigned', 'team', 'analyst'
 
 
-def is_attended(row: Any) -> bool:
-    """Whether somebody attended the call: a change other than assigning it (``attended_at``) or a comment. An attended
-    call leaves the queues; an assigned one waits in them."""
-    return bool(row['attended_at']) or int(row['comment_count'] or 0) > 0
-
-
 def queue_state(row: Any) -> str:
     """Who has a call of a queue: its analyst, else its team, else nobody."""
     return QUEUE_ANALYST if row['analyst'] else QUEUE_TEAM if row['team'] else QUEUE_UNASSIGNED
@@ -3320,6 +3314,11 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
     filters = nq._resolve_key_filters(repository, filters if isinstance(filters, dict) else {})
     closed = [item['name'] for item in options['statuses'] if item['closed']]
     closed_names = {name.casefold() for name in closed}
+    # The NQ Call Status decides (tickets #172, #173): a prioritized call is in its queue while its status is one of the
+    # queues (waiting for an analyst or under analysis); it waits while its status is one of the calls nobody attended.
+    lists = nq.queue_statuses(options, nq.status_rules(repository))
+    in_queue_names = {name.casefold() for name in lists['in_queue']}
+    waiting_names = {name.casefold() for name in lists['waiting']}
     base, base_params = nq._base_sql(nq.untracked_status(repository, options), repository, nq._scope(filters))
     where, params = nq._filter_sql(filters, username, closed, definitions)
     with repository.connection() as connection:
@@ -3338,7 +3337,8 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
         row['group_key'], row['group_size'] = row['repeat_key'], row['repeat_size']
         row['repeated'] = 'Yes' if row['group_key'] else 'No'
     is_open = [str(row['status'] or '').casefold() not in closed_names for row in rows]
-    attended = [is_attended(row) for row in rows]
+    attended = [str(row['status'] or '').casefold() not in waiting_names for row in rows]
+    listed = [str(row['status'] or '').casefold() in in_queue_names for row in rows]
     strategy = settings['strategy']
     # The calls of each step of the strategy, in their order, then those none takes.
     # Each step with its number and list, its fields as the Prioritization Rules show them (NR Mode, Call Type, Area,
@@ -3362,21 +3362,21 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                     'criterion': 'Out of the queues',
                     'priority': '', 'track_priority': '', 'operators': ''})
     order = {entry['name']: index for index, entry in enumerate(entries)}
-    # Waiting: open and not attended yet, as the queues count their calls.
-    rules = [{**entry, 'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0, 'waiting': 0}
-             for entry in entries]
+    # Waiting: open and not attended yet (a waiting status); In queue: in a status of the queues (waiting or under analysis).
+    rules = [{**entry, 'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0, 'waiting': 0,
+              'in_queue': 0} for entry in entries]
     unruled = {'kind': 'none', 'name': '', 'number': None, 'list': '', 'label': unruled_text, 'conditions': unruled_text,
                'criterion': '', 'priority': '', 'track_priority': '', 'operators': '',
-               'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0, 'waiting': 0}
+               'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0, 'waiting': 0, 'in_queue': 0}
     levels: dict[str, int] = {}
     kpis: dict[tuple[str, str, str], dict[str, Any]] = {}
     clusters: dict[str, dict[str, Any]] = {}
     spots: dict[str, dict[str, Any]] = {}
     runs: dict[str, dict[str, Any]] = {}
     queue: list[dict[str, Any]] = []
-    # The open calls nobody attended yet that only a tracked step takes, in no team queue.
+    # The open calls in a status of the queues that only a tracked step takes, in no team queue.
     tracked: list[dict[str, Any]] = []
-    for row, opened, followed in zip(rows, is_open, attended):
+    for row, opened, followed, in_queue in zip(rows, is_open, attended, listed):
         points = float(row['impact_points'] or 0)
         name = OUT_OF_SCOPE if str(row['priority_rule'] or '').startswith(OUT_OF_SCOPE) else row['priority_rule']
         entry = rules[order[name]] if name in order else unruled
@@ -3387,6 +3387,7 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
         entry['open'] += opened
         entry['attended'] += followed
         entry['waiting'] += opened and not followed
+        entry['in_queue'] += opened and in_queue
         level = row['impact_level'] or 'Waiting'
         levels[level] = levels.get(level, 0) + 1
         try:
@@ -3424,7 +3425,9 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
             group['open'] += opened
             if row['root_category']:
                 group['categories'][row['root_category']] = group['categories'].get(row['root_category'], 0) + 1
-        if opened and not followed:
+        if opened and in_queue:
+            # Under analysis: in the queue, no longer waiting.
+            row['in_analysis'] = followed
             if row['prioritization'] == PRIORITIZED:
                 queue.append(row)
             elif row['prioritization'] == TRACK_ONLY:
@@ -3490,10 +3493,14 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
     for name in queue_names:
         members = [{**row, 'priority': priority_of(row)} for row in queue
                    if row['queue'] == name and in_view(view, row, username, user_teams, queue_teams)]
-        queues.append({'name': name, 'total': len(members), 'rows': order_queue(members, names), 'team': queue_teams.get(name, '')})
+        # The calls under analysis first, then those waiting, each in the order the analysts take them.
+        ordered = sorted(order_queue(members, names), key=lambda row: not row.get('in_analysis'))
+        queues.append({'name': name, 'total': len(members), 'rows': ordered, 'team': queue_teams.get(name, ''),
+                       'in_analysis': sum(bool(row.get('in_analysis')) for row in members)})
     queue = []
-    tracked = order_queue([{**row, 'priority': priority_of(row)} for row in tracked
-                           if in_view(view, row, username, user_teams, queue_teams)], names)
+    tracked = sorted(order_queue([{**row, 'priority': priority_of(row)} for row in tracked
+                                  if in_view(view, row, username, user_teams, queue_teams)], names),
+                     key=lambda row: not row.get('in_analysis'))
     # Every hotspot, run of consecutive failures and cluster among the filtered calls, the most calls first: its main site
     # (the place of most of its calls), its NR Modes and campaigns (the most calls first), the start of its first and last
     # call and its calls of each call type.
@@ -3560,7 +3567,7 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                 'last': info.get('last', ''), 'operator': first['operator'], 'nr_mode': first['nr_mode'],
                 'campaign': compact_campaign_value(first['campaign']) or first['campaign'], 'priority': first['priority'],
                 'step': first.get('queue_step'), 'list': first.get('queue_list') or '', 'rule': first['priority_rule'],
-                'waiting': len(members), 'calls': queue_spots[(item['name'], key)],
+                'waiting': sum(not row.get('in_analysis') for row in members), 'calls': queue_spots[(item['name'], key)],
                 'in_progress': spot_states[(item['name'], key)]['progress'], 'closed': spot_states[(item['name'], key)]['closed'],
                 # Its Track only calls, which it takes along (ticket #126).
                 'tracked': spot_states[(item['name'], key)]['tracked'],
@@ -3577,6 +3584,11 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
         return {'hotspots': listed[:settings['capacity']], 'hotspot_total': len(listed), 'singles': singles,
                 'hotspot_calls': sum(item['waiting'] for item in listed)}
 
+    def next_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Next to analyse: every call under analysis, then the first waiting calls up to the capacity of the queue."""
+        analysing = [row for row in rows if row.get('in_analysis')]
+        return [*analysing, *[row for row in rows if not row.get('in_analysis')][:settings['capacity']]]
+
     def queue_row(row: dict[str, Any], position: int) -> dict[str, Any]:
         return {'position': position, 'call_key': row['call_key'], 'join_id': row['join_id'], 'operator': row['operator'],
                 'service': nq.SERVICE_LABELS.get(str(row['service']), str(row['service'])), 'nr_mode': row['nr_mode'],
@@ -3587,6 +3599,8 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                 'gain_campaign': row.get('expected_campaign') or '', 'list': row.get('queue_list') or '',
                 'level': row['impact_level'], 'repetitions': row['repetitions'], 'place': row['place_label'],
                 'team': row['team'], 'analyst': row['analyst'], 'state': queue_state(row),
+                # Its NQ Call Status, and whether it is under analysis (no longer waiting) in its queue.
+                'status': row['status'], 'in_analysis': bool(row.get('in_analysis')),
                 # The team of its queue, for a call without a team of its own.
                 'queue_team': '' if row['team'] else queue_teams.get(str(row['queue'] or ''), '')}
     return {
@@ -3618,18 +3632,18 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
         # Every hotspot, every run of consecutive failures and every cluster among the filtered calls, the most calls first.
         'hotspots': spot_rows, 'consecutive': run_rows,
         'issues': issue_rows, 'issue_count': len(issue_rows),
-        'queue': [queue_row(row, position) for position, row in enumerate(queue[:settings['capacity']], start=1)],
-        'queues': [{'name': item['name'], 'total': item['total'], 'team': item['team'],
-                    'rows': [queue_row(row, position) for position, row in enumerate(item['rows'][:settings['capacity']], start=1)],
+        'queue': [queue_row(row, position) for position, row in enumerate(next_rows(queue), start=1)],
+        'queues': [{'name': item['name'], 'total': item['total'], 'team': item['team'], 'in_analysis': item['in_analysis'],
+                    'rows': [queue_row(row, position) for position, row in enumerate(next_rows(item['rows']), start=1)],
                     # A queue listed by hotspots: its hotspots, and its other waiting calls one by one.
                     **({'by_hotspots': True, 'hotspots': grouped['hotspots'], 'hotspot_total': grouped['hotspot_total'],
                         'hotspot_calls': grouped['hotspot_calls'],
                         'singles_total': len(grouped['singles']),
                         'singles': [queue_row(row, position)
-                                    for position, row in enumerate(grouped['singles'][:settings['capacity']], start=1)]}
+                                    for position, row in enumerate(next_rows(grouped['singles']), start=1)]}
                        if (grouped := hotspot_queue(item) if item['name'] in settings['hotspot_queues'] else None) else {})}
                    for item in queues],
         # The tracked calls, which no team takes, in the same order (the panel folds them below the queues).
-        'tracked': {'name': 'Tracked', 'total': len(tracked),
-                    'rows': [queue_row(row, position) for position, row in enumerate(tracked[:settings['capacity']], start=1)]},
+        'tracked': {'name': 'Tracked', 'total': len(tracked), 'in_analysis': sum(bool(row.get('in_analysis')) for row in tracked),
+                    'rows': [queue_row(row, position) for position, row in enumerate(next_rows(tracked), start=1)]},
     }

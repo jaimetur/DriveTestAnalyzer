@@ -55,7 +55,7 @@
     not_in_final: 'Only in Weekly or Daily CDRs, while a Final CDR covers its campaign',
     qualified: 'Completed in a more recent CDR',
   };
-  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', in_queues: 'In Queues', queued_assigned: 'Assigned, not attended yet', tracked: 'Tracked (in no queue)', with_team: 'With team',
+  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', in_queues: 'In Queues', queued_assigned: 'Assigned, not attended yet', queued_analysis: 'Under analysis in a queue', tracked: 'Tracked (in no queue)', with_team: 'With team',
     assigned: 'Assigned', commented: 'Commented', labelled: 'With a root cause', suggested: 'Suggested root cause',
     identified: 'RCA identified', not_identified: 'RCA not identified', open: 'Open', stalled: 'Stalled'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
@@ -70,7 +70,7 @@
   // The map of the open call paints the group that filters the list (set once the map is mounted).
   let refreshCallMap = () => {};
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
-  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'in_queues', 'queued_assigned', 'in_queue', 'tracked', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
+  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'in_queues', 'queued_assigned', 'queued_analysis', 'in_queue', 'tracked', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
     analyst: 'Analyst', reviewer: 'Reviewer', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause',
@@ -2481,6 +2481,8 @@
       // as Lifecycle & Phases counts them; the tracked ones not attended are told apart.
       drillCard(kpiCard('In Queues', number(summary.in_queues ?? summary.not_attended), `${percent(summary.in_queues ?? summary.not_attended, summary.queued)} of the calls in a queue`, 'total'), {pairs: [['state', 'in_queues']]}),
       drillCard(kpiCard('Assigned', number(summary.not_attended_assigned || 0), `${percent(summary.not_attended_assigned || 0, summary.queued)} given a team or an analyst, not attended yet`, 'team'), {pairs: [['state', 'queued_assigned']]}),
+      // Under analysis: attended and still in their queue, by their NQ Call Status (tickets #172, #173).
+      drillCard(kpiCard('Under Analysis', number(summary.in_analysis || 0), `${percent(summary.in_analysis || 0, summary.queued)} attended, still in their queue`, 'attended'), {pairs: [['state', 'queued_analysis']]}),
       drillCard(kpiCard('Attended', number(summary.attended), `${percent(summary.queued_attended, summary.queued)} of the calls in a queue`, 'open'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
@@ -2929,6 +2931,8 @@
       const name = life.not_attended && item.status === life.not_attended.status ? IN_QUEUES : item.status;
       top.append(node('span', name, 'nq-pipeline-name'), node('strong', number(item.count)),
         node('span', `${percent(item.count, queued)}${item.avg_age_days === null ? '' : ` · ${item.avg_age_days} d old on average`}${trackedNote(item.tracked)}`, 'nq-kpi-note'));
+      // The statuses whose calls the queues list (tickets #172, #173).
+      if (item.in_queue) top.append(node('span', 'In Queue', 'nq-pipeline-queue-tag'));
       step.append(top);
       const triggers = ruleTriggers(item.status, life.rules || []);
       if (triggers) step.append(triggers);
@@ -3808,7 +3812,7 @@
         priorityPairs('impact_level', 'High')],
       [kpiCard('Repeated Issues', number(totals.repeated), `${number(totals.places)} clusters of repeated failures`), priorityPairs('repeated', 'Yes')],
       [kpiCard('Next to analyse', number(totals.next), (data.queues || []).length
-        ? data.queues.map((item) => `${item.name} ${number(item.total)}`).join(' · ') : 'Prioritized, open and not attended yet'), null],
+        ? data.queues.map((item) => `${item.name} ${number(item.total)}`).join(' · ') : 'Prioritized, in a status of the queues'), null],
     ];
     $('nq-priority-kpis').replaceChildren(...cards.map(([card, pairs]) => (pairs ? drillCard(card, {pairs}) : card)));
     // Each part of the panel in a subpanel of its own, in this order: the queues, the steps of the strategy and the Scoring
@@ -3946,7 +3950,7 @@
     }));
     if (tabs.length) showTab(stepsTab);
     section('steps', `Strategy: ${data.strategy.label}`,
-      'The filtered calls each step took, a tab per list, with their follow-up (Waiting: open and not attended yet, as in the queues) and the points they lose. Hover a step for what it takes; click it for its calls.',
+      'The filtered calls each step took, a tab per list, with their follow-up (Waiting: not attended yet by their NQ Call Status) and the points they lose. Hover a step for what it takes; click it for its calls.',
       ...notes.map((text) => node('p', text, 'nq-hint nq-priority-note')), tabBar, tabPanel);
     const grid = node('div', undefined, 'nq-failure-grid');
     const levelsCard = node('div', undefined, 'nq-failure-card');
@@ -4124,7 +4128,12 @@
     // Take it (editors, when it has no analyst) and select it to assign it (admins) — ticket #122.
     const canTake = Boolean(state.user.can_edit);
     const canAssign = Boolean(state.user.can_moderate);
-    const ownerCell = (item) => (item.analyst ? {text: userName(item.analyst), className: 'nq-queue-owner is-analyst', title: `Analyst: ${userName(item.analyst)}`}
+    const statusColor = (name) => (state.options?.statuses || []).find((item) => item.name === name)?.color || '';
+    // A call under analysis (tickets #172, #173) shows its NQ Call Status before its owner, in the colour of the status.
+    const ownerCell = (item) => (item.in_analysis ? {text: `${item.status} · ${item.analyst ? userName(item.analyst) : item.team || item.queue_team || '—'}`,
+      className: 'nq-queue-owner is-in-analysis', color: statusColor(item.status),
+      title: `${item.status}: attended, still in its queue${item.analyst ? ` · Analyst: ${userName(item.analyst)}` : ''}`}
+      : item.analyst ? {text: userName(item.analyst), className: 'nq-queue-owner is-analyst', title: `Analyst: ${userName(item.analyst)}`}
       : item.team ? {text: item.team, className: 'nq-queue-owner is-team', title: `Team: ${item.team}, waiting for an analyst`}
         : item.queue_team ? {text: item.queue_team, className: 'nq-queue-owner is-queue-team', title: `No team yet: the ${item.queue_team} team takes the calls of this queue`}
           : {text: '—', className: 'nq-queue-owner', title: 'Nobody has this call yet'});
@@ -4300,7 +4309,8 @@
     const queues = node('div', undefined, 'nq-priority-queues');
     queues.append(...(data.queues || []).map((item) => {
       if (!item.by_hotspots) {
-        return queueSubpanel(item.name, item.team, [`${number(item.total)} waiting`],
+        return queueSubpanel(item.name, item.team, [`${number(item.total - (item.in_analysis || 0))} waiting`,
+          ...(item.in_analysis ? [`${number(item.in_analysis)} under analysis`] : [])],
           item.rows.length ? queueTable(item.rows) : emptyLabel(`No call is waiting in the ${item.name} queue.`));
       }
       // Its waiting calls out of a hotspot of the Minimum hotspot size, one by one, folded below the hotspots.
@@ -4399,7 +4409,7 @@
         data.tracked.rows.length ? queueTable(data.tracked.rows) : emptyLabel('No tracked call is waiting.'));
       queues.append(queueSubpanel('Tracked', '', [`${number(data.tracked.total)} waiting`], tracked));
     }
-    section('queues', 'Next to analyse', `Each queue in a subpanel, one above the other: its first ${data.settings.capacity} calls that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, in the last subpanel, folded. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls): the calls of a hotspot are analysed together, so it takes along its Track only calls, which keep their Priority and leave the tracked calls; Waiting · Owner tells how many of its calls wait, of its calls in the queue (3 of 5), and below who has them (each analyst, else each team, with how many calls) and how many of its calls are Track only; its other waiting calls are folded below the hotspots. A call given a team or an analyst still waits until somebody attends it: the views show every waiting call, those nobody has, those waiting for an analyst of your teams (their team, or the team of their queue) and yours; Owner tells who has each call, Take makes you its analyst (every call without an analyst of a hotspot) and admins select calls or hotspots to assign them to a team or an analyst.`, ...content);
+    section('queues', 'Next to analyse', `Each queue in a subpanel, one above the other: the calls whose NQ Call Status is In Queue (Statuses & Teams), first those under analysis (their status before their owner), then its first ${data.settings.capacity} calls waiting for somebody, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, in the last subpanel, folded. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls): the calls of a hotspot are analysed together, so it takes along its Track only calls, which keep their Priority and leave the tracked calls; Waiting · Owner tells how many of its calls wait, of its calls in the queue (3 of 5), and below who has them (each analyst, else each team, with how many calls) and how many of its calls are Track only; its other waiting calls are folded below the hotspots. A call given a team or an analyst still waits until somebody attends it, and an attended call stays while its status is In Queue (Under Analysis by default); a call set back to a waiting status waits again: the views show every waiting call, those nobody has, those waiting for an analyst of your teams (their team, or the team of their queue) and yours; Owner tells who has each call, Take makes you its analyst (every call without an analyst of a hotspot) and admins select calls or hotspots to assign them to a team or an analyst.`, ...content);
     $('nq-priority').replaceChildren(...['steps', 'queues', 'impact'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;
@@ -5938,7 +5948,7 @@
 
   // -- statuses and teams dialog --------------------------------------------------
   const optionsDialog = $('nq-options-dialog');
-  const optionRow = (kind, item = {name: '', color: kind === 'statuses' ? '#6a63c9' : '#0f6f7d', closed: false}) => {
+  const optionRow = (kind, item = {name: '', color: kind === 'statuses' ? '#6a63c9' : '#0f6f7d', closed: false, in_queue: false}) => {
     const row = node('li', undefined, 'nq-option-row');
     row.dataset.previous = item.name || '';
     const color = node('input');
@@ -5959,7 +5969,16 @@
       box.checked = Boolean(item.closed);
       closed.append(box, ' Closed');
       closed.title = 'Calls with this status count as closed';
-      row.append(closed);
+      // In Queue (tickets #172, #173): its prioritized calls stay in their queue (never a closed status).
+      const queue = node('label', undefined, 'nq-option-queue');
+      const queueBox = node('input');
+      queueBox.type = 'checkbox';
+      queueBox.checked = Boolean(item.in_queue) && !item.closed;
+      queueBox.disabled = box.checked;
+      box.addEventListener('change', () => { queueBox.disabled = box.checked; if (box.checked) queueBox.checked = false; });
+      queue.append(queueBox, ' In Queue');
+      queue.title = 'The prioritized calls with this status are listed in their queue (Next to analyse)';
+      row.append(closed, queue);
     } else {
       // The members of the team are chosen in their own dialog and saved with the statuses and teams.
       row.members = [...(item.members || [])];
@@ -6059,6 +6078,7 @@
     const [color, name] = row.querySelectorAll('input');
     return {name: name.value.trim(), color: color.value, previous: row.dataset.previous,
       closed: Boolean(row.querySelector('.nq-option-closed input')?.checked),
+      ...(kind === 'statuses' ? {in_queue: Boolean(row.querySelector('.nq-option-queue input')?.checked)} : {}),
       ...(kind === 'teams' ? {members: row.members || [], merged: row.merged || []} : {})};
   });
 
@@ -6670,6 +6690,11 @@
           existing.querySelector('input[type="color"]').value = item.color;
           const closed = existing.querySelector('.nq-option-closed input');
           if (closed) closed.checked = Boolean(item.closed);
+          const queue = existing.querySelector('.nq-option-queue input');
+          if (queue) {
+            queue.checked = Boolean(item.in_queue) && !item.closed;
+            queue.disabled = Boolean(item.closed);
+          }
           return existing;
         });
         const removed = rows.filter((row) => !ordered.includes(row)).map((row) => row.querySelector('input[type="text"]').value.trim());

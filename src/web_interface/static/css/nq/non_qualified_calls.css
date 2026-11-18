@@ -504,6 +504,9 @@ body:has(.nq-drawer.is-open) { overflow: hidden; }
 .nq-option-row input[type="text"] { flex: 1 1 auto; min-width: 0; min-height: 2.1rem; padding: .3rem .55rem; }
 .nq-option-closed { display: inline-flex; align-items: center; gap: .25rem; color: var(--nq-muted); font-size: .76rem; font-weight: 800; white-space: nowrap; }
 .nq-option-closed input { width: auto; margin: 0; accent-color: var(--nq-color); }
+.nq-option-queue { display: inline-flex; align-items: center; gap: .25rem; color: var(--nq-muted); font-size: .76rem; font-weight: 800; white-space: nowrap; }
+.nq-option-queue input { width: auto; margin: 0; accent-color: var(--nq-color); }
+.nq-option-queue:has(input:disabled) { opacity: .45; }
 .nq-options-dialog .nq-icon-action { display: inline-grid; flex: 0 0 auto; place-items: center; width: 1.9rem; height: 1.9rem; min-height: 0; padding: 0; border: 1px solid var(--nq-border); border-radius: 8px; background: #fff; color: var(--nq-dark); font-weight: 800; box-shadow: none; }
 .nq-options-dialog .nq-icon-action:hover { background: var(--nq-soft); }
 .nq-options-error { min-height: 1.2em; margin: 0; color: #a3263a; font-weight: 750; }
@@ -1057,6 +1060,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .non-qualified-calls .nq-pipeline-step.is-active { box-shadow: 0 0 0 2px var(--nq-step); }
 .non-qualified-calls .nq-pipeline-step.is-closed { background: #f7fbf8; }
 .nq-pipeline-name { color: var(--nq-muted); font-size: .72rem; font-weight: 850; letter-spacing: .03em; text-transform: uppercase; }
+/* The statuses whose calls the queues list (tickets #172, #173). */
+.nq-pipeline-queue-tag { justify-self: start; margin-top: .15rem; padding: .05rem .4rem; border-radius: 999px; background: color-mix(in srgb, var(--nq-step) 16%, #fff); color: var(--nq-step); font-size: .64rem; font-weight: 850; letter-spacing: .02em; }
 .nq-pipeline-step strong { color: var(--nq-dark); font-size: 1.5rem; line-height: 1.1; }
 .nq-rule-list { display: grid; gap: .3rem; margin: .9rem 0 0; padding: 0; list-style: none; font-size: .8rem; }
 .nq-rule-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; color: var(--nq-text); }
@@ -2089,6 +2094,7 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-queue-table td.nq-queue-owner { white-space: normal; font-size: .8rem; }
 .nq-queue-owner.is-analyst > span { font-weight: 600; }
 .nq-queue-owner.is-queue-team > span { color: #6b7a88; font-style: italic; }
+.nq-queue-owner.is-in-analysis > span { color: var(--nq-chip, #7030A0); font-weight: 800; }
 .nq-queue-actions { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
 .nq-queue-take { border: 1px solid #0f56b3; color: #0f56b3; background: #fff; border-radius: 6px; padding: .1rem .55rem;
   font-size: .75rem; cursor: pointer; }
