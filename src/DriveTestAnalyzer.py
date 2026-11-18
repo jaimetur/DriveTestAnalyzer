@@ -19711,6 +19711,20 @@ templates.env.globals['online_usernames'] = lambda: demo_mode.online_usernames()
 templates.env.filters['person_name'] = person_name
 # Whether the tool can send emails (the Forgot your password? of the login page).
 templates.env.globals['email_delivery_ready'] = lambda: bool(email_delivery_settings(repository)['configured'])
+
+
+def email_junk_sender() -> str:
+    """The sender of the emails of the tool when Ericsson's mailboxes may take them for junk: an SMTP server sending from
+    an address outside Ericsson (a Power Automate flow sends from an Ericsson mailbox); empty otherwise."""
+    settings = email_delivery_settings(repository)
+    sender = str(settings.get('from_address') or '').strip()
+    if not settings.get('configured') or settings.get('transport') != 'smtp' or not sender or is_access_request_address(sender):
+        return ''
+    return sender
+
+
+# The login page tells who receives an email of the tool to look in the Junk folder when the sender is outside Ericsson.
+templates.env.globals['email_junk_sender'] = email_junk_sender
 templates.env.globals['mirror_of'] = mirror_of
 templates.env.globals['development_copy_of'] = development_copy_of
 

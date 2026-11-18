@@ -500,3 +500,26 @@ def test_an_smtp_email_carries_the_headers_the_spam_filters_expect():
     from email.utils import parsedate_to_datetime
     assert parsedate_to_datetime(message['Date']).tzinfo is not None
     assert message['Message-ID'].endswith('@example.com>') and message['From'] == 'DriveTest Analyzer <sender@example.com>'
+
+
+def test_the_login_page_tells_to_look_in_the_junk_folder_only_for_a_sender_outside_ericsson(client):
+    """Ericsson's mailboxes take the emails of an SMTP server outside Ericsson for junk: the access request and the Forgot
+    your password? dialogs say where to look once they emailed; not for an Ericsson sender nor a Power Automate flow."""
+    client.cookies.clear()
+
+    def smtp(sender):
+        email_delivery.save_email_delivery_settings(core.repository, {
+            'transport': 'smtp', 'host': 'mail.example.com', 'port': 465, 'security': 'ssl', 'username': sender,
+            'password': 'secret', 'from_address': sender, 'max_attachments_mb': 20, 'link_days': 7,
+        }, keep_password=False, keep_webhook_url=False)
+
+    smtp('dt-analyzer@example.com')
+    page = client.get('/login').text
+    # Hidden until an email is sent, in both dialogs.
+    assert page.count('data-junk-notice hidden>') == 2 and '<strong>dt-analyzer@example.com</strong> to your <strong>Safe senders</strong>' in page
+    assert "item.hidden = !result.email_sent;" in page and "junk.forEach((item) => { item.hidden = false; });" in page
+    for sender in ('dt-analyzer@ericsson.com', 'dt-analyzer@mail.ericsson.com'):
+        smtp(sender)
+        assert 'data-junk-notice hidden>' not in client.get('/login').text
+    use_flow(from_address='dt-analyzer@example.com')
+    assert 'data-junk-notice hidden>' not in client.get('/login').text

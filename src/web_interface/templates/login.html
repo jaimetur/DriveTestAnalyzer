@@ -125,6 +125,7 @@
         <p class="form-note"><span data-access-request-done-note>Your user has been created but it is not active yet: ask the administrator to activate it.</span> <span data-access-request-mail-note><strong>Request Activation</strong> opens an email with your request to the administrator, copied to the approvers: one of them approves it and the administrator then activates your user.</span></p>
       </div>
     </header>
+    {% if email_junk_sender() %}<div class="alert alert-warning login-junk-notice" role="note" data-junk-notice hidden><strong>Not in your inbox?</strong> Look in your <strong>Junk Email</strong> folder and add <strong>{{ email_junk_sender() }}</strong> to your <strong>Safe senders</strong>.</div>{% endif %}
     <dl class="access-request-summary" data-access-request-summary></dl>
     <div class="access-request-actions">
       <button type="button" class="access-request-secondary" data-access-request-close>Close</button>
@@ -145,6 +146,7 @@
     </header>
     <div class="alert" role="alert" data-password-reset-error hidden></div>
     <div class="alert alert-success" role="status" data-password-reset-sent hidden></div>
+    {% if email_junk_sender() %}<div class="alert alert-warning login-junk-notice" role="note" data-junk-notice hidden><strong>Not in your inbox?</strong> Look in your <strong>Junk Email</strong> folder and add <strong>{{ email_junk_sender() }}</strong> to your <strong>Safe senders</strong>.</div>{% endif %}
     <div class="access-request-grid">
       <label class="access-request-wide">Username (Ericsson signum)
         <input class="access-request-signum" type="text" name="username" autocomplete="username" maxlength="40" required placeholder="EABCDEF">
@@ -196,11 +198,14 @@
     const form = dialog.querySelector('[data-password-reset-form]');
     const error = dialog.querySelector('[data-password-reset-error]');
     const sent = dialog.querySelector('[data-password-reset-sent]');
+    // (Shown once an email is sent, when its sender is outside Ericsson.)
+    const junk = dialog.querySelectorAll('[data-junk-notice]');
     const submit = dialog.querySelector('[data-password-reset-submit]');
     open.addEventListener('click', () => {
       form.reset();
       error.hidden = true;
       sent.hidden = true;
+      junk.forEach((item) => { item.hidden = true; });
       const typed = document.querySelector('.login-form [name="username"]')?.value || '';
       form.username.value = typed.trim();
       dialog.showModal();
@@ -220,6 +225,7 @@
         if (!response.ok) throw new Error(result.detail || 'The link could not be sent.');
         sent.textContent = `A link to choose a new password has been sent to ${result.email}. It works once, for the next ${result.minutes} minutes.`;
         sent.hidden = false;
+        junk.forEach((item) => { item.hidden = false; });
       } catch (exc) {
         error.textContent = exc.message;
         error.hidden = false;
@@ -473,6 +479,7 @@
       const mailNote = dialog.querySelector('[data-access-request-mail-note]');
       const mailButton = dialog.querySelector('[data-access-request-mail]');
       mailButton.hidden = Boolean(result.email_sent);
+      dialog.querySelectorAll('[data-junk-notice]').forEach((item) => { item.hidden = !result.email_sent; });
       if (result.email_sent) {
         mailNote.textContent = 'Your request has been emailed to the administrator and the approvers, with a copy to you: one of them approves it, the administrator activates your user and you get an email when it is active.';
       } else {
