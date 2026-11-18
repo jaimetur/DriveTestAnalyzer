@@ -14,7 +14,7 @@ Application Config stores application-wide runtime overrides. It is separate fro
 administration
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

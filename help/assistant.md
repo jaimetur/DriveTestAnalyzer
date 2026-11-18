@@ -14,7 +14,7 @@ Use the **AI Assistant** to ask the active workspace questions in your own words
 assistant
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

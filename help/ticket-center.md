@@ -14,7 +14,7 @@ Use **Ticket Center** to report the bugs you find in the tool, suggest improveme
 ticket-center
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

@@ -12,7 +12,7 @@ Administrator Config, the **Admin** tab, centralises portability and dataset adm
 administration
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

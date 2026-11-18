@@ -5,7 +5,7 @@ Docker Compose is the recommended service deployment. Production pulls a publish
 > [!IMPORTANT]
 > **Persist host storage.** Mount the configuration and data directories before recreating a container. Files kept only in the container layer do not survive its replacement.
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

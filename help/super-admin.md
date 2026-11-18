@@ -8,7 +8,7 @@ Super Admin, for the `super-admin` role only, centralises the users and their ac
 administration
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

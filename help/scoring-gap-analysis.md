@@ -13,7 +13,7 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 scoring-gap-analysis
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

@@ -14,7 +14,7 @@ Query Builder runs read-only SQL against selected, processed Data, Voice and Spe
 builders
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

@@ -8,7 +8,7 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 > [!TIP]
 > **Long-running work.** Floating task cards follow server-side work while you navigate. Minimizing a card does not stop its task.
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

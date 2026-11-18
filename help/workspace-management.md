@@ -12,7 +12,7 @@ workspace
 workspace-config
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

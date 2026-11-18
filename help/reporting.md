@@ -11,7 +11,7 @@ Use **Reporting** to design **reports**, each one PowerPoint and Word document w
 reporting
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

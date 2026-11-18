@@ -33,7 +33,7 @@ Each panel names its **data sources** as coloured labels under its title (hover 
 network-insights
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

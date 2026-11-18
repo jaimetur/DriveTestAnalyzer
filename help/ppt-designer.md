@@ -17,7 +17,7 @@ Build an interactive Design (a PPT Design) from processed Data, Voice and Speech
 ppt-designer
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

@@ -243,7 +243,7 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     for chapter, blocks in chapters.items():
         text = (help_folder / f'{chapter}.md').read_text(encoding='utf-8')
         block = text.find(f'```presentations\n{blocks}\n```')
-        tasks = min(index for index in (text.find('\n## In this guide'), text.find('\n## Choose your task')) if index >= 0)
+        tasks = min(index for index in (text.find('\n## Main topics in this guide'), text.find('\n## In this guide')) if index >= 0)
         assert 0 <= block < tasks, chapter
     # Every slide of a deck drawn from its content.js has its title, section (one after the other) and notes.
     decks = node_json("const { DECKS } = require('./module_decks.js'); console.log(JSON.stringify(DECKS.map((id) => [id, require(`./${id}/content.js`)])));")

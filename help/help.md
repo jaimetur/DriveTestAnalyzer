@@ -49,7 +49,7 @@ Every presentation above in one deck, each in a section of its own.
 full-presentation
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

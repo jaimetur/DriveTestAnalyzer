@@ -2931,7 +2931,7 @@ mark.import-count-updated { border-color: #efc26b; background: #fff0cf; color: #
 /* The number of each section (1) and subsection (1.1) of a Help chapter, in its heading and in its In this guide index. */
 .doc-markdown .doc-section-number { display: inline-block; min-width: 1.6em; margin-right: .45em; color: #8f2932; font-variant-numeric: tabular-nums; font-weight: 800; }
 .doc-markdown h3 .doc-section-number { min-width: 2.2em; }
-.doc-markdown td a .doc-section-number { min-width: 2.4em; margin-right: .3em; text-decoration: none; }
+.doc-markdown td a .doc-section-number { min-width: 0; margin-right: .35em; text-decoration: none; }
 /* In this guide: a subsection of the chapter, indented under its section. */
 .doc-markdown .guide-sub { display: inline-block; padding-left: 1.5em; color: #4b5563; }
 .doc-markdown td .guide-sub a { font-weight: 500; }

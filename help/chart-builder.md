@@ -12,7 +12,7 @@ Chart Builder is the ad-hoc chart editor: draw any chart on the processed CDRs, 
 builders
 ```
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

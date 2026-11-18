@@ -5,7 +5,7 @@ DriveTest Analyzer was built for the CDRs of NetCheck. It is being adapted to th
 > [!NOTE]
 > **Available versus planned.** Today every workspace processes NetCheck CDRs. **Umlaut CDR**, **P3 CDR** and **RootMetrics CDR** appear as *coming soon* in the [CDR type](workspace-config.md#cdr-type) of a workspace until they are supported. The compatibility reports describe planned work, not features of the current release.
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

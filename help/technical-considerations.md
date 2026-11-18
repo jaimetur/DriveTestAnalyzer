@@ -11,7 +11,7 @@ This article collects rules that affect data interpretation, performance, persis
 > [!TIP]
 > **Caches and backups.** Caches accelerate views and can be rebuilt. Preserve databases and raw input when a recoverable backup is required.
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |

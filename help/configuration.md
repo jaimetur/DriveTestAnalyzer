@@ -5,7 +5,7 @@ DriveTest Analyzer separates application settings, storage roots and Docker depl
 > [!IMPORTANT]
 > **Three storage roots.** Keep configuration, workspace data and writable assets on persistent storage. Code template/static overrides are separate settings.
 
-## In this guide
+## Main topics in this guide
 
 | Task or topic | Go to |
 | --- | --- |
