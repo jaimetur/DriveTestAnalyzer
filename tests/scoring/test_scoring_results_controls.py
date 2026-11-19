@@ -1990,7 +1990,7 @@ def test_a_calculating_job_shows_an_animated_progress_bar_instead_of_placeholder
     # The selected active job shows the bar at once and at every poll, never Loading… or the waiting message.
     assert 'if (isActive(savedScoring)) renderCalculating(savedScoring);' in load_job
     # The results of a saved job load under the same striped bar, across its whole width.
-    assert 'else renderLoadingResults();' in load_job
+    assert 'else renderLoadingResults(id);' in load_job
     assert 'Loading Scoring Results…' in _function_source(script, 'renderLoadingResults')
     assert "} else if (isActive(record)) {" in load_job and 'renderCalculating(record);' in load_job
     calculating = _function_source(script, 'renderCalculating')

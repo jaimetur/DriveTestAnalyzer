@@ -21519,6 +21519,7 @@ def saved_scorings_save(payload: SavedScoringRequest, user: SessionUser = Depend
         'context_filters': {field: values for field, values in payload.context_filters.items() if values},
     }, ensure_ascii=False))
     _prioritize_saved_scoring(task_repository, saved_scoring['id'])
+    _add_jobs_ahead(task_repository, saved_scoring)
     # Only the starred Saved Scorings are kept: the user's other unstarred ones go.
     prune_unpinned_saved_scorings(task_repository, saved_scoring['id'], user.username)
     return {'saved_scoring': saved_scoring, 'cached': cached}
@@ -21985,6 +21986,16 @@ def _keep_saved_scoring_result(task_repository: Repository, filter_id: int) -> N
         ensure_ascii=False))
 
 
+def _add_jobs_ahead(task_repository: Repository, saved_scoring: dict[str, Any]) -> None:
+    """How many jobs of the server run before a queued Saved Scoring is calculated (``jobs_ahead``), which the page shows
+    while it waits (ticket #190)."""
+    if str(saved_scoring.get('status') or '') != 'queued':
+        return
+    filter_id = int(saved_scoring['id'])
+    saved_scoring['jobs_ahead'] = _dataset_processing_executor(task_repository).jobs_ahead(
+        lambda callback, args: callback is calculate_saved_scoring and len(args) > 1 and int(args[1]) == filter_id)
+
+
 @app.get('/api/scoring/saved-scorings/{filter_id}')
 def saved_scorings_result(filter_id: int, request: Request, user: SessionUser = Depends(current_user)) -> Response:
     """A Saved Scoring with its result. A result saved before its CDRs, methodology or Operator Maps changed (or a
@@ -21999,6 +22010,7 @@ def saved_scorings_result(filter_id: int, request: Request, user: SessionUser = 
         raise HTTPException(status_code=404, detail='Saved Scoring not found.')
     # Why a saved result is shown as it was (its CDRs or methodology are gone).
     saved_scoring['unavailable'] = unavailable
+    _add_jobs_ahead(task_repository, saved_scoring)
     packed = _packed_saved_scoring_result(task_repository, saved_scoring)
     if 'gzip' in request.headers.get('accept-encoding', '').lower():
         return Response(packed, media_type='application/json', headers={'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding'})

@@ -1158,6 +1158,8 @@
   .scoring-calculating-bar { width: min(36rem, 100%); height: 1.15rem; overflow: hidden; border: 1px solid var(--calc-border); border-radius: 999px; background: var(--calc-track); box-shadow: inset 0 1px 3px color-mix(in srgb, var(--calc-strong) 18%, transparent); }
   .scoring-calculating-fill { display: block; height: 100%; border-radius: inherit; background: repeating-linear-gradient(-45deg, var(--calc-strong) 0 .7rem, var(--calc-soft) .7rem 1.05rem, #ffffff 1.05rem 1.4rem, var(--calc-soft) 1.4rem 1.75rem); background-size: 2.475rem 2.475rem; box-shadow: 0 0 12px color-mix(in srgb, var(--calc-strong) 45%, transparent); transition: width .6s ease; animation: scoring-calculating-stripes .9s linear infinite; }
   .scoring-calculating-detail { margin: 0; color: #4a5b65; font-size: .8rem; font-weight: 650; }
+  .scoring-calculating-waited { margin: 0; color: #6b7a84; font-size: .75rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .scoring-calculating-waited:has([data-waited]:empty) { display: none; }
   @keyframes scoring-calculating-stripes { from { background-position: 0 0; } to { background-position: 2.475rem 0; } }
   @media (prefers-reduced-motion: reduce) { .scoring-calculating-fill { animation: none; } }
   .scoring-chart-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: .8rem; }

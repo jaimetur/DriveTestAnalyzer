@@ -81,7 +81,7 @@ Everything happens in the **Scoring & GAP Analysis** panel, with the results bel
 | **5 Trends** | Campaigns, Time split and areas of the Scoring Trends tab |
 
 - **Environment** is not a block: it is a view option beside **Scoring** above the results, applied without calculating.
-- **Switching Country Areas or Trends off:** each card has a switch in its top right corner (on by default). Off, it is not calculated (with both off, the rows of the whole country are not read either), its card says *Off* and its tab hides from that scoring. When the same scoring with them on is already calculated and up to date, its result is used at once (without the tabs switched off), nothing is calculated again. See [Country Areas & Scoring Trends](#country-areas-scoring-trends).
+- **Switching Country Areas or Trends off:** each card has a switch in its top right corner (on by default). Off, it is not calculated (with both off, the rows of the whole country are not read either), its card says *Off* and its tab hides from that scoring. When the same scoring with them on is already calculated and up to date, its result is used at once (without the tabs switched off), nothing is calculated again; switched on again, a part already calculated for the same scoring (the Favourite Scoring with the other part off, up to date) is taken from it and only the other part is calculated. See [Country Areas & Scoring Trends](#country-areas-scoring-trends).
 - **Layout:** cards in two rows on large screens; one-line pills on phones and narrow windows.
 - **View:** Best Network or Most Reliable, NSA vs SA, NSA & SA charts and the KPI and GAP values, then **Report (PPT/Word)** with **Export this scoring** and **Custom report…** (see [Results exports](#results-exports)).
 
@@ -206,7 +206,10 @@ Every selection you calculate becomes a **Saved Scoring**: its CDRs, NR Mode, fi
 - **No duplicates:** the same selection (whatever its CDRs or methodology hold today) reuses its Saved Scoring.
 - **Never calculated:** **Calculate Scoring** calculates and saves it. Meanwhile the strip says which blocks changed, and the card and results of the scoring shown stay (or *No Saved Scoring matches the configuration*).
 - **Used before:** with its result up to date, the button reads **Open Scoring** (folder icon). When its CDRs were reprocessed or its methodology or Operator Maps changed, **Calculate Scoring** calculates it again first. **Recalculate** calculates it again anyway.
-- **Queued or running:** both actions are disabled; the yellow notice says *Calculating* (or *Recalculating*) *the scoring of the selected CDRs and filters…*, the results show an animated **Calculating Scoring…** bar in the colour of the tab with its progress and step (per methodology of a calculation by campaign: checking the Scoring History of its CDRs, then calculating from it or from the CDR rows), and the background tasks card shows the elapsed time.
+- **Sent:** at the click the results show **Starting the Scoring…** (or **Starting the Recalculation…**) with the seconds waited, while the server answers; there is no need to click again (another click while it is sent asks for nothing).
+- **Waiting in the queue:** while other calculations or CDRs of the server go first, the results show **Waiting to Calculate…** with how many tasks go first; it starts on its own.
+- **Queued or running:** both actions are disabled; the yellow notice says *Calculating* (or *Recalculating*) *the scoring of the selected CDRs and filters…*, the results show an animated **Calculating Scoring…** bar in the colour of the tab with its progress and step (per methodology of a calculation by campaign: checking the Scoring History of its CDRs, then calculating from it or from the CDR rows) and the time waited since the click, and the background tasks card shows the elapsed time.
+- **Opening a Favourite Scoring:** the results show **Loading Scoring Results…** with the seconds waited until its tables, charts and maps arrive.
 - **Always one open:** the one in use, else the first calculated Favourite Scoring.
 
 > [!TIP]

@@ -92,6 +92,16 @@ class BackgroundTaskScheduler:
                 self._condition.notify_all()
             return promoted
 
+    def jobs_ahead(self, matches: Callable[[Callable[..., Any], tuple[Any, ...]], bool]) -> int | None:
+        """How many jobs run before the first queued job whose callback and arguments match (those running and those
+        queued with a better place), or None when no such job waits."""
+        with self._condition:
+            task = next((task for task in self._pending if matches(task.callback, task.args)), None)
+            if task is None:
+                return None
+            place = (*task.priority, task.sequence)
+            return self._active + sum(1 for other in self._pending if other is not task and (*other.priority, other.sequence) < place)
+
     def current_priority(self) -> tuple[int, ...] | None:
         """The priority of the job running in the calling worker (None outside a job)."""
         return getattr(self._running, 'priority', None)

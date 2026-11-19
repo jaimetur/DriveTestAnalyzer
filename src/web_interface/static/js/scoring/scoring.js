@@ -518,6 +518,8 @@
   let calculationMatchRecheck = false;
   // The selection of the Calculation panel is no Saved Scoring: the results of the opened one are not shown with it.
   let selectionUnmatched = false;
+  // Whether the results show a scoring being asked for, calculated or opened (see waitingPanel).
+  let resultsWaiting = false;
   // The name of the copy while a Saved Scoring is duplicated (null while it is edited, or neither).
   let duplicateName = null;
   // The status of the selected CDRs and filters (calculating, recalculating, already calculated or ready) stays
@@ -1819,7 +1821,8 @@
 
   // The results and the selected card show while a scoring is open whose selection is that of the Calculation panel.
   function syncResultsShown() {
-    const hidden = selectionUnmatched && !currentResultsSavedScoringId;
+    // (A scoring being asked for, calculated or opened always shows its progress.)
+    const hidden = selectionUnmatched && !currentResultsSavedScoringId && !resultsWaiting;
     if (resultsTabbed) resultsTabbed.hidden = hidden;
     if (resultNotesStack) resultNotesStack.hidden = hidden;
     for (const selector of savedScoringSelectors) selector.classList.toggle('is-unmatched', hidden);
@@ -10764,6 +10767,11 @@
   }
 
   function renderResult(savedPayload, savedScoring, panesToRender = [activeResultTab]) {
+    // (Its progress gives way to the result: whether the results show follows the selection again, once it is drawn.)
+    if (resultsWaiting) {
+      resultsWaiting = false;
+      queueMicrotask(syncResultsShown);
+    }
     if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
     const held = panesToRender.map(name => root.querySelector(`[data-result-pane="${name}"]`))
       .filter(pane => pane && pane.childElementCount && pane.offsetHeight).map(pane => [pane, pane.offsetHeight]);
@@ -11187,13 +11195,80 @@
 
   // While the selected Saved Scoring calculates, the results show an animated progress bar. Each poll updates it in place,
   // so the stripes keep moving instead of starting again.
+  // How long the user has been waiting for a Saved Scoring (since its calculation was asked for, or it was opened), so the
+  // panels say it while the server is busy with the work of other users (ticket #190).
+  const waitingSince = new Map();
+  function waitedFor(key) {
+    if (!waitingSince.has(key)) waitingSince.set(key, Date.now());
+    const seconds = Math.max(0, Math.round((Date.now() - waitingSince.get(key)) / 1000));
+    return seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s`;
+  }
+  // The waiting panels count the seconds on their own between the answers of the server.
+  window.setInterval(() => {
+    for (const element of root.querySelectorAll('.scoring-calculating[data-waiting-key]')) {
+      const waited = element.querySelector('[data-waited]');
+      if (waited) waited.textContent = waitedFor(element.dataset.waitingKey);
+    }
+  }, 1000);
+
+  function showWaiting() {
+    if (resultsWaiting) return;
+    resultsWaiting = true;
+    syncResultsShown();
+  }
+
+  function waitingPanel(className, title, label) {
+    showWaiting();
+    const element = document.createElement('div');
+    element.className = className;
+    element.setAttribute('role', 'status');
+    element.innerHTML = `<p class="scoring-calculating-title"></p>`
+      + `<div class="scoring-calculating-bar" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100">`
+      + '<span class="scoring-calculating-fill"></span></div><p class="scoring-calculating-detail"></p>'
+      + '<p class="scoring-calculating-waited">Waiting <span data-waited></span></p>';
+    element.querySelector('.scoring-calculating-title').textContent = title;
+    return element;
+  }
+
+  // Asked for, before the server answers: the results say at once that the calculation is on its way, so nobody clicks
+  // again (each click queued another calculation on a busy server).
+  function renderSubmitting(force) {
+    currentResults = null;
+    currentResultsSavedScoringId = null;
+    waitingSince.set('submit', Date.now());
+    renderNoResult('');
+    for (const pane of resultPanes) {
+      const element = waitingPanel('scoring-calculating is-loading', force ? 'Starting the Recalculation…' : 'Starting the Scoring…',
+                                   'Starting the scoring calculation');
+      element.dataset.waitingKey = 'submit';
+      element.querySelector('.scoring-calculating-fill').style.width = '100%';
+      element.querySelector('.scoring-calculating-detail').textContent =
+        'Sent to the server: it answers as soon as it can, also while other users are calculating. There is no need to click again.';
+      element.querySelector('[data-waited]').textContent = waitedFor('submit');
+      pane.replaceChildren(element);
+    }
+  }
+
   function renderCalculating(savedScoring) {
     const progress = Math.round(progressValue(savedScoring));
-    const detail = String(valueOf(savedScoring, ['message'], '') || '').trim();
+    const queued = normalizeStatus(savedScoring) === 'queued';
+    const key = `calc-${savedScoringIdOf(savedScoring)}`;
+    // (The wait goes on from the click that asked for it.)
+    if (!waitingSince.has(key)) waitingSince.set(key, waitingSince.get('submit') || Date.now());
+    const ahead = Number(valueOf(savedScoring, ['jobs_ahead'], NaN));
+    const detail = queued
+      ? (Number.isFinite(ahead) && ahead > 0
+        ? `In the queue of the server: ${ahead} ${ahead === 1 ? 'task goes' : 'tasks go'} first (other users' calculations or CDRs). It starts on its own as soon as they end.`
+        : 'In the queue of the server: it starts in a moment.')
+      : [`${progress}%`, String(valueOf(savedScoring, ['message'], '') || '').trim()].filter(Boolean).join(' · ');
+    const title = queued ? 'Waiting to Calculate…' : 'Calculating Scoring…';
     const update = (element) => {
+      element.dataset.waitingKey = key;
+      element.querySelector('.scoring-calculating-title').textContent = title;
       element.querySelector('.scoring-calculating-fill').style.width = `${Math.max(6, progress)}%`;
       element.querySelector('.scoring-calculating-bar').setAttribute('aria-valuenow', String(progress));
-      element.querySelector('.scoring-calculating-detail').textContent = [`${progress}%`, detail].filter(Boolean).join(' · ');
+      element.querySelector('.scoring-calculating-detail').textContent = detail;
+      element.querySelector('[data-waited]').textContent = waitedFor(key);
     };
     const current = resultPanes.map(pane => pane.querySelector(':scope > .scoring-calculating:not(.is-loading)'));
     if (current.length && current.every(Boolean)) {
@@ -11202,32 +11277,32 @@
     }
     renderNoResult('');
     for (const pane of resultPanes) {
-      const element = document.createElement('div');
-      element.className = 'scoring-calculating';
-      element.setAttribute('role', 'status');
-      element.innerHTML = '<p class="scoring-calculating-title">Calculating Scoring…</p>'
-        + '<div class="scoring-calculating-bar" role="progressbar" aria-label="Scoring calculation" aria-valuemin="0" aria-valuemax="100">'
-        + '<span class="scoring-calculating-fill"></span></div><p class="scoring-calculating-detail"></p>';
+      const element = waitingPanel('scoring-calculating', title, 'Scoring calculation');
       update(element);
       pane.replaceChildren(element);
     }
   }
 
   // While the results of a saved Saved Scoring load, the results show the same striped bar, moving across its whole width.
-  function renderLoadingResults() {
+  function renderLoadingResults(id = '') {
+    const key = `load-${id}`;
+    waitingSince.set(key, Date.now());
     renderNoResult('');
     for (const pane of resultPanes) {
-      const element = document.createElement('div');
-      element.className = 'scoring-calculating is-loading';
-      element.setAttribute('role', 'status');
-      element.innerHTML = '<p class="scoring-calculating-title">Loading Scoring Results…</p>'
-        + '<div class="scoring-calculating-bar" role="progressbar" aria-label="Loading scoring results">'
-        + '<span class="scoring-calculating-fill" style="width: 100%"></span></div>';
+      const element = waitingPanel('scoring-calculating is-loading', 'Loading Scoring Results…', 'Loading scoring results');
+      element.dataset.waitingKey = key;
+      element.querySelector('.scoring-calculating-fill').style.width = '100%';
+      element.querySelector('.scoring-calculating-detail').textContent = 'The server prepares its tables, charts and maps.';
+      element.querySelector('[data-waited]').textContent = waitedFor(key);
       pane.replaceChildren(element);
     }
   }
 
   function renderNoResult(text) {
+    if (text && resultsWaiting) {
+      resultsWaiting = false;
+      syncResultsShown();
+    }
     environmentControl.hidden = false;
     syncResultScoring(null);
     environmentSelect.disabled = true;
@@ -11261,7 +11336,7 @@
       currentResults = null;
       currentResultsSavedScoringId = null;
       if (isActive(savedScoring)) renderCalculating(savedScoring);
-      else renderLoadingResults();
+      else renderLoadingResults(id);
     }
     if (!force && loadingResults.has(id)) return;
     loadingResults.add(id);
@@ -11287,6 +11362,7 @@
       else calculatingSavedScorings.delete(id);
       // A saved result whose CDRs or methodology are gone is shown as it was, saying why.
       if (record.unavailable) setMessage(`${record.unavailable} The saved result is shown.`, 'error');
+      if (!isActive(record)) waitingSince.delete(`calc-${id}`);
       if (isComplete(record) || payload.scoring || payload.gap) {
         currentResults = payload;
         resultCache.set(id, payload);
@@ -11453,6 +11529,8 @@
   // saves a copy of one (Save as New Filter, with the name of the copy in ``extra``).
   // Returns whether the Saved Scoring was saved.
   async function createSavedScoring(force, {url = savedScoringsUrl, extra = {}} = {}) {
+    // A click while the last one is being sent is the same calculation: it is not asked for again.
+    if (submittingCalculation) return false;
     const datasetIds = selectedDatasetIds();
     if (!datasetIds.length) {
       setMessage('Select one or more CDR datasets first.', 'error');
@@ -11483,7 +11561,9 @@
     calculateButton.disabled = true;
     recalculateButton.disabled = true;
     if (editSaveButton) editSaveButton.disabled = true;
-    setMessage(force ? 'Submitting a fresh scoring calculation…' : 'Submitting scoring calculation…');
+    setMessage(force ? 'Submitting a fresh scoring calculation…' : 'Submitting scoring calculation…', 'busy');
+    const shown = {results: currentResults, id: currentResultsSavedScoringId, savedScoring: selectedSavedScoring};
+    renderSubmitting(force);
     try {
       await persistCalculationSelection();
       const body = await requestJson(url, {method: 'POST', body: JSON.stringify(payload)});
@@ -11491,6 +11571,8 @@
       const id = savedScoringIdOf(savedScoring);
       if (!id) throw new Error('The scoring service did not return the Saved Scoring.');
       if (force) recalculatingSavedScorings.add(String(id)); else recalculatingSavedScorings.delete(String(id));
+      // Its wait counts from the click.
+      waitingSince.set(`calc-${id}`, waitingSince.get('submit') || Date.now());
       if (isActive(savedScoring)) {
         selectionStatus = {key: JSON.stringify(calculationPayload()), kind: 'busy',
           text: `${force ? 'Recalculating' : 'Calculating'} the scoring of the selected CDRs and filters…`};
@@ -11516,9 +11598,16 @@
       }
       return true;
     } catch (error) {
+      // The scoring shown before comes back, with why the calculation did not start.
+      if (shown.results) {
+        currentResults = shown.results;
+        currentResultsSavedScoringId = shown.id;
+        renderResult(shown.results, shown.savedScoring);
+      } else renderNoResult(error.message || 'The scoring calculation could not be started.');
       setMessage(error.message || 'The scoring calculation could not be started.', 'error');
       return false;
     } finally {
+      waitingSince.delete('submit');
       submittingCalculation = false;
       calculationMatchKey = '';
       updateSelection();

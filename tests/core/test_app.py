@@ -5739,6 +5739,33 @@ def test_background_task_scheduler_starts_queued_work_in_fifo_order() -> None:
         scheduler.shutdown()
 
 
+def test_background_task_scheduler_tells_how_many_jobs_run_before_a_queued_one() -> None:
+    """Ticket #190: a calculation waiting in the queue says how many jobs go first."""
+    from src.modules.core.background_scheduler import BackgroundTaskScheduler
+
+    scheduler = BackgroundTaskScheduler(max_workers=1, thread_name_prefix='test-ahead')
+    started, release = Event(), Event()
+
+    def task(name: str, block: bool = False) -> str:
+        if block:
+            started.set()
+            assert release.wait(timeout=2)
+        return name
+
+    try:
+        scheduler.submit(task, 'running', True)
+        assert started.wait(timeout=2)
+        scheduler.submit(task, 'second')
+        last = scheduler.submit(task, 'third')
+        assert scheduler.jobs_ahead(lambda callback, args: args[:1] == ('third',)) == 2
+        assert scheduler.jobs_ahead(lambda callback, args: args[:1] == ('second',)) == 1
+        assert scheduler.jobs_ahead(lambda callback, args: args[:1] == ('running',)) is None
+        release.set()
+        last.result(timeout=2)
+    finally:
+        scheduler.shutdown()
+
+
 def test_background_task_scheduler_orders_workspace_phases_and_dataset_ids() -> None:
     from src.modules.core.background_scheduler import BackgroundTaskScheduler
 

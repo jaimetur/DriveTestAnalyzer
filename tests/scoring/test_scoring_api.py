@@ -1109,3 +1109,41 @@ def test_switching_off_country_areas_or_trends_takes_the_result_of_the_selection
     forced = client.post('/api/scoring/saved-scorings', json={
         **selection, 'area_summary': {**selection['area_summary'], 'trends': False}, 'force': True}).json()
     assert forced['cached'] is False
+
+
+def test_switching_on_a_part_calculates_only_that_part(scoring_api):
+    """Ticket #189: with Country Areas and Scoring Trends on, a part already calculated for the same selection (the Saved
+    Scoring with the other part switched off, up to date) is taken from it, and only the other part is calculated; the
+    result is that of the whole calculation."""
+    client, repository = scoring_api['client'], scoring_api['repository']
+    selection = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator', 'Region'],
+                 'nr_mode': 'NSA', 'baseline_operator': 'EE', 'area_summary': {'breakdown': 'Region', 'cities': []}}
+    whole_id = client.post('/api/scoring/saved-scorings', json=selection).json()['saved_scoring']['id']
+    saved_scorings.calculate_saved_scoring(repository, whole_id)
+    # Favourite Scorings (the other Saved Scorings of a user go when another one is used).
+    saved_scorings.update_saved_scoring(repository, whole_id, pinned=True, username='admin')
+    whole = saved_scorings.get_saved_scoring(repository, whole_id, include_result=True)['result']
+    for switched_off, taken in [({'trends': False}, 'geographical'), ({'country_areas': False}, 'area_summary')]:
+        # A Favourite Scoring with one part off, calculated (forced: not taken from the whole one).
+        lesser = client.post('/api/scoring/saved-scorings', json={
+            **selection, 'area_summary': {**selection['area_summary'], **switched_off}, 'force': True}).json()['saved_scoring']
+        saved_scorings.calculate_saved_scoring(repository, lesser['id'])
+        saved_scorings.update_saved_scoring(repository, lesser['id'], pinned=True, username='admin')
+        # The whole selection out of date (its CDRs changed, say): switched on again, the part calculated is taken.
+        with repository.connection() as connection:
+            connection.execute("UPDATE saved_scorings SET result_key = 'out of date' WHERE id = ?", (whole_id,))
+        for other in [{'trends': False}, {'country_areas': False}]:
+            if other != switched_off:
+                other_id = saved_scorings.find_saved_scoring(
+                    repository, selection['dataset_ids'], selection['aggregation_levels'], 'NSA', baseline_operator='EE',
+                    area_summary={**selection['area_summary'], **other})
+                if other_id:
+                    with repository.connection() as connection:
+                        connection.execute("UPDATE saved_scorings SET result_key = 'out of date' WHERE id = ?", (other_id['id'],))
+        answer = client.post('/api/scoring/saved-scorings', json=selection).json()
+        assert answer['cached'] is False and answer['saved_scoring']['id'] == whole_id
+        queued = saved_scorings.get_saved_scoring(repository, whole_id, include_internal_snapshot=True)
+        assert queued['complete_from'] == {'saved_scoring_id': lesser['id'], 'result_key': lesser['result_key'],
+                                           'parts': ['trends' if taken == 'area_summary' else 'country_areas']}
+        saved_scorings.calculate_saved_scoring(repository, whole_id)
+        assert saved_scorings.get_saved_scoring(repository, whole_id, include_result=True)['result'] == whole

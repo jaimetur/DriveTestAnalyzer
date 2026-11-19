@@ -777,6 +777,7 @@ def _row_to_saved_scoring(
         saved_scoring['methodology_groups'] = groups if isinstance(groups, list) else []
         trends = source_metadata_payload.get('area_trends')
         saved_scoring['area_trends'] = trends if isinstance(trends, dict) else None
+        saved_scoring['complete_from'] = source_metadata_payload.get('complete_from')
     return saved_scoring
 
 
@@ -1078,6 +1079,30 @@ def find_saved_scoring(
 _PART_RESULTS = {'country_areas': 'geographical', 'trends': 'area_summary'}
 
 
+def _variant_selection_key(prepared: dict[str, Any], area_summary: dict[str, Any] | None) -> str | None:
+    """The key of the same selection with another area summary (its parts on or off), without preparing it; None when it
+    cannot be told so (its own key is not found again)."""
+    snapshot = prepared['snapshot']
+    filters = snapshot.get('context_filters') or {}
+    ids = [] if campaign_presets(filters.get('Campaign') or []) else prepared['dataset_ids']
+
+    def key(summary: Any) -> str:
+        return saved_scoring_key(ids, prepared['levels'], prepared['nr_mode'], prepared['baseline_operator'], filters,
+                                 str(snapshot.get('scoring_profile_id') or ''), normalize_area_summary_request(summary, filters))
+    return key(area_summary) if key(snapshot.get('area_summary')) == prepared['selection_key'] else None
+
+
+def _calculated_selection(repository: Repository, prepared: dict[str, Any], area_summary: dict[str, Any]) -> bool:
+    """Whether a Saved Scoring of the same selection with ``area_summary`` may have a result (else it is not prepared)."""
+    key = _variant_selection_key(prepared, area_summary)
+    if key is None:
+        return True
+    with repository.connection() as connection:
+        row = connection.execute(f"SELECT 1 FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ? AND status = 'completed'",
+                                 (key,)).fetchone()
+    return row is not None
+
+
 def _result_of_fuller_selection(repository: Repository, prepared: dict[str, Any], dataset_ids: list[int], levels: list[str],
                                 nr_mode: str | None, *, baseline_operator: str, context_filters: dict[str, list[str]] | None,
                                 scoring_profile_id: str | None, area_summary: dict[str, Any] | None) -> tuple[str, int] | None:
@@ -1092,6 +1117,8 @@ def _result_of_fuller_selection(repository: Repository, prepared: dict[str, Any]
     # (Both parts on first: the Favourite Scorings are usually saved so.)
     for count in range(len(off), 0, -1):
         for turned_on in itertools.combinations(off, count):
+            if not _calculated_selection(repository, prepared, {key: value for key, value in area_summary.items() if key not in turned_on}):
+                continue
             fuller = _prepare_saved_scoring(
                 repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator, context_filters=context_filters,
                 scoring_profile_id=scoring_profile_id, cache=cache,
@@ -1107,8 +1134,69 @@ def _result_of_fuller_selection(repository: Repository, prepared: dict[str, Any]
                 continue
             for part in off:
                 result.pop(_PART_RESULTS[part], None)
+            if 'trends' in off:
+                # (With the warnings of the trends.)
+                result['warnings'] = [warning for warning in result.get('warnings') or [] if not _is_trend_warning(warning)]
             return json.dumps(result, ensure_ascii=False, separators=(',', ':'), allow_nan=False), int(row['id'])
     return None
+
+
+def _is_trend_warning(warning: Any) -> bool:
+    return any(str(warning).startswith(prefix) for prefix in WARNING_PREFIXES)
+
+
+def _parts_of_lesser_selection(repository: Repository, prepared: dict[str, Any], dataset_ids: list[int], levels: list[str],
+                               nr_mode: str | None, *, baseline_operator: str, context_filters: dict[str, list[str]] | None,
+                               scoring_profile_id: str | None, area_summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Where a calculation with Country Areas and Scoring Trends on takes one of them already calculated: the Saved
+    Scoring of the same selection with the other one switched off, when its result is up to date (ticket #189). The
+    calculation then scores only what that result lacks (see calculate_saved_scoring), checking again that it is the same."""
+    summary = prepared['snapshot'].get('area_summary')
+    on = [part for part in _PART_RESULTS if area_summary_part_enabled(summary, part)]
+    if len(on) < 2 or not isinstance(area_summary, dict):
+        return None
+    cache: dict[Any, Any] = {}
+    # (The costlier part first: the Scoring Trends.)
+    for kept in sorted(on, key=lambda part: part != 'trends'):
+        if not _calculated_selection(repository, prepared, {**area_summary, **{part: False for part in on if part != kept}}):
+            continue
+        lesser = _prepare_saved_scoring(
+            repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator, context_filters=context_filters,
+            scoring_profile_id=scoring_profile_id, cache=cache,
+            area_summary={**area_summary, **{part: False for part in on if part != kept}})
+        with repository.connection() as connection:
+            row = connection.execute(f'SELECT id, status, result_key, result_json FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
+                                     (lesser['selection_key'],)).fetchone()
+        if row is None or not _is_up_to_date(row, lesser['result_key']):
+            continue
+        result = _decode_json(row['result_json'], None)
+        if isinstance(result, dict) and _PART_RESULTS[kept] in result and not (
+                isinstance(result.get('points_loss'), dict) and result['points_loss'].get('pending')):
+            return {'saved_scoring_id': int(row['id']), 'result_key': row['result_key'], 'parts': [kept]}
+    return None
+
+
+def _given_parts(repository: Repository, saved_scoring: dict[str, Any]) -> tuple[list[str], dict[str, Any]] | None:
+    """The parts a calculation takes from the result of another Saved Scoring (see _parts_of_lesser_selection), when that
+    result is still the one it was queued with."""
+    given = saved_scoring.get('complete_from')
+    if not isinstance(given, dict) or not isinstance(saved_scoring.get('area_summary'), dict):
+        return None
+    parts = [part for part in given.get('parts') or [] if part in _PART_RESULTS]
+    try:
+        source = get_saved_scoring(repository, int(given['saved_scoring_id']), include_result=True)
+    except (KeyError, TypeError, ValueError):
+        return None
+    result = (source or {}).get('result')
+    if (not parts or not source or source.get('status') != 'completed' or source.get('result_key') != given.get('result_key')
+            or not isinstance(result, dict) or any(_PART_RESULTS[part] not in result for part in parts)):
+        return None
+    return parts, result
+
+
+def _with_given_parts(prepared: dict[str, Any], given: dict[str, Any] | None) -> dict[str, Any]:
+    """A prepared selection whose calculation takes some parts from another Saved Scoring (``complete_from``)."""
+    return {**prepared, 'snapshot': {**prepared['snapshot'], 'complete_from': given}} if given else prepared
 
 
 def _keep_result_of_fuller_selection(connection: Any, filter_id: int, prepared: dict[str, Any], reused: tuple[str, int],
@@ -1153,9 +1241,13 @@ def save_saved_scoring(
             known = connection.execute(f'SELECT status, result_key, result_json FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
                                        (prepared['selection_key'],)).fetchone()
         if known is None or (known['status'] not in ('queued', 'processing') and not _is_up_to_date(known, prepared['result_key'])):
-            reused = _result_of_fuller_selection(
-                repository, prepared, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
-                context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary)
+            selection = dict(baseline_operator=baseline_operator, context_filters=context_filters,
+                             scoring_profile_id=scoring_profile_id, area_summary=area_summary)
+            reused = _result_of_fuller_selection(repository, prepared, dataset_ids, levels, nr_mode, **selection)
+            if reused is None:
+                # With both parts on, one of them may be calculated already: only the other one is calculated.
+                prepared = _with_given_parts(prepared, _parts_of_lesser_selection(
+                    repository, prepared, dataset_ids, levels, nr_mode, **selection))
     now = local_now_iso()
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
@@ -1240,11 +1332,14 @@ def refresh_saved_scoring(repository: Repository, filter_id: int, username: str 
         if row is None or row['status'] in ('queued', 'processing') or (
                 row['status'] == 'completed' and row['result_key'] == prepared['result_key'] and row['has_result']):
             return False, ''
-        # (Its Country Areas or Scoring Trends switched off: the result of the same selection with them on serves.)
-        reused = _result_of_fuller_selection(
-            repository, prepared, saved_scoring['dataset_ids'], saved_scoring['levels'], saved_scoring['nr_mode'],
-            baseline_operator=saved_scoring['baseline_operator'], context_filters=saved_scoring['context_filters'],
-            scoring_profile_id=saved_scoring['scoring_profile_id'] or None, area_summary=saved_scoring['area_summary'])
+        # (Its Country Areas or Scoring Trends switched off: the result of the same selection with them on serves; with
+        # both on, one of them may be calculated already.)
+        selection = dict(baseline_operator=saved_scoring['baseline_operator'], context_filters=saved_scoring['context_filters'],
+                         scoring_profile_id=saved_scoring['scoring_profile_id'] or None, area_summary=saved_scoring['area_summary'])
+        selected = (saved_scoring['dataset_ids'], saved_scoring['levels'], saved_scoring['nr_mode'])
+        reused = _result_of_fuller_selection(repository, prepared, *selected, **selection)
+        if reused is None:
+            prepared = _with_given_parts(prepared, _parts_of_lesser_selection(repository, prepared, *selected, **selection))
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
         row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
@@ -2256,6 +2351,10 @@ def calculate_saved_scoring(repository: Repository, filter_id: int,
         engine = _scoring_engine()
         context_filters = saved_scoring.get('resolved_context_filters', saved_scoring.get('context_filters', {}))
         groups = saved_scoring.get('methodology_groups') or []
+        # A part already calculated for the same selection is taken from that result: only the rest is calculated.
+        given = _given_parts(repository, saved_scoring)
+        if given:
+            saved_scoring['area_summary'] = {**saved_scoring['area_summary'], **{part: False for part in given[0]}}
         # Country Areas and Scoring Trends switched off are not calculated (nor the rows of the whole country read for them).
         areas_on = area_summary_part_enabled(saved_scoring.get('area_summary'), 'country_areas')
         trends_on = area_summary_part_enabled(saved_scoring.get('area_summary'), 'trends')
@@ -2294,6 +2393,15 @@ def calculate_saved_scoring(repository: Repository, filter_id: int,
                                           update_progress)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings', [])]
             result['area_summary'] = summary
+        if given:
+            parts, source = given
+            for part in parts:
+                result[_PART_RESULTS[part]] = source[_PART_RESULTS[part]]
+            if 'trends' in parts:
+                result['warnings'] = [*(result.get('warnings') or []), *(warning for warning in source.get('warnings') or []
+                                                                         if _is_trend_warning(warning))]
+            # (Its own area summary again: the one it is shown and exported with.)
+            saved_scoring['area_summary'] = {key: value for key, value in saved_scoring['area_summary'].items() if key not in parts}
         if warning := _campaigns_without_tests_warning(saved_scoring, context_filters, result):
             result['warnings'] = [*(result.get('warnings') or []), warning]
         # The calls the Excluded Calls lists leave out of its CDRs.
