@@ -2804,7 +2804,10 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
   letter-spacing: .03em; vertical-align: top; border-bottom: 1px solid #ecd3dc; }
 #nq-table thead th.nq-section-col { border-top: 3px solid var(--nq-section); }
 #nq-table th .nq-header-item { display: block; min-height: 1.6rem; }
-#nq-table th .nq-header-item + .nq-header-item { margin-top: .15rem; color: #93707f; font-weight: 650; }
+#nq-table th .nq-header-item + .nq-header-item { margin-top: .3rem; color: #93707f; font-weight: 650; }
+/* One line between the two lines of names, at the same height across the whole header. */
+#nq-table thead th:not(.nq-select-cell) { background-image: linear-gradient(#e6c6d2, #e6c6d2); background-repeat: no-repeat;
+  background-size: calc(100% - 6px) 1px; background-position: 3px calc(10px + 1.6rem + .15rem); }
 #nq-table thead th:has(.nq-header-common) { padding-top: 0; }
 #nq-table th .nq-header-common { display: block; height: 10px; color: #b294a1; font-size: .56rem; font-weight: 700; letter-spacing: .08em; line-height: 10px; }
 #nq-table thead th.nq-select-cell { vertical-align: middle; }
