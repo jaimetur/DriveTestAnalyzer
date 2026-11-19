@@ -579,7 +579,7 @@ Choose and arrange the columns of the table.
 - **Fit:** the default columns fit without a horizontal scroll down to a window of 1440 px, with a smaller text. Long values wrap on two lines or are shortened (whole on hover), the header names wrap and the time goes below the date. The sort arrow shows only on the column the table is sorted by.
 - **Header:** light, with the colour of each group in a thin band on top. The main name of each column (dark) is on the first line and the field below it (lighter) on the second, a line between them across the whole header; the filter funnels light up on hover and when a filter is on. Related values share a column, one below the other, each name of the header sorting and filtering its own field:
   - **Prioritization** above **Priority** (chosen in the row).
-  - **Points Lost** (the Scoring Points Lost) above **Repeated Issue**.
+  - **Points Lost** (the Scoring Points Lost) above **Repeated Issue**. Points Lost shows a bar against the most lost by one of the filtered calls: the more points, the longer and the redder (green, amber, red).
   - **Analysis Status** above **Implementation Status**.
 - **Default columns of a new workspace:** after the root category and cause and the Root Technology, the Scoring Points Lost with the Repeated Issue, the Prioritization with the Priority, then **Analyst / Team** before the statuses (the Analysis Status with the Implementation Status, then the Global Status). A column of one name (Global Status) has it on the first line. The Scoring Impact and the other fields are added with **Columns**.
 - **Scroll position:** reloading the page returns to it.

@@ -2833,3 +2833,8 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .non-qualified-calls #nq-table .nq-pill-analyst, .non-qualified-calls #nq-table .nq-pill-team { max-width: 9rem; }
 .non-qualified-calls #nq-table td.nq-field-cell .nq-pill-select, .non-qualified-calls #nq-table .nq-pill-status { max-width: 8rem; }
 .non-qualified-calls #nq-table .nq-root-cell .nq-root-select { max-width: 8.5rem; }
+/* Points Lost as a bar against the most lost by one of the filtered calls, from green to red. */
+#nq-table .nq-points-lost { display: flex; flex-direction: column; gap: .2rem; min-width: 3rem; }
+#nq-table .nq-points-lost strong { font-size: .8rem; line-height: 1.1; }
+#nq-table .nq-points-lost-bar { display: block; height: .4rem; border-radius: 999px; background: #eceff2; overflow: hidden; }
+#nq-table .nq-points-lost-bar span { display: block; height: 100%; border-radius: inherit; }

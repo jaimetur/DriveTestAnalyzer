@@ -1838,9 +1838,34 @@
     element.title = value;
     return element;
   };
+  // The Scoring Points Lost of a call as a bar against the most lost by one of the filtered calls: the more it lost,
+  // the longer and the redder (green, amber, red).
+  const isPointsLostField = (field) => field.source === 'priority' && field.source_ref === 'impact_points';
+  const pointsLostBar = (value) => {
+    const points = Number(value);
+    const most = Number(state.result?.max_points_lost) || 0;
+    const share = most > 0 ? Math.min(1, Math.max(0, points / most)) : 0;
+    const hue = Math.round(120 * (1 - share));
+    const element = node('span', undefined, 'nq-points-lost');
+    const number = node('strong', String(value));
+    number.style.color = `hsl(${hue}, 70%, 32%)`;
+    const bar = node('span', undefined, 'nq-points-lost-bar');
+    const fill = node('span');
+    fill.style.width = `${share > 0 ? Math.max(4, Math.round(100 * share)) : 0}%`;
+    fill.style.background = `hsl(${hue}, 75%, 48%)`;
+    bar.append(fill);
+    element.append(number, bar);
+    element.title = most > 0 ? `${value} points lost: ${Math.round(100 * share)}% of the most lost by one of the filtered calls (${most})`
+      : `${value} points lost`;
+    return element;
+  };
   const fieldCell = (call, field) => {
     const cell = node('td', undefined, 'nq-tracking-cell nq-field-cell');
     const value = String((field.source === 'user' ? call.fields?.[field.key] : call.values?.[field.key]) ?? '');
+    if (isPointsLostField(field) && value !== '' && Number.isFinite(Number(value))) {
+      cell.append(pointsLostBar(value));
+      return cell;
+    }
     if (['list', 'yes_no'].includes(field.type) && field.source === 'user' && state.user.can_edit) {
       const picker = choiceControl({items: fieldChoices(field, value), value, label: `${field.label} of the call`,
         onChange: (chosen) => saveFieldValue(call, field.key, chosen, picker), onAdd: listAdder(field)});

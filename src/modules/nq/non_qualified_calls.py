@@ -6642,9 +6642,12 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
         # a status marked In Queue (tickets #172, #173), as Lifecycle & Phases and Progress View count them.
         listed = queue_statuses(options, status_rules(task_repository))['in_queue']
         counted = connection.execute(
-            f"SELECT COUNT(*), SUM(queue <> '' AND status IN ({', '.join('?' for _ in listed) or "''"})) FROM ({filtered})",
+            f"SELECT COUNT(*), SUM(queue <> '' AND status IN ({', '.join('?' for _ in listed) or "''"})), "
+            f"MAX(CAST(impact_points AS REAL)) FROM ({filtered})",
             [*listed, *all_params]).fetchone()
         total, in_queue = int(counted[0] or 0), int(counted[1] or 0)
+        # The most Scoring Points Lost by one of the filtered calls: the bars of the column are drawn against it.
+        max_points_lost = round(float(counted[2]), 2) if counted[2] is not None else None
         pages = max(1, math.ceil(total / page_size))
         page = min(max(1, int(request.get('page') or 1)), pages)
         # The page that holds the call to show (the call open beside the list, after the filters change), when it is listed.
@@ -6733,7 +6736,7 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
         call['analyst_fields'] = analyst_fields_progress(fill_states.get(call['call_key']))
     return {
         'calls': calls, 'total': total, 'in_queue': in_queue, 'page': page, 'pages': pages, 'page_size': page_size,
-        'sort': sort_key,
+        'max_points_lost': max_points_lost, 'sort': sort_key,
         'direction': direction.lower(), 'summary': summary_payload, 'breakdowns': breakdowns,
     }
 
