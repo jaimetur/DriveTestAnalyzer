@@ -2825,3 +2825,11 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .non-qualified-calls #nq-table .nq-pill-select { padding-left: .5rem; padding-right: 1.15rem; }
 .non-qualified-calls #nq-table .nq-cause-picker-button::after { right: .45rem; width: .32rem; height: .32rem; }
 .non-qualified-calls #nq-table select.nq-pill-select { background-position: right .35rem center; }
+/* The room of the table goes where it reads more: Points Lost / Repeated Issue as narrow as its names (Points Lost on two
+   lines), the Root Technology picker as wide as its column, and the Analyst / Team and status pickers wider when the
+   window allows it (their least width is still that of the other pickers, so the table fits as before). */
+#nq-table th:has([data-sort="field:scoring_points_lost"]), #nq-table th:has([data-sort="field:repeated_issue"]) { width: 1%; }
+.non-qualified-calls #nq-table .nq-root-technology-cell .nq-pill-select { width: 100%; max-width: none; }
+.non-qualified-calls #nq-table .nq-pill-analyst, .non-qualified-calls #nq-table .nq-pill-team { max-width: 9rem; }
+.non-qualified-calls #nq-table td.nq-field-cell .nq-pill-select, .non-qualified-calls #nq-table .nq-pill-status { max-width: 8rem; }
+.non-qualified-calls #nq-table .nq-root-cell .nq-root-select { max-width: 8.5rem; }
