@@ -588,7 +588,7 @@ Choose and arrange the columns of the table.
 
 **Order of the calls:**
 
-- **By default:** by **Priority** (P1 first, in the order of the Priority values; the one set by hand, else the one the NQ Prioritization gives; calls without one last), then **Scoring Points Lost** (most first), then the most recent.
+- **By default:** by **Scoring Points Lost** (most first, calls without them last; the arrow shows on Points Lost), then by **Priority** (P1 first, in the order of the Priority values; the one set by hand, else the one the NQ Prioritization gives; calls without one last), then the most recent.
 - **By a column:** click a header name to sort, again to reverse; **Default order**, shown while a column sorts, brings the default back.
 - **Pages:** 10 (default), 25, 50 or 100 rows in **Rows per page**, also with All panels.
 

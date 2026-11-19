@@ -2078,11 +2078,13 @@
     }));
   };
   const renderSortHeaders = () => {
-    // Default order goes back to the order by Priority, Scoring Points Lost and time once a column sorts the calls.
+    // Default order goes back to the order by Scoring Points Lost, Priority and time once a column sorts the calls.
     const reset = $('nq-default-order');
     if (reset) reset.hidden = state.sort === DEFAULT_SORT;
+    // The default order shows its arrow on Points Lost (most first).
+    const sorted = state.sort === DEFAULT_SORT ? 'field:scoring_points_lost' : state.sort;
     $('nq-table').querySelectorAll('[data-sort]').forEach((header) => {
-      const active = header.dataset.sort === state.sort;
+      const active = header.dataset.sort === sorted;
       header.classList.toggle('is-sorted', active);
       header.dataset.direction = active ? state.direction : '';
       header.setAttribute('aria-sort', active ? (state.direction === 'asc' ? 'ascending' : 'descending') : 'none');

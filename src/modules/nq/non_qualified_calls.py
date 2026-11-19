@@ -6567,8 +6567,9 @@ def l3_map_calls(task_repository: Any, filters: dict[str, Any], username: str, l
     return calls
 
 
-# The default order of the calls: by Priority (P1 first, in the order of its values; the Priority set by hand, else the one
-# the NQ Prioritization gives, calls without one last), then by the Scoring Points Lost (most first), then the most recent.
+# The default order of the calls: by the Scoring Points Lost (most first, calls without them last), then by Priority (P1
+# first, in the order of its values; the Priority set by hand, else the one the NQ Prioritization gives, calls without one
+# last), then the most recent.
 DEFAULT_SORT = 'priority_order'
 
 
@@ -6579,7 +6580,7 @@ def _default_order_sql(task_repository: Any) -> str:
                 "suggested_priority, '')")
     cases = ' '.join(f"WHEN '{name.replace(chr(39), chr(39) * 2)}' THEN {index}" for index, name in enumerate(names))
     rank = f'(CASE {priority} {cases} ELSE {len(names)} END)' if cases else f"({priority} = ''), {priority}"
-    return f'{rank}, impact_points IS NULL, impact_points DESC, start_time DESC, call_key'
+    return f'impact_points IS NULL, impact_points DESC, {rank}, start_time DESC, call_key'
 
 
 def _order_clause(sort_key: str, direction: str, task_repository: Any) -> tuple[str, str]:
