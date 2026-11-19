@@ -2813,3 +2813,6 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 #nq-table th:hover .nq-column-filter-button, #nq-table .nq-column-filter-button:focus-visible { opacity: 1; color: #8b5a6e; }
 #nq-table .nq-column-filter-button.is-active { opacity: 1; color: #fff; }
 @media (hover: none) { #nq-table .nq-column-filter-button { opacity: 1; } }
+/* The recommendation under the root category and cause is as narrow as its pickers: its text wraps (whole on hover). */
+#nq-table .nq-root-suggestion { max-width: 7rem; }
+#nq-table .nq-root-suggestion-text { -webkit-line-clamp: 3; }

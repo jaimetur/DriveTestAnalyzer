@@ -1467,13 +1467,17 @@
   };
   // The root cause of a call: its root category above and its root cause below, each in the colour of its
   // domain, and the recommended ones while it has none.
-  const rootCauseControl = (call) => {
+  // The Root Category and Root Cause of the call with its recommendation, and its Root Technology unless the table shows it
+  // in a column of its own.
+  const rootCauseControl = (call, {technology = true} = {}) => {
     const wrapper = node('div', undefined, 'nq-root-cell');
-    if (state.user.can_edit) wrapper.append(rootPickerButton('root_category', call), rootPickerButton('root_cause', call), technologyPicker(call));
-    else {
+    if (state.user.can_edit) {
+      wrapper.append(rootPickerButton('root_category', call), rootPickerButton('root_cause', call));
+      if (technology) wrapper.append(technologyPicker(call));
+    } else {
       wrapper.append(pill('root_category', call.root_category, NOT_CLASSIFIED));
       if (call.root_cause) wrapper.append(pill('root_cause', call.root_cause, NO_CAUSE));
-      if (call.root_technology) wrapper.append(pill('root_technology', call.root_technology, NO_TECHNOLOGY));
+      if (technology && call.root_technology) wrapper.append(pill('root_technology', call.root_technology, NO_TECHNOLOGY));
     }
     const chip = recommendationChip(call);
     if (chip) wrapper.append(chip);
@@ -1717,7 +1721,7 @@
   // the follow-up columns (status, team and analyst, root category and cause, comments) that of the section of their field.
   const callSection = () => state.callSection || {key: 'call', label: 'Call', color: '#5e6b75'};
   const trackingSection = (ref) => sectionOf(state.fields.find((field) => field.source === 'tracking' && field.source_ref === ref)?.section || 'general');
-  const FOLLOW_UP_HEADERS = {team: 'team', analyst_fields: 'team', root_category: 'root_category', status: 'status', comments: 'comments'};
+  const FOLLOW_UP_HEADERS = {team: 'team', analyst_fields: 'team', root_category: 'root_category', root_technology: 'root_category', status: 'status', comments: 'comments'};
   const paintHeader = (cell, section) => {
     cell.classList.add('nq-section-col');
     cell.style.setProperty('--nq-section', section.color);
@@ -1742,7 +1746,7 @@
     // The RCA fields come before the root category and cause they lead to, the other fields after them.
     const rootHeader = after('root_category');
     const filterable = new Set(filterableFields().map((field) => field.key));
-    anchor = rootHeader;
+    anchor = after('root_technology') || rootHeader;
     fieldColumnGroups().forEach(({field, below}) => {
       const cell = headerCell(SHORT_HEADERS[field.label] || field.label, `field:${field.key}`,
         filterable.has(field.key) ? `field:${field.key}` : '', sectionOf(field.section));
@@ -1966,7 +1970,11 @@
         return cell;
       };
       const root = node('td', undefined, 'nq-tracking-cell');
-      root.append(rootCauseControl(call));
+      root.append(rootCauseControl(call, {technology: false}));
+      // The Root Technology in a column of its own, after the root category and cause.
+      const rootTechnology = node('td', undefined, 'nq-tracking-cell nq-root-technology-cell');
+      rootTechnology.append(state.user.can_edit ? technologyPicker(call)
+        : call.root_technology ? pill('root_technology', call.root_technology, NO_TECHNOLOGY) : node('span', '—', 'nq-muted'));
       // A pair of fields shares a cell: the first above the second.
       const fieldGroupCell = ({field, below}) => {
         const cell = fieldCell(call, field);
@@ -1985,7 +1993,7 @@
         start, stacked(call.operator, call.vendor), stacked(call.region, call.cluster), stacked(call.city, campaignLabel(call.campaign)),
         stacked(call.test_name, call.technology), failure, ...optionalColumns().map((column) => optionalCell(call, column)),
         ...groups.filter((group) => group.field.section === 'rca').map(fieldGroupCell),
-        root, ...groups.filter((group) => group.field.section !== 'rca').map(fieldGroupCell), status,
+        root, rootTechnology, ...groups.filter((group) => group.field.section !== 'rca').map(fieldGroupCell), status,
         tracking('analyst', 'team'), progressAndComments,
       );
       orderRowCells(row);

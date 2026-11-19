@@ -492,7 +492,7 @@ SORT_COLUMNS = {
     'campaign': 'campaign', 'city': 'city', 'technology': 'technology', 'test_name': 'test_name',
     'result': 'result', 'failure': 'failure_classification', 'status': 'status', 'team': 'team',
     'analyst': 'analyst', 'reviewer': 'reviewer', 'root_cause': 'root_domain', 'root_category': 'root_category', 'cause': 'root_cause',
-    'comments': 'comment_count',
+    'comments': 'comment_count', 'root_technology': 'root_technology',
     'updated_at': 'updated_at', 'join_id': 'join_id', 'region': 'region', 'cluster': 'cluster', 'nr_mode': 'nr_mode',
     'cell_id': 'cell_id', 'direction': 'direction', 'session_type': 'session_type', 'end_time': 'end_time', 'cdr': 'dataset_id',
     'version': 'version_state', 'l3_log': 'l3_log',
