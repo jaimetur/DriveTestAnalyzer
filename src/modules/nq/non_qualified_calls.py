@@ -432,6 +432,8 @@ FIELD_FILTERS = (
     'service', 'campaign', 'operator', 'operator_vendor', 'vendor_operator', 'vendor', 'region', 'cluster', 'city',
     'technology', 'test_name', 'result', 'failure_classification', 'failure_category', 'failure_subcategory',
 )
+# Filters on a value derived from an indexed field: the day of the call (its Start Time without the time).
+DERIVED_FILTERS = {'start_date': 'substr(start_time, 1, 10)'}
 TRACKING_FILTERS = ('status', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause', 'root_technology',
                     'status_mode')
 # Filters typed as a list of values rather than chosen among them (a JOIN_ID has too many values to list).
@@ -6084,7 +6086,7 @@ def normalize_saved_filters(filters: Any) -> dict[str, Any]:
     """The known filters of a selection: value lists, flags and the search text."""
     filters = filters if isinstance(filters, dict) else {}
     saved: dict[str, Any] = {}
-    for field in (*FIELD_FILTERS, *TRACKING_FILTERS, *TYPED_FILTERS, *EXTRA_FILTERS, 'datasets', 'version'):
+    for field in (*FIELD_FILTERS, *DERIVED_FILTERS, *TRACKING_FILTERS, *TYPED_FILTERS, *EXTRA_FILTERS, 'datasets', 'version'):
         values = _strings(filters.get(field))[:5000]
         if values:
             saved[field] = values
@@ -6332,18 +6334,19 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
     known = {field['key']: field for field in definitions or []}
     clauses: list[str] = []
     params: list[Any] = []
-    for field in (*FIELD_FILTERS, *TRACKING_FILTERS):
+    for field in (*FIELD_FILTERS, *DERIVED_FILTERS, *TRACKING_FILTERS):
         values = _strings(filters.get(field))
         if not values:
             continue
         values = ['' if value == UNASSIGNED else value for value in values]
+        column = DERIVED_FILTERS.get(field, field)
         if any(is_pattern(value) for value in values):
             # Patterns (VF*, -Lebara) are resolved whatever the case (see value_patterns).
-            clause, clause_params = sql_condition(f"lower(COALESCE({field}, ''))", values)
+            clause, clause_params = sql_condition(f"lower(COALESCE({column}, ''))", values)
             clauses.append(clause)
             params.extend(clause_params)
             continue
-        clauses.append(f"{field} IN ({', '.join('?' for _ in values)})")
+        clauses.append(f"{column} IN ({', '.join('?' for _ in values)})")
         params.extend(values)
     excluded = [str(name).strip().lower() for name in filters.get('_excluded_operators') or [] if str(name).strip()]
     if excluded:
@@ -6688,6 +6691,10 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
         ).fetchone()
     summary_payload = {key: int(summary[key] or 0) for key in ('total', 'closed', 'attended', 'commented', 'with_team', 'assigned')}
     summary_payload['open'] = summary_payload['total'] - summary_payload['closed']
+    # How many of the fields of the analysts each call of the page has filled (Analyst Fields column).
+    fill_states = analyst_fill_states(task_repository, [call['call_key'] for call in calls])
+    for call in calls:
+        call['analyst_fields'] = analyst_fields_progress(fill_states.get(call['call_key']))
     return {
         'calls': calls, 'total': total, 'in_queue': in_queue, 'page': page, 'pages': pages, 'page_size': page_size,
         'sort': sort_key,
@@ -6722,6 +6729,10 @@ def _read_filter_options(task_repository: Any, layout: dict[str, list[str]] | No
                 values[field] = sorted({spellings.get(value, value) for value in values[field]}, key=str.casefold)
             elif field == 'campaign':
                 values[field] = sorted(values[field], key=campaign_sort_key)
+        # The days of the calls, the latest first.
+        for field, expression in DERIVED_FILTERS.items():
+            values[field] = [str(row[0]) for row in connection.execute(
+                f"SELECT DISTINCT {expression} AS value FROM {NQ_CALLS_TABLE} WHERE start_time <> '' ORDER BY value DESC")]
         # The people of the calls (Analyst, Reviewer): their accounts, and the names of those without account.
         people = {column: [str(row[0]) for row in connection.execute(
             f"SELECT DISTINCT {column} FROM {NQ_CALL_TRACKING_TABLE} WHERE {column} <> '' ORDER BY {column} COLLATE NOCASE")]
@@ -6771,6 +6782,7 @@ def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]],
     Version aside): the indexed and follow-up fields, the fields of the analysis and the columns of the table (those of
     a table ``layout`` and of the CDR Fields Filters, or every column that any layout may show)."""
     expressions = {field: field for field in (*FIELD_FILTERS, *TRACKING_FILTERS)}
+    expressions.update(DERIVED_FILTERS)
     expressions['nr_mode'] = 'nr_mode'
     for definition in definitions:
         if nq_catalog.is_filter_field(definition):
@@ -8381,6 +8393,14 @@ def analyst_fill_states(task_repository: Any, keys: list[str]) -> dict[str, dict
                                'status': str(row['status'] or default), 'priority': str(stored.get('priority') or ''), **tracking,
                                'filled': filled, 'missing': missing, 'complete': not missing, 'section_colors': colours}
     return states
+
+
+def analyst_fields_progress(state: dict[str, Any] | None) -> dict[str, Any]:
+    """The fields of the analysts a call has filled out of those to fill, and the labels of those still empty."""
+    if not state:
+        return {'filled': 0, 'total': 0, 'missing': []}
+    return {'filled': len(state['filled']), 'total': len(state['filled']) + len(state['missing']),
+            'missing': [f'{section} · {label}' for section, label in state['missing']]}
 
 
 # The calls of each group the analysts copied the fields of a call to (ticket #185), by group (``kind:key``): the next copy

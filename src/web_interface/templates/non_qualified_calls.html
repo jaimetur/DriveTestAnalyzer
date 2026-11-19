@@ -100,6 +100,7 @@
       <div class="nq-filter-grid" id="nq-filter-grid">
         <label title="NSA or SA: with Campaign it says which CDRs the calls come from (each call once, from the CDR the combined CDR tables include)">NR Mode<select data-nq-filter="nr_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="NR Mode"></select></label>
         <label>Campaign<select data-nq-filter="campaign" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Campaign"></select></label>
+        <label title="The day of the call, whatever its time">Call Date<select data-nq-filter="start_date" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Call Date"></select></label>
         <label>Operator<select data-nq-filter="operator" data-multiselect-patterns multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Operator"></select></label>
         <label>Operator_Vendor<select data-nq-filter="operator_vendor" data-operator-vendor-pair="operator_vendor" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Operator_Vendor"></select></label>
         <label>Vendor_Operator<select data-nq-filter="vendor_operator" data-operator-vendor-pair="vendor_operator" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Vendor_Operator"></select></label>
@@ -239,7 +240,7 @@
             <tr>
               {% if nq_can_edit %}<th class="nq-select-cell"><input type="checkbox" id="nq-select-page" aria-label="Select every call on this page"></th>{% endif %}
               <!-- Every name of a header sorts by it; those with data-filter also filter by it. -->
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="start_time">Start Time</span></span><span class="nq-header-item"><span data-sort="service" data-filter="service">Service</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="start_time" data-filter="start_date">Start Time</span></span><span class="nq-header-item"><span data-sort="service" data-filter="service">Service</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="operator" data-filter="operator">Operator</span></span><span class="nq-header-item"><span data-sort="vendor" data-filter="vendor">Vendor</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="region" data-filter="region">Region</span></span><span class="nq-header-item"><span data-sort="cluster" data-filter="cluster">Cluster</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="city" data-filter="city">City</span></span><span class="nq-header-item"><span data-sort="campaign" data-filter="campaign">Campaign</span></span></th>
@@ -247,7 +248,8 @@
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="result" data-filter="result">Result</span></span><span class="nq-header-item"><span data-sort="failure" data-filter="failure_classification">Failure</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="root_category" data-filter="root_category">Root Category</span></span><span class="nq-header-item"><span data-sort="cause" data-filter="root_cause">Root Cause</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="status" data-filter="status">Global Status</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="team" data-filter="team">Team</span></span><span class="nq-header-item"><span data-sort="analyst" data-filter="analyst">Analyst</span></span></th>
+              <th class="nq-sort-pair" data-column="team"><span class="nq-header-item"><span data-sort="analyst" data-filter="analyst">Analyst</span></span><span class="nq-header-item"><span data-sort="team" data-filter="team">Team</span></span></th>
+              <th class="nq-sort-pair" data-column="analyst_fields" title="The fields of the analysts the call has filled, out of those to fill (a field that does not apply to the call counts as filled)"><span class="nq-header-item"><span>Analyst Fields</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="comments">Comments</span></span></th>
             </tr>
           </thead>

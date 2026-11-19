@@ -140,3 +140,26 @@ def test_a_call_is_told_once_when_all_its_fields_are_filled():
     # The emails of one call keep its subject, whatever happened (which leads the title), so they are one conversation.
     assert subject == 'NQ Call J1 · EE · C1 · Data (UK)' and 'Completed' in body and 'Every field filled' in body and 'Filled · Analysis' in body
     assert nq_call_emails.call_thread('UK', 'k1') == 'nq-call-UK-k1'
+
+
+def test_the_table_filters_by_the_day_of_the_call_and_tells_the_analyst_fields_filled(prioritized):
+    """Ticket #191: the Call Date filter (Start Time without its time) and the Analyst Fields column."""
+    client = prioritized['client']
+    days = nq.filter_options(core.repository)['start_date']
+    assert days and days == sorted(days, reverse=True) and all(len(day) == 10 for day in days)
+    listed = client.post('/api/non-qualified-calls/calls', json={'filters': {'start_date': [days[0]]}, 'page_size': 100}).json()
+    assert listed['total'] > 0 and all(call['start_time'].startswith(days[0]) for call in listed['calls'])
+    assert nq.normalize_saved_filters({'start_date': [days[0]]}) == {'start_date': [days[0]]}
+    key = call_of('data')
+    join_id = priority_rows()[key]['join_id']
+    progress = lambda: next(call for call in client.post('/api/non-qualified-calls/calls', json={'filters': {'join_id': [join_id]}}).json()['calls']
+                            if call['call_key'] == key)['analyst_fields']
+    before = progress()
+    state = nq.analyst_fill_states(core.repository, [key])[key]
+    assert before['total'] == len(state['filled']) + len(state['missing']) and before['filled'] == len(state['filled'])
+    assert 'Header · Analyst' in before['missing']
+    call = detail(client, key)
+    updated = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'analyst': 'super'}, 'version': call['version']})
+    assert updated.status_code == 200, updated.text
+    after = progress()
+    assert after['filled'] == before['filled'] + 1 and 'Header · Analyst' not in after['missing']

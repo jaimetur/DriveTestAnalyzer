@@ -28,7 +28,7 @@
   };
   const SERVICE_LABELS = {voice: 'Voice', speech: 'Speech', data: 'Data'};
   const FIELD_LABELS = {
-    service: 'Service', campaign: 'Campaign', operator: 'Operator', operator_vendor: 'Operator_Vendor', vendor_operator: 'Vendor_Operator', vendor: 'Vendor',
+    service: 'Service', start_date: 'Call Date', campaign: 'Campaign', operator: 'Operator', operator_vendor: 'Operator_Vendor', vendor_operator: 'Vendor_Operator', vendor: 'Vendor',
     region: 'Region', cluster: 'Cluster', city: 'City', dataset_id: 'CDR', join_id: 'Join ID',
     technology: 'Technology', test_name: 'Test Name', result: 'Result', failure_classification: 'Failure Classification',
     failure_category: 'Failure Category', failure_subcategory: 'Failure Subcategory', status: 'Global Status', team: 'Team', analyst: 'Analyst', reviewer: 'Reviewer', datasets: 'CDR',
@@ -1531,7 +1531,8 @@
   let naturalColumns = [];
   let shownColumns = [];
   let draggedColumn = '';
-  const columnKeyOf = (cell) => cell.querySelector('[data-sort]')?.dataset.sort || '';
+  // A header names its column (Analyst / Team keeps the key team it had with Team above), else its first sort key does.
+  const columnKeyOf = (cell) => cell.dataset.column || cell.querySelector('[data-sort]')?.dataset.sort || '';
   const storedColumnOrder = () => [...(state.layout.order || [])];
   const defaultColumnOrder = () => {
     const order = [...naturalColumns];
@@ -1683,7 +1684,7 @@
   // the follow-up columns (status, team and analyst, root category and cause, comments) that of the section of their field.
   const callSection = () => state.callSection || {key: 'call', label: 'Call', color: '#5e6b75'};
   const trackingSection = (ref) => sectionOf(state.fields.find((field) => field.source === 'tracking' && field.source_ref === ref)?.section || 'general');
-  const FOLLOW_UP_HEADERS = {team: 'team', root_category: 'root_category', status: 'status', comments: 'comments'};
+  const FOLLOW_UP_HEADERS = {team: 'team', analyst_fields: 'team', root_category: 'root_category', status: 'status', comments: 'comments'};
   const paintHeader = (cell, section) => {
     cell.classList.add('nq-section-col');
     cell.style.setProperty('--nq-section', section.color);
@@ -1791,6 +1792,27 @@
     else value = call[column.key] ?? '';
     const cell = node('td', String(value || '—'), `nq-optional-cell${value ? '' : ' nq-muted'}`);
     if (value) cell.title = `${column.label}: ${value}`;
+    return cell;
+  };
+  // The fields of the analysts the call has filled out of those to fill, with a bar; those still empty on hover.
+  const analystFieldsCell = (call) => {
+    const progress = call.analyst_fields || {filled: 0, total: 0, missing: []};
+    const cell = node('td', undefined, 'nq-analyst-fields-cell');
+    if (!progress.total) {
+      cell.append(node('span', '—', 'nq-muted'));
+      return cell;
+    }
+    const complete = progress.filled >= progress.total;
+    const box = node('div', undefined, `nq-analyst-fields${complete ? ' is-complete' : ''}`);
+    box.append(node('strong', `${progress.filled}/${progress.total}`));
+    const bar = node('span', undefined, 'nq-analyst-fields-bar');
+    const fill = node('span');
+    fill.style.width = `${Math.round((100 * progress.filled) / progress.total)}%`;
+    bar.append(fill);
+    box.append(bar);
+    cell.append(box);
+    cell.title = complete ? `Every field of the analysts is filled (${progress.total})`
+      : `${progress.filled} of ${progress.total} fields of the analysts filled. Still empty:\n${progress.missing.join('\n')}`;
     return cell;
   };
   const versionBadge = (call) => {
@@ -1927,7 +1949,7 @@
         stacked(call.test_name, call.technology), failure, ...optionalColumns().map((column) => optionalCell(call, column)),
         ...groups.filter((group) => group.field.section === 'rca').map(fieldGroupCell),
         root, ...groups.filter((group) => group.field.section !== 'rca').map(fieldGroupCell), status,
-        tracking('team', 'analyst'), comments,
+        tracking('analyst', 'team'), analystFieldsCell(call), comments,
       );
       orderRowCells(row);
       row.addEventListener('click', (event) => {

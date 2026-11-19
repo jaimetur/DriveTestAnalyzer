@@ -2768,3 +2768,11 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 @media (max-width: 720px) { .nq-group-copy-call { grid-template-columns: auto 1fr auto; } .nq-group-copy-when, .nq-group-copy-place { display: none; } }
 .confirm-overlay.confirm-variant-nq-group-copy .confirm-panel { width: min(58rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto; }
 .confirm-overlay.confirm-variant-nq-group-copy .confirm-panel #confirm-copy { max-height: none; overflow: visible; white-space: normal; }
+/* Analyst Fields: the fields of the analysts a call has filled out of those to fill, with a bar. */
+.nq-analyst-fields-cell { white-space: nowrap; }
+.nq-analyst-fields { display: grid; gap: .25rem; min-width: 3.6rem; }
+.nq-analyst-fields strong { font-size: .82rem; font-weight: 800; }
+.nq-analyst-fields-bar { display: block; height: .35rem; border-radius: 999px; background: #eceff2; overflow: hidden; }
+.nq-analyst-fields-bar span { display: block; height: 100%; border-radius: inherit; background: #e08a1e; }
+.nq-analyst-fields.is-complete strong { color: #2e8b57; }
+.nq-analyst-fields.is-complete .nq-analyst-fields-bar span { background: #2e8b57; }

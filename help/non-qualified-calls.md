@@ -109,7 +109,7 @@ The **Filters** panel restricts the summary, the panels, the table and the expor
 
 | Group | Filters |
 | --- | --- |
-| **General Filters** | **NR Mode** (NSA or SA, first: with Campaign it says which CDRs the calls come from), **Campaign**, **Operator**, **Operator_Vendor**, **Vendor_Operator**, **Vendor**, **Region**, **Cluster**, **City**, **Service**, **Technology**, **Test Name**, **Result** and **CDR Version** (see [Daily and Final CDRs](#daily-and-final-cdrs)). |
+| **General Filters** | **NR Mode** (NSA or SA, first: with Campaign it says which CDRs the calls come from), **Campaign**, **Call Date** (the day of the call, whatever its time; the latest first), **Operator**, **Operator_Vendor**, **Vendor_Operator**, **Vendor**, **Region**, **Cluster**, **City**, **Service**, **Technology**, **Test Name**, **Result** and **CDR Version** (see [Daily and Final CDRs](#daily-and-final-cdrs)). |
 | **CDR Fields Filters** (blue) | The values as the CDR gives them: list fields derived from the call (such as **Session Type**), **Last Cell ID** and, with NetCheck CDRs, **G_Level_1** to **G_Level_4** (location levels, such as Drive or Walk and City or Connecting Roads). |
 | **RCA Classification Filters** (amber) | What each RCA found: **DT Analyzer RCA** (Root Domain, Root Category, Root Cause and Rule), the NetCheck RCA (**Failure Classification**, **Failure Category**, **Failure Subcategory**) and **Ericsson RCA** (its categories and subcategories). |
 | **Automatic Fields Filters** (violet) | What DT Analyzer fills: **Global Status** (the team's *Analysis Finished*, set by the [Status Rules](#status-rules)), **Status Set** (**Automatic** or **By hand**), **Follow-up** (Attended, Not attended, Open, Stalled, Closed, With team, Assigned, Commented, With a root cause, RCA identified, RCA not identified; also set by the indicator cards) and the [NQ Prioritization](#nq-prioritization) values (**Prioritization**, **Prioritization Rule**, **Prioritization Queue**, **Scoring Impact**, **Repeated Issue**, **Hotspot ID**, **Time-Window ID**, **Cluster ID**…). |
@@ -573,6 +573,8 @@ Follow up the calls one by one. The **NQ Calls** panel lists one row per call, w
 Choose and arrange the columns of the table.
 
 - **Colours:** every header is topped with the colour of its group, as in Excel: the call (and the optional and CDR columns) that of the call, each field that of its section, and the follow-up columns (team, analyst, root category and cause, status, comments) that of the section of their follow-up field.
+- **Analyst / Team:** the Analyst of the call above its Team, each chosen in the row.
+- **Analyst Fields:** how many of the fields of the analysts the call has filled out of those to fill (`7/12`), with a bar, green when every one is filled; hover lists those still empty. It counts as **Analyst fields** of the call (a field that does not apply to the call counts as filled).
 - **Fit:** the default columns fit screens of 1600 px and wider. Long values wrap on two lines or are shortened (whole on hover), and the time goes below the date. Related values share a column, one below the other; the **Prioritization** and the **Priority** share one when both are shown (Priority below, chosen in the row), each name of the header sorting and filtering its own field.
 - **Default columns of a new workspace:** after the root category and cause, the Prioritization with the Priority, the Repeated Issue, the Scoring Points Lost, the Analysis Status and the Implementation Status. The Scoring Impact and the other fields are added with **Columns**.
 - **Scroll position:** reloading the page returns to it.
@@ -585,7 +587,7 @@ Choose and arrange the columns of the table.
 - **By a column:** click a header name to sort, again to reverse; **Default order**, shown while a column sorts, brings the default back.
 - **Pages:** 10 (default), 25, 50 or 100 rows in **Rows per page**, also with All panels.
 
-**Filter a column:** the funnel beside a header name opens that field's values below the header: search, tick them (**Select All / None** acts on the values shown; root categories and causes grouped by domain) and **Apply**. It is the same selection as the Filters panel and its chip; the funnel is filled while the field is filtered.
+**Filter a column:** the funnel beside a header name opens that field's values below the header: search, tick them (**Select All / None** acts on the values shown; root categories and causes grouped by domain) and **Apply**. **Start Time** filters by **Call Date**, the day of the call whatever its time. It is the same selection as the Filters panel and its chip; the funnel is filled while the field is filtered.
 
 **Columns** (a button after **Default column order**, for every user) chooses the columns of your own [layout](#table-layouts), only for you:
 
