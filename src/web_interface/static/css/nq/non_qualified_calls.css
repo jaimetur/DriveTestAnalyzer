@@ -2794,7 +2794,8 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 /* The word two names of a column share (Status), above them. */
 #nq-table th .nq-header-common { display: block; margin-bottom: .1rem; opacity: .75; }
 /* The two names of a column one below the other, a thin line between them, so they read as two fields (with a filter or not). */
-#nq-table th .nq-header-item + .nq-header-item { margin-top: .2rem; padding-top: .2rem; border-top: 1px solid rgba(94, 15, 44, .22); }
+/* The name below always takes two lines, so the lines of every column are at the same height (the headers sit at the bottom). */
+#nq-table th .nq-header-item + .nq-header-item { min-height: 2.2rem; margin-top: .2rem; padding-top: .2rem; border-top: 1px solid rgba(94, 15, 44, .22); }
 /* Analyst Fields stays narrow on wide screens: its name on two lines over a short bar. */
 #nq-table th[data-column="analyst_fields"] { width: 1%; }
 #nq-table .nq-analyst-fields { width: 3.4rem; }
