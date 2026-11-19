@@ -1323,13 +1323,13 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 #nq-table th [data-sort]:not(.is-sorted)::after { content: none; }
 #nq-table th .nq-header-item, #nq-table th .nq-header-item > span { white-space: normal; }
 /* A smaller text in the calls table, so its values never run into the next column. */
-#nq-table { font-size: .78rem; }
-#nq-table .nq-pill, #nq-table .nq-pill-select, #nq-table .nq-result, #nq-table .nq-service { font-size: .72rem; }
+#nq-table { font-size: .72rem; }
+#nq-table .nq-pill, #nq-table .nq-pill-select, #nq-table .nq-result, #nq-table .nq-service { font-size: .66rem; }
 #nq-table td.nq-failure > * { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #nq-table td.nq-failure > .nq-result { display: inline-block; vertical-align: top; }
 @media (max-width: 1599px) {
-  #nq-table { font-size: .74rem; }
-  #nq-table .nq-pill, #nq-table .nq-pill-select, #nq-table .nq-result, #nq-table .nq-service { font-size: .7rem; }
+  #nq-table { font-size: .7rem; }
+  #nq-table .nq-pill, #nq-table .nq-pill-select, #nq-table .nq-result, #nq-table .nq-service { font-size: .64rem; }
 }
 /* Every tab of the call on one line: a wider panel and tighter tabs. */
 .nq-drawer { width: min(880px, 100vw); }
@@ -2821,3 +2821,7 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 #nq-table .nq-root-suggestion .nq-root-suggestion-source { color: #7a858f; }
 #nq-table .nq-root-suggestion .nq-root-suggestion-text { color: #3c4650; }
 #nq-table .nq-root-suggestion:hover:not(:disabled) { border-color: #8e99a3; background: #e7eaed; color: #3c4650; }
+/* The pickers of the table give their text the room of their arrow: a smaller arrow, closer to the edge, and less padding. */
+.non-qualified-calls #nq-table .nq-pill-select { padding-left: .5rem; padding-right: 1.15rem; }
+.non-qualified-calls #nq-table .nq-cause-picker-button::after { right: .45rem; width: .32rem; height: .32rem; }
+.non-qualified-calls #nq-table select.nq-pill-select { background-position: right .35rem center; }
