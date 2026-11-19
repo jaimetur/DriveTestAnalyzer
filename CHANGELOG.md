@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Scoring & GAP Analysis — Country Areas or Trends switched off without calculating again:** a selection with Country Areas or Scoring Trends switched off takes the result of the same selection with them on when it is calculated and up to date (without the tabs switched off), instead of calculating the whole scoring again ([ticket #189](https://108.132.147.165:8443/tickets/189)).
 
 #### 🐛 Bug fixes:
 - **Scoring & GAP Analysis — Favourite Scorings with several users at once:** opening a Favourite Scoring or the Scoring page no longer waits for the other users: reading the accounts, the application state and the settings of the modules no longer takes the write lock of the application database, opening a Saved Scoring takes the write lock of the workspace only when its result has to be calculated again, and the result of a calculation is prepared for the page in a process of its own (once, also when it is opened meanwhile), so the other users are answered while it is prepared ([ticket #188](https://108.132.147.165:8443/tickets/188)).

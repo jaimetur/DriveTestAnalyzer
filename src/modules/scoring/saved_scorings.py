@@ -8,6 +8,7 @@ import copy
 import hashlib
 import importlib
 import inspect
+import itertools
 import json
 import math
 import os
@@ -1072,6 +1073,54 @@ def find_saved_scoring(
     return saved_scoring
 
 
+# What each part of the Geographical Areas & Scoring Trends adds to a result: the rest of a result is the same whether
+# they are switched on or off (ticket #189).
+_PART_RESULTS = {'country_areas': 'geographical', 'trends': 'area_summary'}
+
+
+def _result_of_fuller_selection(repository: Repository, prepared: dict[str, Any], dataset_ids: list[int], levels: list[str],
+                                nr_mode: str | None, *, baseline_operator: str, context_filters: dict[str, list[str]] | None,
+                                scoring_profile_id: str | None, area_summary: dict[str, Any] | None) -> tuple[str, int] | None:
+    """The result of a selection with Country Areas or Scoring Trends switched off, taken from the Saved Scoring of the
+    same selection with them on when its result is up to date (the same CDRs, methodology and Operator Maps): the same
+    result without the parts switched off, so it is not calculated again. Its JSON and the Saved Scoring it comes from."""
+    summary = prepared['snapshot'].get('area_summary')
+    off = [part for part in _PART_RESULTS if not area_summary_part_enabled(summary, part)]
+    if not off or not isinstance(area_summary, dict):
+        return None
+    cache: dict[Any, Any] = {}
+    # (Both parts on first: the Favourite Scorings are usually saved so.)
+    for count in range(len(off), 0, -1):
+        for turned_on in itertools.combinations(off, count):
+            fuller = _prepare_saved_scoring(
+                repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator, context_filters=context_filters,
+                scoring_profile_id=scoring_profile_id, cache=cache,
+                area_summary={key: value for key, value in area_summary.items() if key not in turned_on})
+            with repository.connection() as connection:
+                row = connection.execute(f'SELECT id, status, result_key, result_json FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
+                                         (fuller['selection_key'],)).fetchone()
+            if row is None or not _is_up_to_date(row, fuller['result_key']):
+                continue
+            result = _decode_json(row['result_json'], None)
+            # (A Points Lost Map still to be drawn is drawn for its own Saved Scoring only.)
+            if not isinstance(result, dict) or (isinstance(result.get('points_loss'), dict) and result['points_loss'].get('pending')):
+                continue
+            for part in off:
+                result.pop(_PART_RESULTS[part], None)
+            return json.dumps(result, ensure_ascii=False, separators=(',', ':'), allow_nan=False), int(row['id'])
+    return None
+
+
+def _keep_result_of_fuller_selection(connection: Any, filter_id: int, prepared: dict[str, Any], reused: tuple[str, int],
+                                     username: str, now: str) -> None:
+    """Give a Saved Scoring the result taken from the same selection with more parts on, as if it had been calculated."""
+    _queue_calculation(connection, filter_id, prepared, username, now)
+    connection.execute(
+        f"""UPDATE {SAVED_SCORINGS_TABLE} SET status = 'completed', progress = 100,
+           message = 'Scoring tables and GAP analysis are ready', result_json = ?, started_at = ?, finished_at = ?, updated_at = ?
+           WHERE id = ?""", (reused[0], now, now, now, int(filter_id)))
+
+
 def save_saved_scoring(
     repository: Repository,
     dataset_ids: list[int],
@@ -1096,6 +1145,17 @@ def save_saved_scoring(
         repository, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
         context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary,
     )
+    # With Country Areas or Scoring Trends switched off, the result of the same selection with them on serves when it is
+    # up to date: switching them off calculates nothing (ticket #189).
+    reused = None
+    if not force:
+        with repository.connection() as connection:
+            known = connection.execute(f'SELECT status, result_key, result_json FROM {SAVED_SCORINGS_TABLE} WHERE selection_key = ?',
+                                       (prepared['selection_key'],)).fetchone()
+        if known is None or (known['status'] not in ('queued', 'processing') and not _is_up_to_date(known, prepared['result_key'])):
+            reused = _result_of_fuller_selection(
+                repository, prepared, dataset_ids, levels, nr_mode, baseline_operator=baseline_operator,
+                context_filters=context_filters, scoring_profile_id=scoring_profile_id, area_summary=area_summary)
     now = local_now_iso()
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
@@ -1111,6 +1171,11 @@ def save_saved_scoring(
                 return _row_to_saved_scoring(row), True
             if not force and _is_up_to_date(row, prepared['result_key']):
                 row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+                return _row_to_saved_scoring(row, include_result=True), True
+            if reused is not None:
+                _keep_result_of_fuller_selection(connection, int(row['id']), prepared, reused, username, now)
+                row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+                _log_result_reused(repository, username, row, reused)
                 return _row_to_saved_scoring(row, include_result=True), True
             _queue_calculation(connection, int(row['id']), prepared, username, now)
             row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
@@ -1133,7 +1198,20 @@ def save_saved_scoring(
         )
         row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?',
                                  (int(cursor.lastrowid),)).fetchone()
+        if reused is not None:
+            _keep_result_of_fuller_selection(connection, int(row['id']), prepared, reused, username, now)
+            row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (row['id'],)).fetchone()
+    if reused is not None:
+        _log_result_reused(repository, username, row, reused)
+        return _row_to_saved_scoring(row, include_result=True), True
     return _row_to_saved_scoring(row), False
+
+
+def _log_result_reused(repository: Repository, username: str, row: Any, reused: tuple[str, int]) -> None:
+    summary = (_decode_json(row['source_metadata_json'], {}) or {}).get('area_summary') or {}
+    repository.try_add_log(str(username or 'system'), 'scoring_result_reused', json.dumps({
+        'saved_scoring_id': int(row['id']), 'name': row['name'] or '', 'from_saved_scoring_id': reused[1],
+        'switched_off': [part for part in _PART_RESULTS if not area_summary_part_enabled(summary, part)]}, ensure_ascii=False))
 
 
 def refresh_saved_scoring(repository: Repository, filter_id: int, username: str = 'system') -> tuple[bool, str]:
@@ -1162,15 +1240,27 @@ def refresh_saved_scoring(repository: Repository, filter_id: int, username: str 
         if row is None or row['status'] in ('queued', 'processing') or (
                 row['status'] == 'completed' and row['result_key'] == prepared['result_key'] and row['has_result']):
             return False, ''
+        # (Its Country Areas or Scoring Trends switched off: the result of the same selection with them on serves.)
+        reused = _result_of_fuller_selection(
+            repository, prepared, saved_scoring['dataset_ids'], saved_scoring['levels'], saved_scoring['nr_mode'],
+            baseline_operator=saved_scoring['baseline_operator'], context_filters=saved_scoring['context_filters'],
+            scoring_profile_id=saved_scoring['scoring_profile_id'] or None, area_summary=saved_scoring['area_summary'])
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
         row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
         if row is None or row['status'] in ('queued', 'processing') or _is_up_to_date(row, prepared['result_key']):
             return False, ''
         # A failed calculation is not repeated on its own until something it uses changes.
-        if row['status'] == 'failed' and row['result_key'] == prepared['result_key']:
+        if row['status'] == 'failed' and row['result_key'] == prepared['result_key'] and reused is None:
             return False, ''
-        _queue_calculation(connection, int(filter_id), prepared, username, local_now_iso())
+        if reused is not None:
+            _keep_result_of_fuller_selection(connection, int(filter_id), prepared, reused, username, local_now_iso())
+            row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        else:
+            _queue_calculation(connection, int(filter_id), prepared, username, local_now_iso())
+    if reused is not None:
+        _log_result_reused(repository, username, row, reused)
+        return False, ''
     return True, ''
 
 

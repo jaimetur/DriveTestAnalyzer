@@ -81,7 +81,7 @@ Everything happens in the **Scoring & GAP Analysis** panel, with the results bel
 | **5 Trends** | Campaigns, Time split and areas of the Scoring Trends tab |
 
 - **Environment** is not a block: it is a view option beside **Scoring** above the results, applied without calculating.
-- **Switching Country Areas or Trends off:** each card has a switch in its top right corner (on by default). Off, it is not calculated (with both off, the rows of the whole country are not read either), its card says *Off* and its tab hides from that scoring. See [Country Areas & Scoring Trends](#country-areas-scoring-trends).
+- **Switching Country Areas or Trends off:** each card has a switch in its top right corner (on by default). Off, it is not calculated (with both off, the rows of the whole country are not read either), its card says *Off* and its tab hides from that scoring. When the same scoring with them on is already calculated and up to date, its result is used at once (without the tabs switched off), nothing is calculated again. See [Country Areas & Scoring Trends](#country-areas-scoring-trends).
 - **Layout:** cards in two rows on large screens; one-line pills on phones and narrow windows.
 - **View:** Best Network or Most Reliable, NSA vs SA, NSA & SA charts and the KPI and GAP values, then **Report (PPT/Word)** with **Export this scoring** and **Custom report…** (see [Results exports](#results-exports)).
 

@@ -1075,3 +1075,37 @@ def test_the_result_as_served_is_built_apart_alike_and_once(scoring_api, monkeyp
     first.join(5)
     second.join(5)
     assert len(built) == 1 and answers == [here, here]
+
+
+def test_switching_off_country_areas_or_trends_takes_the_result_of_the_selection_with_them_on(scoring_api):
+    """Ticket #189: the result of a selection with Country Areas or Scoring Trends switched off is the result with them on
+    without those parts, so it is taken from the Saved Scoring with them on instead of being calculated again."""
+    client, repository = scoring_api['client'], scoring_api['repository']
+    selection = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator', 'Region'],
+                 'nr_mode': 'NSA', 'baseline_operator': 'EE', 'area_summary': {'breakdown': 'Region', 'cities': []}}
+    full_id = client.post('/api/scoring/saved-scorings', json=selection).json()['saved_scoring']['id']
+    saved_scorings.calculate_saved_scoring(repository, full_id)
+    # A Favourite Scoring (the other Saved Scorings of a user go when another one is used).
+    saved_scorings.update_saved_scoring(repository, full_id, pinned=True, username='admin')
+    full = saved_scorings.get_saved_scoring(repository, full_id, include_result=True)['result']
+    assert 'area_summary' in full and 'geographical' in full
+    queued = len(scoring_api['submitted'])
+    for switched_off, left_out in [({'trends': False}, {'area_summary'}), ({'country_areas': False}, {'geographical'}),
+                                   ({'trends': False, 'country_areas': False}, {'area_summary', 'geographical'})]:
+        answer = client.post('/api/scoring/saved-scorings', json={
+            **selection, 'area_summary': {**selection['area_summary'], **switched_off}}).json()
+        assert answer['cached'] is True and answer['saved_scoring']['status'] == 'completed'
+        assert answer['saved_scoring']['id'] != full_id
+        result = saved_scorings.get_saved_scoring(repository, answer['saved_scoring']['id'], include_result=True)['result']
+        assert result == {key: value for key, value in full.items() if key not in left_out}
+        # It opens as any other, its tabs switched off.
+        opened = client.get(f"/api/scoring/saved-scorings/{answer['saved_scoring']['id']}")
+        assert opened.status_code == 200 and opened.json()['saved_scoring']['area_summary'].items() >= switched_off.items()
+    # Nothing was calculated, and each one is told in App Events.
+    assert len(scoring_api['submitted']) == queued
+    reused = [json.loads(row['details']) for row in repository.list_logs() if row['action'] == 'scoring_result_reused']
+    assert len(reused) == 3 and {item['from_saved_scoring_id'] for item in reused} == {full_id}
+    # Forced, it is calculated.
+    forced = client.post('/api/scoring/saved-scorings', json={
+        **selection, 'area_summary': {**selection['area_summary'], 'trends': False}, 'force': True}).json()
+    assert forced['cached'] is False
