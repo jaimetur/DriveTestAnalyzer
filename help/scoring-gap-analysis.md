@@ -217,7 +217,7 @@ Every selection you calculate becomes a **Saved Scoring**: its CDRs, NR Mode, fi
 **Open a Favourite Scoring** from the [Filter Navigator](#filter-navigator), with **Use Filter** on its card in **Manage Favourite Scorings** (the page then goes to its results; recorded in App Events), or by setting a selection in the blocks that is a Saved Scoring with its result up to date.
 
 - **At once:** it becomes the scoring shown, its configuration fills the blocks and its saved result loads (*Opening…* and a **Loading Scoring Results…** bar meanwhile).
-- **Results kept ready** on disk in the workspace's Scoring cache (the idle server prepares those Favourite Scorings lack), so they open at once, also after a restart.
+- **Results kept ready** on disk in the workspace's Scoring cache (the idle server prepares those Favourite Scorings lack), so they open at once, also after a restart. They are prepared in a process of their own, so the other users working at the same time are not slowed down.
 - **Out of date** (CDRs reprocessed, methodology or Operator Maps changed): calculated again on its own, usually in a moment from the [Scoring History](#scoring-history).
 - **Missing CDRs or methodology:** the saved result is shown as it was and the yellow notice says why.
 - **Automatic campaign choices** (Latest campaign…, All available campaigns) are kept: the card shows the campaigns it stood for last time, and each opening takes the campaigns and CDRs it stands for then, calculating again when they changed.

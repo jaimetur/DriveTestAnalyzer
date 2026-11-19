@@ -6,6 +6,7 @@ import json
 import traceback
 import calendar
 import io
+import logging
 import os
 import errno
 import html
@@ -33,7 +34,7 @@ from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone, tzinfo
 from functools import lru_cache
 from pathlib import Path, PurePath, PurePosixPath
-from threading import Event, Lock, Thread
+from threading import BoundedSemaphore, Event, Lock, Thread
 from time import monotonic, sleep
 from types import SimpleNamespace
 from typing import Annotated
@@ -109,6 +110,10 @@ from src.modules.cdr.cdr_stage import (
 from src.modules.scoring.scoring_themes import THEMES as SCORING_THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.scoring.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
 from src.modules.cdr.cdr_auto_selection import campaign_presets, is_flex_cdr
+from src.modules.scoring.scoring_served_result import (
+    ResultViewsError, packed_payload, saved_scoring_payload as _saved_scoring_payload,
+    scoring_result_payload as _scoring_result_payload,
+)
 from src.modules.scoring.saved_scorings import (
     POINTS_LOSS_STOPPED,
     calculate_saved_scoring,
@@ -21801,6 +21806,8 @@ def saved_scorings_update(filter_id: int, payload: SavedScoringUpdate,
     return {'saved_scoring': saved_scoring}
 
 
+logger = logging.getLogger(__name__)
+
 # The results of the Saved Scorings, as served (JSON compressed with gzip), so opening one again does not build its
 # views again. A recalculation or a change of the Operator or Vendor Maps gives another key.
 SCORING_RESULTS_CACHE: OrderedDict[tuple, bytes] = OrderedDict()
@@ -21853,9 +21860,10 @@ def _packed_saved_scoring_result(task_repository: Repository, saved_scoring: dic
         except OSError:
             packed = None
     if packed is None:
-        payload = _saved_scoring_payload(saved_scoring, operator_groups, vendor_groups, fallback)
-        packed = gzip.compress(json.dumps(jsonable_encoder(payload), ensure_ascii=False, allow_nan=False,
-                                          separators=(',', ':')).encode('utf-8'), 5)
+        try:
+            packed = _built_saved_scoring_result(key, saved_scoring, operator_groups, vendor_groups, fallback)
+        except ResultViewsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if path is not None:
             _store_saved_scoring_result(path, packed)
     if key:
@@ -21864,6 +21872,73 @@ def _packed_saved_scoring_result(task_repository: Repository, saved_scoring: dic
             while len(SCORING_RESULTS_CACHE) > SCORING_RESULTS_CACHE_SIZE:
                 SCORING_RESULTS_CACHE.popitem(last=False)
     return packed
+
+
+# Building the views of a result (up to a minute of pure Python for a large one) runs in a process of its own, so the
+# requests of the other users are answered meanwhile (ticket #188); at most this many at once. The tests build it here.
+SCORING_RESULT_PROCESSES = 3
+SCORING_RESULT_APART = os.environ.get('DTA_SCORING_RESULT_IN_PROCESS') != '1'
+_scoring_result_processes = BoundedSemaphore(SCORING_RESULT_PROCESSES)
+# The results being built, by key: whoever asks for one meanwhile (a user opening a Saved Scoring just calculated, while
+# the background job keeps it) waits for it instead of building it again.
+_scoring_results_building: dict[tuple, Future] = {}
+
+
+def _built_saved_scoring_result(key: tuple | None, saved_scoring: dict[str, Any], operator_groups: list[dict],
+                                vendor_groups: list[dict], fallback: dict[str, Any] | None) -> bytes:
+    """The result of a Saved Scoring as served, built once however many ask for it at the same time."""
+    if key is None:
+        return _build_saved_scoring_result(saved_scoring, operator_groups, vendor_groups, fallback)
+    with SCORING_RESULTS_CACHE_LOCK:
+        building = _scoring_results_building.get(key)
+        owner = building is None
+        if owner:
+            building = _scoring_results_building[key] = Future()
+    if not owner:
+        return building.result()
+    try:
+        packed = _build_saved_scoring_result(saved_scoring, operator_groups, vendor_groups, fallback)
+    except BaseException as exc:
+        building.set_exception(exc)
+        raise
+    else:
+        building.set_result(packed)
+        return packed
+    finally:
+        with SCORING_RESULTS_CACHE_LOCK:
+            _scoring_results_building.pop(key, None)
+
+
+def _build_saved_scoring_result(saved_scoring: dict[str, Any], operator_groups: list[dict], vendor_groups: list[dict],
+                                fallback: dict[str, Any] | None) -> bytes:
+    if not SCORING_RESULT_APART:
+        return packed_payload(_saved_scoring_payload(saved_scoring, operator_groups, vendor_groups, fallback))
+    import pickle
+    import subprocess
+    from src.modules.scoring.scoring_result_worker import VIEWS_ERROR
+    with _scoring_result_processes, tempfile.TemporaryDirectory(prefix='scoring-result-') as folder:
+        result_path, error_path = Path(folder) / 'result.json.gz', Path(folder) / 'error.txt'
+        from src.modules.cdr.column_names import current_campaign_map
+        # (With the Campaign Map of the workspace, which names the campaigns of the views.)
+        inputs = pickle.dumps({'saved_scoring': saved_scoring, 'operator_groups': operator_groups, 'vendor_groups': vendor_groups,
+                               'fallback': fallback, 'campaign_map': current_campaign_map(),
+                               'result_path': str(result_path), 'error_path': str(error_path)},
+                              protocol=pickle.HIGHEST_PROTOCOL)
+        try:
+            with open(Path(folder) / 'stderr.txt', 'wb') as errors:
+                process = subprocess.run([sys.executable, '-m', 'src.modules.scoring.scoring_result_worker'], input=inputs,
+                                         cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=errors, check=False)
+        except OSError:
+            # (A process cannot be started: the result is built here, as before.)
+            logger.warning('The result of a Saved Scoring could not be built in a process of its own.', exc_info=True)
+            return packed_payload(_saved_scoring_payload(saved_scoring, operator_groups, vendor_groups, fallback))
+        if process.returncode == VIEWS_ERROR:
+            raise ResultViewsError(error_path.read_text(encoding='utf-8'))
+        if process.returncode != 0 or not result_path.is_file():
+            detail = (Path(folder) / 'stderr.txt').read_text(encoding='utf-8', errors='replace')[-2000:]
+            raise RuntimeError(f'The result of Saved Scoring #{saved_scoring.get("id")} could not be built '
+                               f'(exit code {process.returncode}): {detail}')
+        return result_path.read_bytes()
 
 
 def _store_saved_scoring_result(path: Path, packed: bytes) -> None:
@@ -21925,98 +22000,6 @@ def saved_scorings_result(filter_id: int, request: Request, user: SessionUser = 
     if 'gzip' in request.headers.get('accept-encoding', '').lower():
         return Response(packed, media_type='application/json', headers={'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding'})
     return Response(gzip.decompress(packed), media_type='application/json')
-
-
-def _saved_scoring_payload(saved_scoring: dict[str, Any], operator_groups: list[dict], vendor_groups: list[dict],
-                             fallback: dict[str, Any] | None) -> dict[str, Any]:
-    """The saved result of a Saved Scoring with the views of both scorings and their National & area summaries.
-
-    NSA vs SA also gives the results of each NR Mode on their own (``nr_mode_parts``, NSA then SA), which the page shows
-    one below the other in every tab."""
-    from src.modules.scoring.scoring_views import normalize_result_gaps, nr_mode_result
-    from src.modules.cdr.nr_mode import NR_MODES, NSA_VS_SA, normalize_scoring_nr_mode, nr_modes_of
-
-    def out_of_scope(nr_mode: Any) -> dict[str, Any]:
-        # The NR Mode · operator pairs out of scope in the NR Modes of a result (the NR Modes of the Operator Maps), which
-        # the headings of its panels name.
-        modes = nr_modes_of(nr_mode)
-        pairs = [f"{pair['nr_mode']} · {pair['operator']}" for pair in out_of_scope_pairs(operator_groups) if pair['nr_mode'] in modes]
-        return {'out_of_scope': pairs} if pairs else {}
-
-    result = normalize_scoring_vendor_result(normalize_result_gaps(saved_scoring.get('result') or {}), operator_groups)
-    payload = {**_scoring_result_payload(saved_scoring, result, operator_groups, vendor_groups, fallback),
-               **out_of_scope(saved_scoring.get('nr_mode'))}
-    if normalize_scoring_nr_mode(saved_scoring.get('nr_mode')) == NSA_VS_SA and payload['views']:
-        parts = []
-        for mode in NR_MODES:
-            part_result = nr_mode_result(result, mode)
-            if not part_result.get('totals'):
-                continue
-            part_filter = {**nr_mode_result({key: value for key, value in saved_scoring.items() if key != 'result'}, mode),
-                           'nr_mode': mode}
-            parts.append({'nr_mode': mode, **_scoring_result_payload(part_filter, part_result, operator_groups,
-                                                                      vendor_groups, fallback), **out_of_scope(mode)})
-        if len(parts) > 1:
-            payload['nr_mode_parts'] = parts
-    return payload
-
-
-def _scoring_result_payload(saved_scoring: dict[str, Any], result: dict[str, Any], operator_groups: list[dict],
-                            vendor_groups: list[dict], fallback: dict[str, Any] | None) -> dict[str, Any]:
-    """A result with the views of both scorings and their National & area summaries."""
-    from src.modules.scoring.scoring_views import build_scoring_views, refresh_baseline_warning, scoring_coverage_notes
-    views = {}
-    scorings = {}
-    if result.get('scoring') or result.get('score_rows'):
-        from src.modules.scoring.scoring import most_reliable_result
-        from src.modules.scoring.scoring_config import MOST_RELIABLE_SCORING, SCORING_LABELS
-        baseline = str(saved_scoring.get('baseline_operator') or 'EE')
-        try:
-            views = build_scoring_views(
-                saved_scoring, result, operator_groups, fallback,
-                vendor_mapping_groups=vendor_groups,
-            )
-            refresh_baseline_warning(result, views, baseline)
-            # The National & Geographical Areas Trends of the Saved Scoring, shown in Scoring Trends.
-            from src.modules.scoring.scoring_area_summary import build_area_summary
-            views.setdefault('insights', {})['area_summaries'] = build_area_summary(
-                saved_scoring if saved_scoring.get('configuration') or result.get('configuration') else {**saved_scoring, 'configuration': fallback},
-                result, operator_groups,
-                vendor_mapping_groups=vendor_groups,
-            )
-            # The Most Reliable scoring is derived from the same saved KPI scores and filters.
-            reliable = most_reliable_result(result, baseline, saved_scoring.get('configuration') or fallback)
-            if reliable is not None:
-                reliable_views = build_scoring_views(
-                    saved_scoring, reliable, operator_groups,
-                    vendor_mapping_groups=vendor_groups,
-                )
-                refresh_baseline_warning(reliable, reliable_views, baseline)
-                reliable_views.setdefault('insights', {})['area_summaries'] = build_area_summary(
-                    {**saved_scoring, 'configuration': reliable['configuration']}, reliable,
-                    operator_groups,
-                    vendor_mapping_groups=vendor_groups,
-                )
-                scorings[MOST_RELIABLE_SCORING] = {
-                    'label': SCORING_LABELS[MOST_RELIABLE_SCORING], 'views': reliable_views,
-                    'configuration': reliable['configuration'], 'notices': reliable['notices'],
-                    'warnings': reliable['warnings'], 'environment_scaling': reliable['environment_scaling'],
-                    'totals': reliable['totals'], 'gap_totals': reliable['gap_totals'],
-                    'coverage_notes': scoring_coverage_notes(reliable),
-                }
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-    result['coverage_notes'] = scoring_coverage_notes(result)
-    # The points-lost shares and polygons reach the page through the views' insights and the boundaries endpoint.
-    points_loss = result.get('points_loss')
-    return {'saved_scoring': {key: value for key, value in saved_scoring.items() if key != 'result'},
-            **{key: value for key, value in result.items() if key not in {'points_loss', 'area_summary'}},
-            # A result from the Scoring History gets its Points Lost Map once the rows of the tests are read.
-            'points_loss_pending': bool(isinstance(points_loss, dict) and points_loss.get('pending')),
-            # Why the map is missing: stopped by a user (it is drawn again once the application is idle), or its error.
-            'points_loss_error': points_loss.get('error') if isinstance(points_loss, dict) else None,
-            'points_loss_stopped': bool(isinstance(points_loss, dict) and points_loss.get('error') == POINTS_LOSS_STOPPED),
-            'views': views, 'scorings': scorings}
 
 
 def _scoring_impact_saved_scoring(user: SessionUser, filter_id: int) -> tuple[Repository, dict[str, Any]]:

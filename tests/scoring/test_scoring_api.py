@@ -1029,3 +1029,49 @@ def test_a_favourite_scoring_opens_from_its_result_kept_on_disk(scoring_api, mon
     newer = kept[0].with_name(f'{job_id}-newer.json.gz')
     app_module._store_saved_scoring_result(newer, b'packed')
     assert list(kept[0].parent.glob(f'{job_id}-*.json.gz')) == [newer] and newer.read_bytes() == b'packed'
+
+
+def test_the_result_as_served_is_built_apart_alike_and_once(scoring_api, monkeypatch):
+    """Ticket #188: the views of a result are built in a process of their own, so the other users are answered
+    meanwhile; they are the same as built in the application, and whoever opens a result being built waits for it."""
+    import gzip
+    import json
+    import threading
+
+    client, repository = scoring_api['client'], scoring_api['repository']
+    created = client.post('/api/scoring/saved-scorings', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator', 'Region'],
+        'nr_mode': 'NSA', 'baseline_operator': 'EE'})
+    job_id = created.json()['saved_scoring']['id']
+    saved_scorings.calculate_saved_scoring(repository, job_id)
+    saved_scoring = saved_scorings.get_saved_scoring(repository, job_id, include_result=True)
+    groups = repository.list_operator_mapping_groups()
+    monkeypatch.setattr(app_module, 'SCORING_RESULT_APART', False)
+    here = app_module._build_saved_scoring_result(saved_scoring, groups, [], None)
+    monkeypatch.setattr(app_module, 'SCORING_RESULT_APART', True)
+    apart = app_module._build_saved_scoring_result(saved_scoring, groups, [], None)
+    assert json.loads(gzip.decompress(apart)) == json.loads(gzip.decompress(here))
+
+    # Two asking for the same result at once: it is built once.
+    built, release = [], threading.Event()
+
+    def build(*args):
+        built.append(args)
+        assert release.wait(5)
+        return here
+
+    monkeypatch.setattr(app_module, '_build_saved_scoring_result', build)
+    key = ('test', job_id)
+    answers = []
+    first = threading.Thread(target=lambda: answers.append(app_module._built_saved_scoring_result(key, saved_scoring, groups, [], None)))
+    first.start()
+    while not built:
+        threading.Event().wait(0.01)
+    second = threading.Thread(target=lambda: answers.append(app_module._built_saved_scoring_result(key, saved_scoring, groups, [], None)))
+    second.start()
+    # (Time for the second one to find the result being built.)
+    second.join(0.3)
+    release.set()
+    first.join(5)
+    second.join(5)
+    assert len(built) == 1 and answers == [here, here]

@@ -28,6 +28,8 @@ os.environ['DTA_POINTS_LOSS_IN_PROCESS'] = '1'
 # The tests process their datasets in their own process too: a worker of its own takes most of a second to start for
 # each dataset (tests/core/test_app.py processes one in its worker, and stops one).
 os.environ['DTA_DATASET_WORKER_IN_PROCESS'] = '1'
+# The tests build the result of a Saved Scoring as served here too (tests/scoring/test_scoring_api.py builds one apart).
+os.environ['DTA_SCORING_RESULT_IN_PROCESS'] = '1'
 # The passwords of the tests are hashed with the least work scrypt allows: the application spends a tenth of a second
 # on each hash and each sign-in, on purpose, and the tests sign in thousands of times.
 os.environ['DTA_PASSWORD_HASH_LOG_N'] = '4'
