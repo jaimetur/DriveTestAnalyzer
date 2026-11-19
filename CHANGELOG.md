@@ -12,6 +12,7 @@
 #### 🚀 Enhancements:
 
 #### 🐛 Bug fixes:
+- **Scoring & GAP Analysis — Favourite Scorings with several users at once:** opening a Favourite Scoring or the Scoring page no longer waits for the other users: reading the accounts, the application state and the settings of the modules no longer takes the write lock of the application database, and opening a Saved Scoring takes the write lock of the workspace only when its result has to be calculated again ([ticket #188](https://108.132.147.165:8443/tickets/188)).
 
 #### 📚 Documentation:
 

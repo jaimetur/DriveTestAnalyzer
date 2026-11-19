@@ -109,3 +109,56 @@ def test_shared_connection_lends_one_connection_to_the_reads_of_its_block(tmp_pa
     # After the block every read opens its own connection again.
     repository.get_workspace_state('shared-test')
     assert opened.count(str(tmp_path / 'workspace.db')) == 3
+
+
+def test_reads_that_make_sure_of_their_schema_go_on_while_another_connection_writes(tmp_path) -> None:
+    """Reading the accounts, the Modules Profiles and the application state runs schema scripts (CREATE … IF NOT EXISTS):
+    with their tables in place they take no write lock, so they never wait for a writer (ticket #188)."""
+    repository = Repository(tmp_path / 'workspace.db', global_db_path=tmp_path / 'application.db')
+    repository.initialize()
+    repository.set_application_state('coordination-test', 'initial')
+    repository.list_users()
+
+    writer_started = Event()
+    release_writer = Event()
+    read: dict[str, object] = {}
+
+    def writer() -> None:
+        with repository.global_connection() as connection:
+            connection.execute('UPDATE application_state SET value = ? WHERE key = ?', ('written', 'coordination-test'))
+            writer_started.set()
+            assert release_writer.wait(5)
+
+    def reader() -> None:
+        read['state'] = repository.get_application_state('coordination-test')
+        read['users'] = repository.list_users()
+        read['modules'] = repository.user_modules()
+
+    first = Thread(target=writer)
+    first.start()
+    assert writer_started.wait(5)
+    second = Thread(target=reader)
+    second.start()
+    second.join(5)
+    finished_while_writing = not second.is_alive()
+    release_writer.set()
+    first.join(5)
+    second.join(5)
+
+    assert finished_while_writing
+    assert read['state'] == 'initial'
+    assert repository.get_application_state('coordination-test') == 'written'
+
+
+def test_a_schema_script_still_creates_what_is_missing(tmp_path) -> None:
+    repository = Repository(tmp_path / 'workspace.db')
+    repository.initialize()
+    script = 'CREATE TABLE IF NOT EXISTS probe_a (id INTEGER);\nCREATE INDEX IF NOT EXISTS probe_a_id ON probe_a (id);'
+    with repository.connection() as connection:
+        connection.executescript(script)
+        connection.execute('CREATE TABLE IF NOT EXISTS probe_b (id INTEGER)')
+        # Run again with everything in place: nothing to do.
+        connection.executescript(script)
+        connection.execute('CREATE TABLE IF NOT EXISTS probe_b (id INTEGER)')
+        names = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE name LIKE 'probe_%'")}
+    assert names == {'probe_a', 'probe_a_id', 'probe_b'}

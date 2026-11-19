@@ -106,6 +106,9 @@ def workspace_write_lock(db_path: Path | str) -> RLock:
 
 
 _SCHEMA_OBJECT = re.compile(r'CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+IF\s+NOT\s+EXISTS\s+["`]?(\w+)', re.IGNORECASE)
+# A statement that only creates a table or an index when it is missing, and the comments of SQL.
+_CREATE_IF_NOT_EXISTS = re.compile(r'\s*CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+IF\s+NOT\s+EXISTS\s', re.IGNORECASE)
+_SQL_COMMENT = re.compile(r'--[^\n]*')
 
 
 def schema_in_place(connection: Any, script: str) -> bool:
@@ -219,10 +222,41 @@ class _CoordinatedConnection(sqlite3.Connection):
         self._shadow_ids = frozenset()
 
     def execute(self, sql, parameters=()):
+        if not parameters and self._schema_already_in_place(sql):
+            # (Creating what is there: no statement runs, so no write lock is taken.)
+            return self.cursor().execute('SELECT 1 WHERE 0')
         return self.cursor().execute(sql, parameters)
 
     def executemany(self, sql, seq_of_parameters):
         return self.cursor().executemany(sql, seq_of_parameters)
+
+    def executescript(self, sql_script):
+        if self._schema_already_in_place(sql_script):
+            # As executescript would: what the connection was writing is committed first.
+            if self.in_transaction:
+                sqlite3.Connection.commit(self)
+            return self.cursor()
+        return super().executescript(sql_script)
+
+    def _schema_already_in_place(self, sql: Any) -> bool:
+        """Whether SQL only creates tables and indexes (``CREATE … IF NOT EXISTS``) that are all in the database already.
+
+        Such SQL changes nothing then, yet it takes the write lock of the database: every request that makes sure of its
+        schema so (the accounts, the application state, the settings of the modules) would wait for whoever writes,
+        and make everyone else wait in turn, however many users work at once."""
+        if not self._workspace_key or not isinstance(sql, str):
+            return False
+        statements = [statement for statement in _SQL_COMMENT.sub('', sql).split(';') if statement.strip()]
+        if not statements or any(not _CREATE_IF_NOT_EXISTS.match(statement) for statement in statements):
+            return False
+        names = {name.casefold() for statement in statements for name in _SCHEMA_OBJECT.findall(statement)}
+        # (Every statement names one object, and none was hidden by what looked like a comment.)
+        if len(names) != len(statements) or {name.casefold() for name in _SCHEMA_OBJECT.findall(sql)} != names:
+            return False
+        placeholders = ', '.join('?' for _ in names)
+        present = super().execute(f"SELECT lower(name) FROM sqlite_master WHERE type IN ('table', 'index') "
+                                  f"AND lower(name) IN ({placeholders})", tuple(names)).fetchall()
+        return len(present) == len(names)
 
     def _run_with_cdr_rows(self, sql: Any, run: Callable[[str], Any], parameters: Any = ()) -> Any:
         """Run SQL; when it reads the empty table of a CDR, run it on a TEMP table of its own with the rows of the columns
@@ -1410,7 +1444,9 @@ class Repository:
         for table in ('users', 'modules_profiles', 'workspace_groups'):
             if 'uid' not in {str(row['name']) for row in conn.execute(f'PRAGMA table_info({table})').fetchall()}:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
-            conn.execute(f"UPDATE {table} SET uid = lower(hex(randomblob(16))) WHERE uid = ''")
+            # (Looked at first: a write takes the write lock of the database, which every read of the accounts would wait for.)
+            if conn.execute(f"SELECT 1 FROM {table} WHERE uid = '' LIMIT 1").fetchone():
+                conn.execute(f"UPDATE {table} SET uid = lower(hex(randomblob(16))) WHERE uid = ''")
         old_table = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_workspace_access'"
         ).fetchone()

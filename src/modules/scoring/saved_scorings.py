@@ -1143,16 +1143,25 @@ def refresh_saved_scoring(repository: Repository, filter_id: int, username: str 
     Returns whether it was queued, and why it cannot be calculated (its CDRs or methodology are gone) otherwise.
     """
     _resolve_imported_filters(repository)
-    saved_scoring = get_saved_scoring(repository, filter_id)
-    if saved_scoring is None or saved_scoring['status'] in ('queued', 'processing'):
-        return False, ''
-    if not saved_scoring['dataset_ids']:
-        names = ', '.join(saved_scoring['missing_cdrs']) or 'its CDRs'
-        return False, f'The CDRs of this Saved Scoring are not in this workspace: {names}.'
-    try:
-        prepared = _prepare_saved_selection(repository, saved_scoring)
-    except ValueError as exc:
-        return False, str(exc)
+    # Its many reads (the CDRs and campaigns of its selection) share one connection, and the write lock is taken only
+    # when the saved result no longer matches: opening a Saved Scoring never waits for another one being saved.
+    with repository.shared_connection():
+        saved_scoring = get_saved_scoring(repository, filter_id)
+        if saved_scoring is None or saved_scoring['status'] in ('queued', 'processing'):
+            return False, ''
+        if not saved_scoring['dataset_ids']:
+            names = ', '.join(saved_scoring['missing_cdrs']) or 'its CDRs'
+            return False, f'The CDRs of this Saved Scoring are not in this workspace: {names}.'
+        try:
+            prepared = _prepare_saved_selection(repository, saved_scoring)
+        except ValueError as exc:
+            return False, str(exc)
+        with repository.connection() as connection:
+            row = connection.execute(f'SELECT status, result_key, result_json IS NOT NULL AND result_json <> \'\' AS has_result '
+                                     f'FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+        if row is None or row['status'] in ('queued', 'processing') or (
+                row['status'] == 'completed' and row['result_key'] == prepared['result_key'] and row['has_result']):
+            return False, ''
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
         row = connection.execute(f'SELECT * FROM {SAVED_SCORINGS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
