@@ -112,6 +112,19 @@ def test_the_login_page_opens_the_application_when_already_signed_in(client):
 
 
 
+def test_a_link_opened_signed_out_opens_its_page_and_call_after_signing_in(client):
+    """A link of an NQ Calls email (…/non-qualified-calls#call=…) opened without a session opens the call after the login:
+    the page asked for travels as next, and the login page adds its #… part (which never reaches the server)."""
+    client.cookies.clear()
+    asked = client.get('/non-qualified-calls?view=table', follow_redirects=False)
+    assert asked.status_code == 303 and asked.headers['location'] == '/login?next=%2Fnon-qualified-calls%3Fview%3Dtable'
+    page = client.get(asked.headers['location'])
+    assert 'name="next" value="/non-qualified-calls?view=table"' in page.text and 'window.location.hash' in page.text
+    response = client.post('/login', data={'username': 'super', 'password': 'super123', 'next': '/non-qualified-calls#call=abc'},
+                           follow_redirects=False)
+    assert response.status_code == 303 and response.headers['location'] == '/non-qualified-calls#call=abc'
+
+
 def test_only_the_owner_account_keeps_its_login_for_90_days(client):
     login(client)
     core.repository.create_user('EJAITUR', 'Secret123', 'super-admin')

@@ -6509,7 +6509,10 @@ def current_user(request: Request) -> SessionUser:
         # interface can explain what actually happened.
         if request.url.path.startswith('/api/'):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Your session has expired. Please sign in again.')
-        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={'Location': '/login'})
+        # The page asked for opens after signing in (a link of an email too; the login page adds its #… part).
+        asked = request.url.path + (f'?{request.url.query}' if request.url.query else '')
+        target = '/login' + (f"?{urlencode({'next': asked})}" if request.method == 'GET' and safe_next_url(asked) else '')
+        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={'Location': target})
     return user
 
 

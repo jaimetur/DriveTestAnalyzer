@@ -189,6 +189,12 @@
 {% endblock %}
 {% block extra_scripts %}
 <script>
+// A link to a part of a page (as #call=… of an NQ Calls email) opens it after signing in: the browser keeps that part on
+// this page, never sent to the server, so it is added to the page to return to.
+(() => {
+  const next = document.querySelector('.login-form input[name="next"]');
+  if (next instanceof HTMLInputElement && window.location.hash.length > 1 && !next.value.includes('#')) next.value += window.location.hash;
+})();
 // Forgot your password?: the link to choose a new one is emailed to the user; the link opens this page with the dialog
 // to choose it.
 (() => {
