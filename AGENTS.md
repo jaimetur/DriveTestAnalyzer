@@ -73,6 +73,13 @@
 - A CDR given its rows again with the same rows and some columns changed (a Vendor, Region or Cluster mapping) is rewritten in its copy by `Repository.replace_dataset_rows` (`cdr_store.replace_copy_rows`): only the changed columns are typed by SQLite in memory and rewritten. Only other rows (a reprocessing with another number of rows) are written to its table and copied again in the background.
 - SQL on an emptied combined table whose result depends only on which values the rows hold (DISTINCT, MIN, MAX, `json_group_array(DISTINCT …)`) runs under `cdr_store.distinct_rows()`, which gives it each distinct row once instead of every row.
 
+## Commit, Build and Deploy
+- When a change I asked for is done, commit only your own paths and push the branch checked out now (`git push origin HEAD`).
+- After the push, launch the GitHub build: `gh workflow run build_all.yml --ref <current branch>`, wait for it with `gh run watch <run id> --exit-status` and check that the built commit contains yours.
+- When the build succeeds, deploy it on the AWS server (Dockhand does not redeploy on its own): `ssh ndo 'cd /data/docker/volumes/dockhand_dockhand_data/_data/stacks/Ericsson-Production/drivetest-analyzer && sudo -n docker compose -p drivetest-analyzer pull && sudo -n docker compose -p drivetest-analyzer up -d'`, then check that the container `drivetest-analyzer` is healthy (about 1 minute).
+- If `ssh ndo` does not connect (the SSM tunnel is closed), ask me to run `ndo-tunnel` and deploy once I confirm it.
+- Report the commit, the build run and the deploy result in the final response.
+
 ## Database Management
 - When any new table is created, it has to be visible in the Database Management selector and the tittle should have the same format than the others (Uppercase the First Letter of each Word).
 
