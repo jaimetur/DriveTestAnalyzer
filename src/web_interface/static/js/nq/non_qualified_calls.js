@@ -236,6 +236,32 @@
       element.classList.remove('is-colored');
     }
   };
+  // Each analyst in a colour of their own, so the calls of each one read apart in the table: a slot of the palette from their
+  // name, the next free one when it is taken by another user of the workspace (the same users always get the same colours).
+  const PERSON_COLORS = ['#1F6FB2', '#2E8B57', '#7B3FB2', '#C26A00', '#0F8A8A', '#AD1457', '#6B7A1F', '#455A64', '#8A5A2B',
+    '#B8860B', '#E0607E', '#3949AB'];
+  const personColors = {users: null, colors: new Map()};
+  const personSlot = (name) => {
+    let hash = 0;
+    for (const character of name) hash = (hash * 31 + character.charCodeAt(0)) % 1000003;
+    return hash % PERSON_COLORS.length;
+  };
+  const personColor = (name) => {
+    const key = String(name || '').trim().toLowerCase();
+    if (!key) return '';
+    if (personColors.users !== state.users) {
+      personColors.users = state.users;
+      personColors.colors = new Map();
+      const taken = new Set();
+      [...new Set((state.users || []).map((user) => String(user).trim().toLowerCase()))].sort().forEach((user) => {
+        let slot = personSlot(user);
+        for (let step = 0; step < PERSON_COLORS.length && taken.has(slot); step += 1) slot = (slot + 1) % PERSON_COLORS.length;
+        taken.add(slot);
+        personColors.colors.set(user, PERSON_COLORS[slot]);
+      });
+    }
+    return personColors.colors.get(key) || PERSON_COLORS[personSlot(key)];
+  };
   // A root cause is outlined in the colour of its domain, so it reads apart from its category.
   const outlinePill = (element, color) => {
     paintPill(element, '');
@@ -283,7 +309,7 @@
     const person = PEOPLE_KINDS.includes(kind);
     const element = node('span', (person && name ? userName(name) : name) || emptyLabel, `nq-pill nq-pill-${person ? 'analyst' : kind}`);
     if (kind === 'root_cause') outlinePill(element, optionColor(kind, name));
-    else paintPill(element, person ? '' : optionColor(kind, name));
+    else paintPill(element, person ? (kind === 'analyst' ? personColor(name) : '') : optionColor(kind, name));
     if (!name) element.classList.add('is-empty');
     if (person && withoutAccount(name)) {
       element.classList.add('is-no-account');
@@ -1035,11 +1061,11 @@
       : kind === 'team' ? [{value: '', label: 'Unassigned'}, ...state.options.teams.map((item) => ({value: item.name, label: item.name, color: item.color}))]
         // The Analyst among the members of the team of the call; the Reviewer among every user of the workspace.
         : [{value: '', label: 'Unassigned'}, ...[...(kind === 'reviewer' ? state.users : assignableUsers(call.team))].sort(byUserName).map((name, index, users) => ({
-          value: name, label: userName(name), tag: isDefaultUser(name) ? DEFAULT_USER_TAG : '',
+          value: name, label: userName(name), tag: isDefaultUser(name) ? DEFAULT_USER_TAG : '', color: kind === 'analyst' ? personColor(name) : '',
           divider: index > 0 && isDefaultUser(users[index - 1]) && !isDefaultUser(name)}))];
     const current = call[kind] || '';
     if (current && !items.some((item) => item.value === current)) items.push({value: current, label: PEOPLE_KINDS.includes(kind) ? userName(current) : current,
-      tag: PEOPLE_KINDS.includes(kind) && withoutAccount(current) ? NO_ACCOUNT_TAG : ''});
+      tag: PEOPLE_KINDS.includes(kind) && withoutAccount(current) ? NO_ACCOUNT_TAG : '', color: kind === 'analyst' ? personColor(current) : ''});
     // A status set by hand can go back to the Status Rules.
     if (kind === 'status' && call.status_mode === 'manual') items.push({value: AUTO_STATUS, label: '↺ Back to automatic', action: true});
     const control = choiceControl({
@@ -1469,8 +1495,11 @@
     return state.fields.filter((field) => shown.has(field.key) && field.source !== 'tracking');
   };
   // Two fields share a column when both are shown, the first above the second: the Prioritization (Prioritized or Track
-  // only) above the Priority of the call.
-  const PAIRED_FIELDS = {prioritization: 'priority'};
+  // only) above the Priority of the call, the Scoring Points Lost above the Repeated Issue and the Analysis Status above the
+  // Implementation Status.
+  const PAIRED_FIELDS = {prioritization: 'priority', scoring_points_lost: 'repeated_issue', analysis_status: 'implementation_status'};
+  // Shorter header names of the table for fields that keep their default name (the whole name on hover).
+  const SHORT_HEADERS = {'Scoring Points Lost': 'Points Lost'};
   // The field columns, each with the field shown below it in the same column (or none).
   const fieldColumnGroups = () => {
     const fields = fieldColumns();
@@ -1711,12 +1740,21 @@
     const filterable = new Set(filterableFields().map((field) => field.key));
     anchor = rootHeader;
     fieldColumnGroups().forEach(({field, below}) => {
-      const cell = headerCell(field.label, `field:${field.key}`, filterable.has(field.key) ? `field:${field.key}` : '', sectionOf(field.section));
+      // Two names ending in the same word (Analysis Status, Implementation Status) share it above them: Status, then Analysis
+      // and Implementation.
+      const lastWord = (label) => String(label).trim().split(/\s+/).pop();
+      const common = below && String(field.label).trim().includes(' ') && String(below.label).trim().includes(' ')
+        && lastWord(field.label).toLowerCase() === lastWord(below.label).toLowerCase() ? lastWord(field.label) : '';
+      const withoutCommon = (label) => (common ? String(label).trim().slice(0, -common.length).trim() : label);
+      const cell = headerCell(common ? withoutCommon(field.label) : SHORT_HEADERS[field.label] || field.label, `field:${field.key}`,
+        filterable.has(field.key) ? `field:${field.key}` : '', sectionOf(field.section));
+      cell.title = `${sectionOf(field.section).label} · ${field.label}`;
       // The field shown below, in the same column, sorts and filters by its own name.
       if (below) {
-        cell.append(headerItem(below.label, `field:${below.key}`, filterable.has(below.key) ? `field:${below.key}` : ''));
+        cell.append(headerItem(withoutCommon(below.label), `field:${below.key}`, filterable.has(below.key) ? `field:${below.key}` : ''));
         cell.title = `${cell.title} · ${below.label}`;
       }
+      if (common) cell.prepend(node('span', common, 'nq-header-common'));
       if ([field, below].some((item) => item && ['list', 'yes_no'].includes(item.type))) cell.classList.add('nq-choice-col');
       if (field.section === 'rca') rootHeader.before(cell);
       else { anchor.after(cell); anchor = cell; }
@@ -2283,7 +2321,6 @@
       renderPagination(result);
       renderBulk();
       if (state.detail) renderDetailNav();
-      $('nq-view-count').textContent = number(result.total);
       renderPanelCounts(result.total, result.in_queue);
       // The values each filter offers are asked for once the calls are on screen: the list and its count do not wait
       // behind them on the server.
@@ -3908,7 +3945,7 @@
     const sections = {};
     const section = (key, title, note, ...content) => {
       const box = node('section', undefined, 'nq-failure-section nq-progress-section nq-priority-subpanel');
-      box.append(node('h3', title, 'nq-failure-title'), ...(note ? [node('p', note, 'nq-hint')] : []), ...content);
+      box.append(node('h3', title, 'nq-failure-title'), ...(note ? [note instanceof Node ? note : node('p', note, 'nq-hint')] : []), ...content);
       sections[key] = box;
     };
     const notes = [];
@@ -4497,7 +4534,17 @@
         data.tracked.rows.length ? queueTable(data.tracked.rows) : emptyLabel('No tracked call is waiting.'));
       queues.append(queueSubpanel('Tracked', '', [`${number(data.tracked.total)} waiting`], tracked));
     }
-    section('queues', 'Next to analyse', `Each queue in a subpanel, one above the other: the calls whose NQ Call Status is In Queue (Statuses & Teams), first those under analysis (their status before their owner), then its first ${data.settings.capacity} calls waiting for somebody, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, in the last subpanel, folded. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls): the calls of a hotspot are analysed together, so it takes along its Track only calls, which keep their Priority and leave the tracked calls; Waiting · Owner tells how many of its calls wait, of its calls in the queue (3 of 5), and below who has them (each analyst, else each team, with how many calls) and how many of its calls are Track only; its other waiting calls are folded below the hotspots. A call given a team or an analyst still waits until somebody attends it, and an attended call stays while its status is In Queue (Under Analysis by default); a call set back to a waiting status waits again: the views show every waiting call, those nobody has, those waiting for an analyst of your teams (their team, or the team of their queue) and yours; Owner tells who has each call, Take makes you its analyst (every call without an analyst of a hotspot) and admins select calls or hotspots to assign them to a team or an analyst.`, ...content);
+    const cap = data.settings.capacity;
+    section('queues', 'Next to analyse', bulletList([
+      '- **Queues:** one subpanel per queue, with the calls whose NQ Call Status is *In Queue* (Statuses & Teams).',
+      `- **Order:** first the calls under analysis, then the first ${cap} waiting ones as the analysts take them: Priority, newest campaign, step of its list, highest Expected Gain, oldest.`,
+      '- **Tracked calls:** in no team queue, folded in the last subpanel.',
+      `- **Hotspots:** a queue listed by hotspots shows its first ${cap} hotspots of ${data.settings.min_hotspot_calls} or more failures (click one to see its calls). Their calls are analysed together, Track only ones included.`,
+      '- **Waiting · Owner:** how many calls of the hotspot wait, of those in the queue (3 of 5), and who has them.',
+      '- **Still waiting:** a call given a team or an analyst waits until somebody attends it; an attended call stays while its status is *In Queue* (Under Analysis by default).',
+      '- **Views:** every waiting call, those nobody has, those of your teams and yours.',
+      '- **Actions:** click a call to open it; **Take** makes you its analyst; admins select calls or hotspots to assign them.',
+    ].join('\n')), ...content);
     $('nq-priority').replaceChildren(...['steps', 'queues', 'impact'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;

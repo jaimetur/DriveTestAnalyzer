@@ -359,6 +359,11 @@ V49_FORMER_COLORS = (('IMS/E2E', '#b85b20'), ('Indeterminate', '#b08a3e'), ('Inv
 # closes a call (Implementation Status Implemented or Not Applicable does).
 ANALYSIS_CENTER_V50_STATE_KEY = 'nq_analysis_center_v50'
 ANALYSIS_CENTER_V51_STATE_KEY = 'nq_analysis_center_v51'
+# A version under test took Repeated Issue out of the workspace layout (ticket #192): where it did, the column comes back
+# once, now below the Scoring Points Lost in its column.
+ANALYSIS_CENTER_V52_STATE_KEY = 'nq_analysis_center_v52'
+ANALYSIS_CENTER_V53_STATE_KEY = 'nq_analysis_center_v53'
+V53_SHOWN_COLUMNS = ('repeated_issue',)
 V50_FORMER_CLOSED_RULES = (
     {'status': 'Closed', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': ['Implemented']}]},
     {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Finished']},
@@ -382,7 +387,7 @@ DTA_ERICSSON_STATE_KEY = 'nq_dta_rca_ericsson'
 DTA_ERICSSON_MAX_PENDING = 900
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-18.2'
+SCHEMA_VERSION = '2026-11-19.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -1095,6 +1100,16 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V51_STATE_KEY):
         _upgrade_applies_when_v51(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V51_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V53_STATE_KEY):
+        if task_repository.get_workspace_state(ANALYSIS_CENTER_V52_STATE_KEY):
+            fields = list_fields(task_repository)
+            shown = [field for field in fields if field['key'] in V53_SHOWN_COLUMNS and not field['in_table']]
+            for field in shown:
+                field['in_table'] = True
+            if shown:
+                _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                           CATALOG_CALL_FIELDS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V53_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 

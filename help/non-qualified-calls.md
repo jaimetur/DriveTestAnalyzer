@@ -148,7 +148,7 @@ App Events (in [App Logs](app-logs.md#app-events)) records every action of the u
 
 ## Sections bar
 
-A bar above the Filters, sticky at the top of the window, jumps to the top of the page (its arrow) and to each panel: **Filters**, **NQ Hotspots** ([NQ Hotspots, Clustered & Time-Window Issues](#nq-hotspots-clustered-time-window-issues)), **NQ Queues** (NQ Prioritization & Queues), **NQ Maps**, **NQ Calls** (the [table](#nq-calls-panel), with the number of calls of the filters), **Summary**, **NQ Rate**, **Failures**, **RCA Sources**, **Root Causes**, **Lifecycle** and **Progress**. **NQ Analysis Configuration** is below it, at its right (beside it on a phone).
+A bar above the Filters, sticky at the top of the window, jumps to the top of the page (its arrow) and to each panel: **Filters**, **NQ Hotspots** ([NQ Hotspots, Clustered & Time-Window Issues](#nq-hotspots-clustered-time-window-issues)), **NQ Queues** (NQ Prioritization & Queues), **NQ Maps**, **NQ Calls** (the [table](#nq-calls-panel)), **Summary**, **NQ Rate**, **Failures**, **RCA Sources**, **Root Causes**, **Lifecycle** and **Progress**. **NQ Analysis Configuration** is below it, at its right (beside it on a phone).
 
 - **Jumping:** the chosen panel opens at the top, below the bar (unfolded if folded), and stays there while its data arrives; the bar marks the panel being read and, on a narrow window, scrolls sideways to keep it in sight.
 - **Badges of every panel:** below its **Collapse** button, the calls of the filters (*774 Filtered Calls*) and, standing out, the calls the queues list (*316 In Queues*, the same count as the [Lifecycle & Phases](#lifecycle-phases) card), then the chips of the active filters. While it waits for data it shows an animated **Loading…** bar over its previous content.
@@ -573,10 +573,13 @@ Follow up the calls one by one. The **NQ Calls** panel lists one row per call, w
 Choose and arrange the columns of the table.
 
 - **Colours:** every header is topped with the colour of its group, as in Excel: the call (and the optional and CDR columns) that of the call, each field that of its section, and the follow-up columns (team, analyst, root category and cause, status, comments) that of the section of their follow-up field.
-- **Analyst / Team:** the Analyst of the call above its Team, each chosen in the row.
+- **Analyst / Team:** the Analyst of the call above its Team, each chosen in the row. Each analyst has a colour of their own (the same in every call), so the calls of each one read apart.
 - **Analyst Fields:** how many of the fields of the analysts the call has filled out of those to fill (`7/12`), with a bar, green when every one is filled; hover lists those still empty. It counts as **Analyst fields** of the call (a field that does not apply to the call counts as filled).
-- **Fit:** the default columns fit screens of 1600 px and wider. Long values wrap on two lines or are shortened (whole on hover), and the time goes below the date. Related values share a column, one below the other; the **Prioritization** and the **Priority** share one when both are shown (Priority below, chosen in the row), each name of the header sorting and filtering its own field.
-- **Default columns of a new workspace:** after the root category and cause, the Prioritization with the Priority, the Repeated Issue, the Scoring Points Lost, the Analysis Status and the Implementation Status. The Scoring Impact and the other fields are added with **Columns**.
+- **Fit:** the default columns fit without a horizontal scroll down to a window of 1440 px, with a smaller text. Long values wrap on two lines or are shortened (whole on hover), the header names wrap and the time goes below the date. The sort arrow shows only on the column the table is sorted by. Related values share a column, one below the other, each name of the header sorting and filtering its own field:
+  - **Prioritization** above **Priority** (chosen in the row).
+  - **Points Lost** (the Scoring Points Lost) above **Repeated Issue**.
+  - **Status:** **Analysis** above **Implementation**, the word they share on top.
+- **Default columns of a new workspace:** after the root category and cause, the Prioritization with the Priority, the Scoring Points Lost with the Repeated Issue, and the Analysis Status with the Implementation Status. The Scoring Impact and the other fields are added with **Columns**.
 - **Scroll position:** reloading the page returns to it.
 
 **Order of the columns:** drag a header onto another to move it before or after it, in your own [layout](#table-layouts); columns added later take their default place. **Default column order**, shown while the order differs, puts them back.

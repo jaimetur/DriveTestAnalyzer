@@ -1291,33 +1291,45 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .non-qualified-calls .nq-view-switch a { gap: .4rem; padding: .5rem .75rem; }
 }
 .nq-view-switch svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.nq-view-count { padding: .05rem .5rem; border-radius: 999px; background: rgba(255, 255, 255, .2); font-size: .78rem; }
-.nq-view-switch .is-active .nq-view-count { background: rgba(125, 18, 56, .12); }
-.nq-view-count:empty { display: none; }
 /* The default columns fit the panel: field values wrap on two lines and the selects are narrower. */
 .nq-table th.nq-dynamic-col span[data-sort] { white-space: normal; }
 .nq-table td.nq-field-cell { max-width: 7.5rem; }
 /* A list column is as narrow as its picker: a two-word name (Analysis Status) goes on two lines, with its sort and filter. */
-.nq-table th.nq-choice-col { width: 6.2rem; }
-.non-qualified-calls .nq-table td.nq-field-cell .nq-pill-select { min-width: 6rem; }
+.nq-table th.nq-choice-col { width: 5.4rem; }
+.non-qualified-calls .nq-table td.nq-field-cell .nq-pill-select { min-width: 5.2rem; }
 .nq-table .nq-field-cell .nq-field-text { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; }
 /* A cause column showing the category of its source when the source gives no cause. */
 .nq-field-cell .nq-field-fallback { font-style: italic; }
 /* Two fields in one column (the Prioritization above the Priority). */
 .nq-field-pair { display: grid; gap: .3rem; justify-items: start; }
 .nq-field-fallback-label { display: block; margin-top: .1rem; color: var(--nq-muted); font-size: .62rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
-/* The panel is never wider than the app (1680 px): the default columns fit it with narrower selects, values, cell paddings
-   and header names at every width. */
-.non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-analyst { min-width: 6.2rem; max-width: 8rem; }
-.non-qualified-calls .nq-table .nq-root-select { min-width: 6.8rem; max-width: 9.5rem; }
+/* The panel is never wider than the app (1680 px): the default columns fit it, without a horizontal scroll down to a 1440 px
+   window, with narrower selects, pills, values, cell paddings and header names; the sort arrow shows only on the sorted column. */
+.non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-analyst { min-width: 5.2rem; max-width: 5.8rem; }
+.non-qualified-calls .nq-table .nq-root-select { min-width: 5.6rem; max-width: 6rem; }
 .nq-table th, .nq-table td { padding-left: 4px; padding-right: 4px; }
 .non-qualified-calls .nq-table .nq-comment-button { max-width: 8rem; }
-.nq-table td.nq-stacked { max-width: 5.6rem; }
-.nq-table td.nq-failure { max-width: 7.5rem; }
+.nq-table td.nq-stacked { max-width: 4.8rem; }
+.nq-table td.nq-failure { max-width: 6rem; }
 .nq-table th { font-size: .66rem; }
 @media (max-width: 1599px) {
   /* And a smaller text below 1600 px. */
   .nq-table { font-size: .78rem; }
+}
+#nq-table .nq-pill { max-width: 6.4rem; }
+#nq-table th, #nq-table td { padding-left: 3px; padding-right: 3px; }
+#nq-table th { font-size: .62rem; }
+.non-qualified-calls #nq-table .nq-comment-button { padding-left: .25rem; padding-right: .25rem; }
+#nq-table th [data-sort]:not(.is-sorted)::after { content: none; }
+#nq-table th .nq-header-item, #nq-table th .nq-header-item > span { white-space: normal; }
+/* A smaller text in the calls table, so its values never run into the next column. */
+#nq-table { font-size: .78rem; }
+#nq-table .nq-pill, #nq-table .nq-pill-select, #nq-table .nq-result, #nq-table .nq-service { font-size: .72rem; }
+#nq-table td.nq-failure > * { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nq-table td.nq-failure > .nq-result { display: inline-block; vertical-align: top; }
+@media (max-width: 1599px) {
+  #nq-table { font-size: .74rem; }
+  #nq-table .nq-pill, #nq-table .nq-pill-select, #nq-table .nq-result, #nq-table .nq-service { font-size: .7rem; }
 }
 /* Every tab of the call on one line: a wider panel and tighter tabs. */
 .nq-drawer { width: min(880px, 100vw); }
@@ -1489,7 +1501,6 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-center-toggle span { display: none; }
   .non-qualified-calls .nq-view-switch a { flex: 0 0 auto; justify-content: center; gap: .3rem; padding: .45rem .7rem; font-size: .8rem; white-space: nowrap; }
   .nq-view-switch svg { width: .95rem; height: .95rem; }
-  .nq-view-count { padding: 0 .35rem; font-size: .68rem; }
   .nq-kpis, .nq-summary-panel .nq-kpis, .nq-rate-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .nq-kpi, .nq-rate-card { padding: 10px 11px; }
   .nq-kpi strong, .nq-rate-card strong { font-size: 1.4rem; }
@@ -2770,9 +2781,20 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .confirm-overlay.confirm-variant-nq-group-copy .confirm-panel #confirm-copy { max-height: none; overflow: visible; white-space: normal; }
 /* Analyst Fields: the fields of the analysts a call has filled out of those to fill, with a bar. */
 .nq-analyst-fields-cell { white-space: nowrap; }
-.nq-analyst-fields { display: grid; gap: .25rem; min-width: 3.6rem; }
+/* Its two-word name on two lines, as narrow as its value. */
+.nq-table th[data-column="analyst_fields"] .nq-header-item { white-space: normal; }
+.nq-analyst-fields { display: grid; gap: .25rem; min-width: 2.8rem; }
 .nq-analyst-fields strong { font-size: .82rem; font-weight: 800; }
 .nq-analyst-fields-bar { display: block; height: .35rem; border-radius: 999px; background: #eceff2; overflow: hidden; }
 .nq-analyst-fields-bar span { display: block; height: 100%; border-radius: inherit; background: #e08a1e; }
 .nq-analyst-fields.is-complete strong { color: #2e8b57; }
 .nq-analyst-fields.is-complete .nq-analyst-fields-bar span { background: #2e8b57; }
+/* The notes of the panels as short bullets. */
+.nq-priority-subpanel > .nq-bullets { margin: 0 0 .8rem; color: var(--nq-muted); font-size: .84rem; }
+/* The word two names of a column share (Status), above them. */
+#nq-table th .nq-header-common { display: block; margin-bottom: .1rem; opacity: .75; }
+/* The two names of a column one below the other, a thin line between them, so they read as two fields (with a filter or not). */
+#nq-table th .nq-header-item + .nq-header-item { margin-top: .2rem; padding-top: .2rem; border-top: 1px solid rgba(94, 15, 44, .22); }
+/* Analyst Fields stays narrow on wide screens: its name on two lines over a short bar. */
+#nq-table th[data-column="analyst_fields"] { width: 1%; }
+#nq-table .nq-analyst-fields { width: 3.4rem; }

@@ -1785,6 +1785,20 @@ def test_the_default_columns_of_the_workspace_layout_and_the_priority_in_workspa
     nq._store_fields(repository, [{**field, 'in_table': False} if field['key'] == 'priority' else field for field in nq.list_fields(repository)])
     nq.ensure_nq_tables(repository)
     assert 'priority' not in nq.workspace_layout(repository)['fields']
+    # Repeated Issue (below the Scoring Points Lost in its column, ticket #192) comes back once where a version under test took
+    # it out of the workspace layout, and only there.
+    hide = lambda: nq._store_fields(repository, [{**field, 'in_table': False} if field['key'] == 'repeated_issue' else field
+                                                 for field in nq.list_fields(repository)])
+    hide()
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V53_STATE_KEY, '')
+    repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert 'repeated_issue' not in nq.workspace_layout(repository)['fields']
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V52_STATE_KEY, '1')
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V53_STATE_KEY, '')
+    repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert 'repeated_issue' in nq.workspace_layout(repository)['fields']
 
 
 def test_workspaces_before_name_the_rca_fields_after_their_source(client, tmp_path):
