@@ -2826,10 +2826,12 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .non-qualified-calls #nq-table .nq-cause-picker-button::after { right: .45rem; width: .32rem; height: .32rem; }
 .non-qualified-calls #nq-table select.nq-pill-select { background-position: right .35rem center; }
 /* The room of the table goes where it reads more: Points Lost / Repeated Issue as narrow as its names (Points Lost on two
-   lines), the Root Technology picker as wide as its column, and the Analyst / Team and status pickers wider when the
+   lines), Root Technology as narrow as its picker (Root over Technology), the status pickers wide enough for their
+   values, and the Analyst / Team pickers wider when the
    window allows it (their least width is still that of the other pickers, so the table fits as before). */
 #nq-table th:has([data-sort="field:scoring_points_lost"]), #nq-table th:has([data-sort="field:repeated_issue"]) { width: 1%; }
-.non-qualified-calls #nq-table .nq-root-technology-cell .nq-pill-select { width: 100%; max-width: none; }
+#nq-table th:has([data-sort="root_technology"]) { width: 1%; }
+.non-qualified-calls #nq-table .nq-root-technology-cell .nq-pill-select { width: 6.1rem; max-width: none; }
 .non-qualified-calls #nq-table .nq-pill-analyst, .non-qualified-calls #nq-table .nq-pill-team { max-width: 9rem; }
 .non-qualified-calls #nq-table td.nq-field-cell .nq-pill-select, .non-qualified-calls #nq-table .nq-pill-status { max-width: 8rem; }
 .non-qualified-calls #nq-table .nq-root-cell .nq-root-select { max-width: 8.5rem; }
@@ -2838,3 +2840,7 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 #nq-table .nq-points-lost strong { font-size: .8rem; line-height: 1.1; }
 #nq-table .nq-points-lost-bar { display: block; height: .4rem; border-radius: 999px; background: #eceff2; overflow: hidden; }
 #nq-table .nq-points-lost-bar span { display: block; height: 100%; border-radius: inherit; }
+/* The status pickers (Analysis, Implementation and Global Status) show their longest values whole. */
+.non-qualified-calls #nq-table .nq-status-field-select { min-width: 7.7rem; max-width: 9.5rem; }
+.non-qualified-calls #nq-table .nq-pill-status { min-width: 9.25rem; max-width: 10rem; }
+#nq-table td.nq-field-cell:has(.nq-status-field-select) { max-width: none; }

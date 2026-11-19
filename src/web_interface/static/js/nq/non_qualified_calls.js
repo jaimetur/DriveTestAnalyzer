@@ -1870,6 +1870,7 @@
       const picker = choiceControl({items: fieldChoices(field, value), value, label: `${field.label} of the call`,
         onChange: (chosen) => saveFieldValue(call, field.key, chosen, picker), onAdd: listAdder(field)});
       picker.classList.add('nq-field-select');
+      if (/_status$/.test(field.key)) picker.classList.add('nq-status-field-select');
       cell.append(picker);
       return cell;
     }
