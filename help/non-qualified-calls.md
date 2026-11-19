@@ -580,7 +580,7 @@ Choose and arrange the columns of the table.
   - **Prioritization** above **Priority** (chosen in the row).
   - **Points Lost** (the Scoring Points Lost) above **Repeated Issue**.
   - **Analysis Status** above **Implementation Status**.
-- **Default columns of a new workspace:** after the root category and cause, the Prioritization with the Priority, the Scoring Points Lost with the Repeated Issue, then **Analyst / Team** before the statuses (the Analysis Status with the Implementation Status, then the Global Status). A column of one name (Global Status) has it on the first line. The Scoring Impact and the other fields are added with **Columns**.
+- **Default columns of a new workspace:** after the root category and cause, the Scoring Points Lost with the Repeated Issue, the Prioritization with the Priority, then **Analyst / Team** before the statuses (the Analysis Status with the Implementation Status, then the Global Status). A column of one name (Global Status) has it on the first line. The Scoring Impact and the other fields are added with **Columns**.
 - **Scroll position:** reloading the page returns to it.
 
 **Order of the columns:** drag a header onto another to move it before or after it, in your own [layout](#table-layouts); columns added later take their default place. **Default column order**, shown while the order differs, puts them back.

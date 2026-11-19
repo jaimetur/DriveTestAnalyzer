@@ -1554,9 +1554,10 @@
   // Where each browser kept the order before the layouts: it becomes the order of the user's own layout, once.
   const LEGACY_ORDER_STORAGE = `nq-column-order:${$('nq-table')?.dataset.workspace || ''}`;
   // Columns shown by default before another one (the first of its places shown): Session Type (CDR) before Test / Technology
-  // instead of after Result / Failure, the Repeated Issue before the Scoring Points Lost (when it is a column of its own) and
-  // Analyst / Team before the statuses.
+  // instead of after Result / Failure, the Repeated Issue before the Scoring Points Lost (when it is a column of its own), the
+  // Scoring Points Lost (with the Repeated Issue below it) before the Prioritization and Analyst / Team before the statuses.
   const DEFAULT_COLUMN_PLACES = {session_type: ['test_name'], 'field:repeated_issue': ['field:scoring_points_lost'],
+    'field:scoring_points_lost': ['field:prioritization', 'field:priority'],
     team: ['field:analysis_status', 'field:implementation_status', 'status']};
   // The column keys in the order the rows are built, and in the order they are shown.
   let naturalColumns = [];
