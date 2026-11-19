@@ -2816,3 +2816,8 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 /* The recommendation under the root category and cause is as narrow as its pickers: its text wraps (whole on hover). */
 #nq-table .nq-root-suggestion { max-width: 7rem; }
 #nq-table .nq-root-suggestion-text { -webkit-line-clamp: 3; }
+/* The recommendation reads as a suggestion, apart from the values of the call: light grey, a dashed grey border. */
+#nq-table .nq-root-suggestion { border: 1px dashed #c3cad1; background: #f1f3f5; color: #5d6873; }
+#nq-table .nq-root-suggestion .nq-root-suggestion-source { color: #7a858f; }
+#nq-table .nq-root-suggestion .nq-root-suggestion-text { color: #3c4650; }
+#nq-table .nq-root-suggestion:hover:not(:disabled) { border-color: #8e99a3; background: #e7eaed; color: #3c4650; }
