@@ -390,6 +390,15 @@
   // The card (and RCA group) of the Filters panel of each origin.
   const ORIGIN_HOSTS = {cdr: 'cdr', dta: 'dta', netcheck: 'netcheck', ericsson: 'ericsson', tool: 'tool', analyst: 'analyst'};
   const filterSelects = () => [...root.querySelectorAll('[data-nq-filter]')];
+  // Include or Exclude (ticket #193): whether the ticked values of a list are kept or left out.
+  const isExcluding = (select) => 'multiselectExclude' in (select?.dataset || {}) && select.dataset.multiselectExcluding === 'true';
+  // Sets the mode of a list; whether it changed.
+  const setExcluding = (select, excluding) => {
+    if (!select || !('multiselectExclude' in select.dataset) || isExcluding(select) === Boolean(excluding)) return false;
+    if (excluding) select.dataset.multiselectExcluding = 'true';
+    else delete select.dataset.multiselectExcluding;
+    return true;
+  };
   // The filters of the CDR and the follow-up that are fields of the catalog (source:reference), among its fields.
   const CATALOG_FILTERS = {
     failure_classification: 'cdr:failure_classification', failure_category: 'cdr:failure_category',
@@ -508,6 +517,8 @@
       select.dataset.nqFilter = name;
       select.dataset.multiselectNoValuesLabel = 'No values available';
       select.dataset.multiselectEmptyLabel = 'All values';
+      // Its values can be kept or left out (Include / Exclude, ticket #193).
+      select.dataset.multiselectExclude = '';
       select.setAttribute('aria-label', field?.label || text);
       label.append(select);
       host.append(label);
@@ -554,6 +565,8 @@
       select.dataset.nqFilter = column.filter;
       select.dataset.multiselectNoValuesLabel = 'No values available';
       select.dataset.multiselectEmptyLabel = 'All values';
+      // Its values can be kept or left out (Include / Exclude, ticket #193).
+      select.dataset.multiselectExclude = '';
       select.setAttribute('aria-label', column.label);
       label.append(select);
       host.append(label);
@@ -581,6 +594,8 @@
       // Every value or none means no restriction.
       if (!chosen.length || chosen.length >= enabled.length) return;
       const field = select.dataset.nqFilter;
+      // A list in Exclude leaves its ticked values out (every call but theirs).
+      if (isExcluding(select)) (filters.excluded ||= []).push(field);
       // Analysis fields travel together: {fields: {key: [values]}}; so do the table columns: {columns: {key: [values]}}.
       if (field.startsWith('field:')) (filters.fields ||= {})[field.slice(6)] = chosen;
       else if (field.startsWith('column:')) (filters.columns ||= {})[field.slice(7)] = chosen;
@@ -602,10 +617,11 @@
   const filterValues = (filters, field) => (field.startsWith('field:') ? (filters.fields || {})[field.slice(6)]
     : field.startsWith('column:') ? (filters.columns || {})[field.slice(7)] : filters[field]);
   const applySavedFilters = (saved) => {
+    const excludedNames = new Set(saved.excluded || []);
     filterSelects().forEach((select) => {
       const values = new Set(filterValues(saved, select.dataset.nqFilter) || []);
       // Only the lists whose selection changes are drawn again (none of those without a saved value, as the page opens).
-      let changed = false;
+      let changed = setExcluding(select, excludedNames.has(select.dataset.nqFilter));
       [...select.options].forEach((option) => {
         const selected = values.has(option.value);
         if (option.selected !== selected) {
@@ -675,7 +691,8 @@
     if (!select) return;
     const target = ['team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause'].includes(field) ? (value || state.unassigned) : value;
     const chosen = [...select.selectedOptions].map((option) => option.value);
-    const toggleOff = chosen.length === 1 && chosen[0] === target;
+    const toggleOff = chosen.length === 1 && chosen[0] === target && !isExcluding(select);
+    setExcluding(select, false);
     [...select.options].forEach((option) => { option.selected = !toggleOff && option.value === target; });
     select.dispatchEvent(new Event('change', {bubbles: true}));
   };
@@ -687,7 +704,8 @@
   const selectMany = (field, values) => {
     const select = root.querySelector(`[data-nq-filter="${field}"]`);
     if (!select) return;
-    const same = manySelected(field, values);
+    const same = manySelected(field, values) && !isExcluding(select);
+    setExcluding(select, false);
     [...select.options].forEach((option) => { option.selected = !same && values.includes(option.value); });
     select.dispatchEvent(new Event('change', {bubbles: true}));
   };
@@ -697,7 +715,8 @@
   const drill = (pairs) => {
     const filters = currentFilters();
     const active = pairs.every(([field, value]) => (field === 'open_only' ? filters[field] === true
-      : (filterValues(filters, field) || []).length === 1 && filterValues(filters, field)[0] === value));
+      : (filterValues(filters, field) || []).length === 1 && filterValues(filters, field)[0] === value
+        && !(filters.excluded || []).includes(field)));
     pairs.forEach(([field, value]) => {
       if (field === 'open_only') {
         // A pair made only of this flag toggles it; with other values it is only switched on.
@@ -715,6 +734,7 @@
       }
       const select = root.querySelector(`[data-nq-filter="${field}"]`);
       if (!select) return;
+      setExcluding(select, false);
       [...select.options].forEach((option) => { option.selected = !active && option.value === value; });
       select.dispatchEvent(new Event('multiselect:options-updated'));
     });
@@ -723,7 +743,8 @@
   const isDrilled = (pairs) => {
     const filters = currentFilters();
     return pairs.every(([field, value]) => (field === 'open_only' ? filters[field] === true
-      : (filterValues(filters, field) || []).length === 1 && filterValues(filters, field)[0] === value));
+      : (filterValues(filters, field) || []).length === 1 && filterValues(filters, field)[0] === value
+        && !(filters.excluded || []).includes(field)));
   };
   // The total cards remove the filters their sibling cards set.
   const CARD_FILTERS = ['state', 'rca_state', 'open_only'];
@@ -734,6 +755,7 @@
       else {
         const select = root.querySelector(`[data-nq-filter="${field}"]`);
         if (!select) return;
+        setExcluding(select, false);
         [...select.options].forEach((option) => { option.selected = false; });
         select.dispatchEvent(new Event('multiselect:options-updated'));
       }
@@ -773,6 +795,7 @@
     if (box) { box.checked = false; scheduleLoad(); return; }
     const select = root.querySelector(`[data-nq-filter="${field}"]`);
     if (!select) return;
+    setExcluding(select, false);
     [...select.options].forEach((option) => { option.selected = false; });
     select.dispatchEvent(new Event('change', {bubbles: true}));
   };
@@ -803,7 +826,8 @@
   const renderActiveFilters = (filters) => {
     const chips = [];
     const flagLabels = {open_only: 'Open calls only', mine: 'Assigned to me', without_comments: 'Without comments', in_scope: 'NQ Calls in Scope Only'};
-    const entries = Object.entries(filters).filter(([field]) => !['fields', 'columns'].includes(field));
+    const entries = Object.entries(filters).filter(([field]) => !['fields', 'columns', 'excluded'].includes(field));
+    const leftOut = new Set(filters.excluded || []);
     Object.entries(filters.fields || {}).forEach(([key, values]) => entries.push([`field:${key}`, values]));
     Object.entries(filters.columns || {}).forEach(([key, values]) => entries.push([`column:${key}`, values]));
     markActiveFilters(new Set(entries.map(([field]) => field)));
@@ -818,7 +842,8 @@
           : [...(select?.options || [])].find((option) => option.value === item)?.textContent || item));
         const name = field.startsWith('field:') ? historyLabel(field)
           : field.startsWith('column:') ? (select?.getAttribute('aria-label') || field.slice(7)) : (FIELD_LABELS[field] || field);
-        text = `${name}: ${labels.length > 3 ? `${labels.slice(0, 3).join(', ')} +${labels.length - 3}` : labels.join(', ')}`;
+        // A filter in Exclude reads "not …" (every call but those).
+        text = `${name}: ${leftOut.has(field) ? 'not ' : ''}${labels.length > 3 ? `${labels.slice(0, 3).join(', ')} +${labels.length - 3}` : labels.join(', ')}`;
       }
       // NQ Calls in Scope Only always leads the chips, as its switch stands above the filters.
       chips[field === 'in_scope' ? 'unshift' : 'push']({field, text});
@@ -990,10 +1015,29 @@
       syncAll();
     });
     syncAll();
+    // Include keeps only the ticked values, Exclude every value but them (as the list of the Filters panel).
+    let excluding = isExcluding(select);
+    const mode = node('div', undefined, 'multiselect-mode nq-column-filter-mode');
+    mode.setAttribute('role', 'group');
+    mode.setAttribute('aria-label', 'What the ticked values do');
+    const paintMode = () => mode.querySelectorAll('button').forEach((item) => {
+      item.setAttribute('aria-pressed', String((item.dataset.multiselectMode === 'exclude') === excluding));
+    });
+    [['include', 'Include', 'Keep only the ticked values'], ['exclude', 'Exclude', 'Keep every value except the ticked ones']]
+      .forEach(([value, text, title]) => {
+        const item = node('button', text);
+        item.type = 'button';
+        item.title = title;
+        item.dataset.multiselectMode = value;
+        item.addEventListener('click', () => { excluding = value === 'exclude'; paintMode(); });
+        mode.append(item);
+      });
+    paintMode();
     const actions = node('div', undefined, 'nq-column-filter-actions');
     const apply = node('button', 'Apply', 'nq-primary-action');
     apply.type = 'button';
     apply.addEventListener('click', () => {
+      setExcluding(select, excluding);
       if (everyValue) [...select.options].forEach((option) => { option.selected = true; });
       else boxes.forEach(([, box, option]) => { option.selected = box.checked; });
       select.dispatchEvent(new Event('multiselect:options-updated'));
@@ -1001,7 +1045,7 @@
       closeColumnFilter();
     });
     actions.append(apply);
-    popover.append(search, allLabel, list, actions);
+    popover.append(mode, search, allLabel, list, actions);
     document.body.append(popover);
     columnFilter = popover;
     columnFilterAnchor = button;
@@ -1748,8 +1792,11 @@
     const filterable = new Set(filterableFields().map((field) => field.key));
     anchor = after('root_technology') || rootHeader;
     fieldColumnGroups().forEach(({field, below}) => {
+      // Every status column (Analysis Status, Implementation Status…) takes the band of the NQ Call Status, whatever the
+      // section the status is filled in.
+      const band = field.type === 'list' && /_status$/.test(field.key) ? trackingSection('status') : sectionOf(field.section);
       const cell = headerCell(SHORT_HEADERS[field.label] || field.label, `field:${field.key}`,
-        filterable.has(field.key) ? `field:${field.key}` : '', sectionOf(field.section));
+        filterable.has(field.key) ? `field:${field.key}` : '', band);
       cell.title = `${sectionOf(field.section).label} · ${field.label}`;
       // The field shown below, in the same column, sorts and filters by its own name.
       if (below) {

@@ -13,6 +13,7 @@ from openpyxl import load_workbook
 
 import src.DriveTestAnalyzer as core
 from src.modules.nq import non_qualified_calls as nq
+from src.modules.nq import non_qualified_calls_export as nq_export
 from src.modules.core.repository import local_now_iso
 
 
@@ -1089,6 +1090,40 @@ def test_speech_calls_are_listed_once_and_their_samples_keep_their_own_follow_up
     assert samples[0][0] == 'JOIN_ID' and samples[1][0] == query(client)['calls'][0]['join_id']
     # The comments of a sample follow its call.
     assert [row[0] for row in list(workbook['Comments'].values)[1:]] == [samples[1][0]]
+
+
+def test_filters_leave_their_values_out_in_every_panel(client, tmp_path):
+    """Ticket #193: a filter in Exclude takes every call but those of its values (also those without a value), in the
+    table, the NQ Rate population, the saved filters and the description of the exports."""
+    enable_module()
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', voice_rows())
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Data_2026_Q1.xlsx', 'data', data_rows())
+    login(client)
+    index_cdrs()
+    listed = lambda filters: client.post('/api/non-qualified-calls/calls', json={'filters': filters, 'page_size': 100}).json()['calls']
+    every = listed({})
+    kept = listed({'operator': ['EE']})
+    left = listed({'operator': ['EE'], 'excluded': ['operator']})
+    assert kept and all(call['operator'] == 'EE' for call in kept)
+    assert len(kept) + len(left) == len(every) and all(call['operator'] != 'EE' for call in left)
+    # A field of the analysts: the calls without the value (also those without any) stay.
+    key = every[0]['call_key']
+    detail = client.get(f'/api/non-qualified-calls/calls/{key}').json()['call']
+    assert client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'fields': {'analysis_status': 'Finished'}},
+                                                                     'version': detail['version']}).status_code == 200
+    finished = {'fields': {'analysis_status': ['Finished']}}
+    assert [call['call_key'] for call in listed(finished)] == [key]
+    assert key not in {call['call_key'] for call in listed({**finished, 'excluded': ['field:analysis_status']})}
+    assert len(listed({**finished, 'excluded': ['field:analysis_status']})) == len(every) - 1
+    # The NQ Rate population follows: Data left out keeps Voice only, EE left out leaves its cells.
+    only_voice = client.post('/api/non-qualified-calls/rates', json={'filters': {'service': ['data'], 'excluded': ['service']}}).json()
+    assert [matrix['service'] for matrix in only_voice['matrices']] == ['voice']
+    without_ee = client.post('/api/non-qualified-calls/rates', json={'filters': {'operator': ['EE'], 'excluded': ['operator']}}).json()
+    assert all('EE' not in cells for matrix in without_ee['matrices'] for cells in matrix['cells'].values())
+    # Saved with the selection (only for the filters with values), and read "not …" in the exports.
+    saved = nq.normalize_saved_filters({'operator': ['EE'], 'excluded': ['operator', 'campaign', 'bogus']})
+    assert saved == {'operator': ['EE'], 'excluded': ['operator']}
+    assert 'Operator: not EE' in nq_export.selection_lines(saved, {}, 'week')
 
 
 def test_nq_rate_of_each_campaign_and_operator(client, tmp_path):

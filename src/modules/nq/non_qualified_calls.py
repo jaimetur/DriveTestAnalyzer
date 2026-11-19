@@ -6095,6 +6095,23 @@ def saved_filter_keys(task_repository: Any) -> list[str]:
 # NQ Calls in Scope Only (in_scope): only the calls in the scope of the team, as the Out of Scope settings of the NQ
 # Prioritization tell them apart, in every list, panel, chart, count and share.
 FLAG_FILTERS = ('open_only', 'mine', 'without_comments', 'in_scope')
+# The filters whose values can be left out instead of kept (Exclude, ticket #193): the lists of values of the Filters
+# panel and of the columns (``field:<key>``, ``column:<key>``). ``excluded`` lists those whose values are left out.
+EXCLUDED_KEY = 'excluded'
+EXCLUDABLE_FILTERS = frozenset((*FIELD_FILTERS, *DERIVED_FILTERS, *TRACKING_FILTERS, 'nr_mode'))
+
+
+def excluded_filters(filters: Any) -> set[str]:
+    """The filters of a selection whose chosen values are left out (``operator``, ``field:<key>``, ``column:<key>``)."""
+    names = filters.get(EXCLUDED_KEY) if isinstance(filters, dict) else None
+    return {str(name) for name in names if str(name) in EXCLUDABLE_FILTERS or str(name).startswith(('field:', 'column:'))} \
+        if isinstance(names, (list, tuple, set)) else set()
+
+
+def _keep_or_leave_out(clause: str, excluded: bool) -> str:
+    """A condition, or the calls it does not take (also those without a value) when its filter leaves its values out."""
+    return f'NOT COALESCE(({clause}), 0)' if excluded else clause
+
 
 
 def normalize_saved_filters(filters: Any) -> dict[str, Any]:
@@ -6118,6 +6135,9 @@ def normalize_saved_filters(filters: Any) -> dict[str, Any]:
     search = str(filters.get('search') or '').strip()[:200]
     if search:
         saved['search'] = search
+    left_out = sorted(name for name in excluded_filters(filters) if _filter_chosen(saved, name))
+    if left_out:
+        saved[EXCLUDED_KEY] = left_out
     return saved
 
 
@@ -6349,6 +6369,7 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
     known = {field['key']: field for field in definitions or []}
     clauses: list[str] = []
     params: list[Any] = []
+    left_out = excluded_filters(filters)
     for field in (*FIELD_FILTERS, *DERIVED_FILTERS, *TRACKING_FILTERS):
         values = _strings(filters.get(field))
         if not values:
@@ -6358,10 +6379,10 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
         if any(is_pattern(value) for value in values):
             # Patterns (VF*, -Lebara) are resolved whatever the case (see value_patterns).
             clause, clause_params = sql_condition(f"lower(COALESCE({column}, ''))", values)
-            clauses.append(clause)
+            clauses.append(_keep_or_leave_out(clause, field in left_out))
             params.extend(clause_params)
             continue
-        clauses.append(f"{column} IN ({', '.join('?' for _ in values)})")
+        clauses.append(_keep_or_leave_out(f"{column} IN ({', '.join('?' for _ in values)})", field in left_out))
         params.extend(values)
     excluded = [str(name).strip().lower() for name in filters.get('_excluded_operators') or [] if str(name).strip()]
     if excluded:
@@ -6398,7 +6419,7 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
         if definition is not None and definition['source'] != 'user':
             # Fields from the follow-up, the CDR, the Ericsson RCA or derived: compared with their value.
             chosen = ['' if value == UNASSIGNED else value for value in values]
-            clauses.append(f"{field_sql(definition)} IN ({', '.join('?' for _ in chosen)})")
+            clauses.append(_keep_or_leave_out(f"{field_sql(definition)} IN ({', '.join('?' for _ in chosen)})", f'field:{key}' in left_out))
             params.extend(chosen)
             continue
         chosen = [value for value in values if value != UNASSIGNED]
@@ -6411,14 +6432,14 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
             parts.append(f"NOT EXISTS (SELECT 1 FROM {NQ_FIELD_VALUES_TABLE} f WHERE f.call_key = calls.call_key "
                          "AND f.field_key = ? AND f.value <> '')")
             params.append(str(key))
-        clauses.append('(' + ' OR '.join(parts) + ')')
+        clauses.append(_keep_or_leave_out('(' + ' OR '.join(parts) + ')', f'field:{key}' in left_out))
     # The optional and CDR columns of the table, filtered by their values ("Empty" for blank ones).
     columns = filters.get('columns') if isinstance(filters.get('columns'), dict) else {}
     for key, values in columns.items():
         expression = column_filter_sql(str(key))
         values = ['' if value == UNASSIGNED else value for value in _strings(values)]
         if expression and values:
-            clauses.append(f"{expression} IN ({', '.join('?' for _ in values)})")
+            clauses.append(_keep_or_leave_out(f"{expression} IN ({', '.join('?' for _ in values)})", f'column:{key}' in left_out))
             params.extend(values)
     # The Follow-up: the calls in any of the states chosen.
     states, parts = _strings(filters.get('state')), []
@@ -6453,7 +6474,7 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
         clauses.append('comment_count = 0')
     nr_modes = ['' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))]
     if nr_modes:
-        clauses.append(f"nr_mode IN ({', '.join('?' for _ in nr_modes)})")
+        clauses.append(_keep_or_leave_out(f"nr_mode IN ({', '.join('?' for _ in nr_modes)})", 'nr_mode' in left_out))
         params.extend(nr_modes)
     call_types = list(dict.fromkeys(CALL_TYPE_ALIASES.get(value.casefold(), value) for value in _strings(filters.get('call_type'))))
     if call_types:
@@ -7469,14 +7490,16 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
     ``out_of_scope_operators``; the totals leave them out.
     """
     scope = _scope(filters)
-    services = _strings(filters.get('service'))
-    campaigns = set(_strings(filters.get('campaign')))
-    nr_modes = {'' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))}
+    services = _population_choice(task_repository, filters, 'service')
+    campaigns = set(_population_choice(task_repository, filters, 'campaign'))
+    nr_modes = set(_population_choice(task_repository, filters, 'nr_mode'))
     mapper = ValueMapper.from_repository(task_repository)
     # (Patterns, such as VF*, take every operator they match; see value_patterns. The operators the Operator Maps exclude
-    # are left out.)
-    operators = ValueSet([*(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))),
-                          *(f'-{name}' for name in sorted(mapper.excluded_operators))])
+    # are left out, and those the Operator filter leaves out.)
+    chosen_operators = [str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))]
+    if 'operator' in excluded_filters(filters):
+        chosen_operators = [f'-{name}' for name in chosen_operators]
+    operators = ValueSet([*chosen_operators, *(f'-{name}' for name in sorted(mapper.excluded_operators))])
     # NQ Calls in Scope Only: the calls out of scope (also the qualified ones) count neither as calls nor as NQ calls.
     in_scope = filters.get('in_scope') is True
     columns = ['service', 'campaign', 'operator', 'nr_mode', *(['region'] if in_scope else [])]
@@ -7707,18 +7730,35 @@ def _copy_counts(copy: Path, columns: list[str], services: list[str]) -> list[tu
         return None
 
 
+def _population_choice(task_repository: Any, filters: dict[str, Any], field: str) -> list[str]:
+    """The Service, Campaign or NR Mode values the counts of the population take: those chosen, or, when the filter
+    leaves them out, every other value of the population (a value no call has when it leaves every one out)."""
+    values = _strings(filters.get(field))
+    if field == 'nr_mode':
+        values = ['' if value in {UNASSIGNED, 'Unknown'} else value for value in values]
+    if not values or field not in excluded_filters(filters):
+        return values
+    with task_repository.connection() as connection:
+        every = [str(row[0] or '') for row in connection.execute(
+            f'SELECT DISTINCT {field} FROM {NQ_CALL_POPULATION_TABLE} WHERE is_latest = 1')]
+    chosen = set(values)
+    return [value for value in every if value not in chosen] or ['\x00']
+
+
 def _population_filters(task_repository: Any, filters: dict[str, Any]) -> tuple[list[str], set[str], set[str], ValueMapper,
                                                                              ValueSet, bool]:
     """The filters the counts of the population follow: Service, Campaign, NR Mode, Operator (as Operator Map labels)
     and NQ Calls in Scope Only, with the value mapper of the workspace."""
-    services = _strings(filters.get('service'))
-    campaigns = set(_strings(filters.get('campaign')))
-    nr_modes = {'' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))}
+    services = _population_choice(task_repository, filters, 'service')
+    campaigns = set(_population_choice(task_repository, filters, 'campaign'))
+    nr_modes = set(_population_choice(task_repository, filters, 'nr_mode'))
     mapper = ValueMapper.from_repository(task_repository)
     # (Patterns, such as VF*, take every operator they match; see value_patterns. The operators the Operator Maps exclude
-    # are left out.)
-    operators = ValueSet([*(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))),
-                          *(f'-{name}' for name in sorted(mapper.excluded_operators))])
+    # are left out, and those the Operator filter leaves out.)
+    chosen_operators = [str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))]
+    if 'operator' in excluded_filters(filters):
+        chosen_operators = [f'-{name}' for name in chosen_operators]
+    operators = ValueSet([*chosen_operators, *(f'-{name}' for name in sorted(mapper.excluded_operators))])
     # NQ Calls in Scope Only: the calls out of scope (also the qualified ones) count nowhere.
     return services, campaigns, nr_modes, mapper, operators, filters.get('in_scope') is True
 

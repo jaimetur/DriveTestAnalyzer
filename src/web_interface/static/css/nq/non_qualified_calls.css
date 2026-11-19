@@ -724,7 +724,7 @@ span.nq-root-suggestion { cursor: default; }
 .nq-table .nq-column-filter-button:hover, .nq-table .nq-column-filter-button:focus-visible { background: #f0c9d6; color: var(--nq-dark); outline: none; }
 .nq-table .nq-column-filter-button.is-active { background: var(--nq-color); color: #fff; }
 .nq-table .nq-column-filter-button.is-active svg { fill: currentColor; }
-.nq-column-filter { position: fixed; z-index: 60; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: .5rem; overflow: hidden; width: 17rem; padding: .7rem; border: 1px solid var(--nq-border, #f0c4d3); border-radius: 12px; background: #fff; box-shadow: 0 16px 36px rgba(60, 10, 30, .25); font-size: .82rem; }
+.nq-column-filter { position: fixed; z-index: 60; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; gap: .5rem; overflow: hidden; width: 17rem; padding: .7rem; border: 1px solid var(--nq-border, #f0c4d3); border-radius: 12px; background: #fff; box-shadow: 0 16px 36px rgba(60, 10, 30, .25); font-size: .82rem; }
 .nq-column-filter input[type="search"] { width: 100%; min-height: 2rem; padding: .3rem .5rem; }
 .nq-column-filter-list { display: grid; gap: .2rem; max-height: 16rem; overflow-y: auto; }
 .nq-column-filter-list .nq-toggle { display: flex; align-items: center; gap: .3rem; font-weight: 650; }

@@ -46,8 +46,11 @@ VERSION_LABELS = {
 
 def selection_lines(filters: dict[str, Any], dataset_names: dict[str, str], granularity: str,
                     field_labels: dict[str, str] | None = None) -> list[str]:
-    """Readable filters of the report; empty filters include every value."""
+    """Readable filters of the report; empty filters include every value, and a filter that leaves its values out
+    (Exclude) reads "not …"."""
     lines = []
+    left_out = {str(name) for name in filters.get('excluded') or []}
+    chosen_text = lambda key, values: f"not {', '.join(values)}" if key in left_out else ', '.join(values)  # noqa: E731
     for key, label in FILTER_LABELS:
         values = [str(value) for value in filters.get(key) or [] if str(value).strip()]
         if key == 'datasets':
@@ -68,17 +71,17 @@ def selection_lines(filters: dict[str, Any], dataset_names: dict[str, str], gran
         if key == 'clustered_issue' and values:
             values = [f"{len(values)} cluster{'s' if len(values) > 1 else ''} of the NQ Prioritization"]
         if values:
-            lines.append(f'{label}: {", ".join(values)}')
+            lines.append(f'{label}: {chosen_text(key, values)}')
     for key, chosen in (filters.get('fields') or {}).items():
         values = ['Empty' if value == '__unassigned__' else str(value) for value in chosen or [] if str(value).strip()]
         if values:
-            lines.append(f'{(field_labels or {}).get(key, key)}: {", ".join(values)}')
+            lines.append(f'{(field_labels or {}).get(key, key)}: {chosen_text(f"field:{key}", values)}')
     # The optional and CDR columns of the table ("cdr:<name>" is the CDR column <name>).
     column_labels = {'join_id': 'JOIN_ID', 'nr_mode': 'NR Mode', 'cell_id': 'Cell ID', 'direction': 'Direction', 'end_time': 'End Time'}
     for key, chosen in (filters.get('columns') or {}).items():
         values = ['Empty' if value == '__unassigned__' else str(value) for value in chosen or [] if str(value).strip()]
         if values:
-            lines.append(f'{column_labels.get(key, str(key).removeprefix("cdr:"))}: {", ".join(values)}')
+            lines.append(f'{column_labels.get(key, str(key).removeprefix("cdr:"))}: {chosen_text(f"column:{key}", values)}')
     lines.extend(text for key, text in FLAG_LABELS.items() if filters.get(key))
     if filters.get('search'):
         lines.append(f"Search: {filters['search']}")

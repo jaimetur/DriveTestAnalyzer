@@ -126,6 +126,7 @@ The **Filters** panel restricts the summary, the panels, the table and the expor
 > **Each filter lists only the values of the calls the other filters leave** (its own choice does not count), plus the values chosen in it. Choosing a Campaign leaves only its operators in Operator; choosing SA in NR Mode leaves only the SA campaigns and takes the other campaigns out of the Campaign filter (also in saved filters). The CDR filter offers the CDRs with some of those calls, CDR Version all its states, and the column funnels the same values. A filter with more than 300 values (cells, sites, group IDs) lists its first 300: type in its box to search all of them, or press **Show All**.
 
 - **No restriction:** every value of a filter, or none (**Select All / None** also chooses the values hidden).
+- **Include / Exclude:** at the top of each list of values (and of each column funnel). **Include** keeps only the ticked values; **Exclude** keeps every call but theirs, also those without a value. Its chip reads *Operator: not EE*; saved filters, NQ Rate and the exports follow it.
 - **Chips:** the filters applied stand out in the colour of the module and show as chips at the top of every panel, also those set from charts and cards (NR Mode, Call Type, Period, Age of Open Calls, root domain and cause with suggestions, eNB/gNB, Repetition Place); click one to remove it. **NQ Calls in Scope Only** comes first, darker. The NQ Rate panel dims the chips it does not use.
 - **Reset Filters** clears them all but **NQ Calls in Scope Only**.
 
@@ -572,7 +573,7 @@ Follow up the calls one by one. The **NQ Calls** panel lists one row per call, w
 
 Choose and arrange the columns of the table.
 
-- **Colours:** every header is topped with the colour of its group, as in Excel: the call (and the optional and CDR columns) that of the call, each field that of its section, and the follow-up columns (team, analyst, root category and cause, status, comments) that of the section of their follow-up field.
+- **Colours:** every header is topped with the colour of its group, as in Excel: the call (and the optional and CDR columns) that of the call, each field that of its section, and the follow-up columns (team, analyst, root category and cause, status, comments) that of the section of their follow-up field. Every status column (Analysis Status, Implementation Status…) takes the band of the NQ Call Status (General), whatever the section it is filled in.
 - **Analyst / Team:** the Analyst of the call above its Team, each chosen in the row. Each analyst has a colour of their own (the same in every call), so the calls of each one read apart.
 - **Analyst Fields / Comments:** one column, the comments of the call (their count, and the arrow that opens it) below the Analyst Fields: how many of the fields of the analysts the call has filled out of those to fill (`7/12`), with a bar, green when every one is filled; hover lists those still empty. It counts as **Analyst fields** of the call (a field that does not apply to the call counts as filled).
 - **Fit:** the default columns fit without a horizontal scroll down to a window of 1440 px, with a smaller text. Long values wrap on two lines or are shortened (whole on hover), the header names wrap and the time goes below the date. The sort arrow shows only on the column the table is sorted by.
@@ -591,7 +592,7 @@ Choose and arrange the columns of the table.
 - **By a column:** click a header name to sort, again to reverse; **Default order**, shown while a column sorts, brings the default back.
 - **Pages:** 10 (default), 25, 50 or 100 rows in **Rows per page**, also with All panels.
 
-**Filter a column:** the funnel beside a header name opens that field's values below the header: search, tick them (**Select All / None** acts on the values shown; root categories and causes grouped by domain) and **Apply**. **Start Time** filters by **Call Date**, the day of the call whatever its time. It is the same selection as the Filters panel and its chip; the funnel is filled while the field is filtered.
+**Filter a column:** the funnel beside a header name opens that field's values below the header: choose **Include** or **Exclude**, search, tick them (**Select All / None** acts on the values shown; root categories and causes grouped by domain) and **Apply**. **Start Time** filters by **Call Date**, the day of the call whatever its time. It is the same selection as the Filters panel and its chip; the funnel is filled while the field is filtered.
 
 **Columns** (a button after **Default column order**, for every user) chooses the columns of your own [layout](#table-layouts), only for you:
 

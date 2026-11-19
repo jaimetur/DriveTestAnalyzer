@@ -98,20 +98,20 @@
       <section class="nq-filter-card">
       <p class="nq-filter-group-title">General Filters:</p>
       <div class="nq-filter-grid" id="nq-filter-grid">
-        <label title="NSA or SA: with Campaign it says which CDRs the calls come from (each call once, from the CDR the combined CDR tables include)">NR Mode<select data-nq-filter="nr_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="NR Mode"></select></label>
-        <label>Campaign<select data-nq-filter="campaign" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Campaign"></select></label>
-        <label title="The day of the call, whatever its time">Call Date<select data-nq-filter="start_date" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Call Date"></select></label>
-        <label>Operator<select data-nq-filter="operator" data-multiselect-patterns multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Operator"></select></label>
-        <label>Operator_Vendor<select data-nq-filter="operator_vendor" data-operator-vendor-pair="operator_vendor" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Operator_Vendor"></select></label>
-        <label>Vendor_Operator<select data-nq-filter="vendor_operator" data-operator-vendor-pair="vendor_operator" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Vendor_Operator"></select></label>
-        <label>Vendor<select data-nq-filter="vendor" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Vendor"></select></label>
-        <label>Region<select data-nq-filter="region" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Region"></select></label>
-        <label>Cluster<select data-nq-filter="cluster" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Cluster"></select></label>
-        <label>City<select data-nq-filter="city" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" data-multiselect-preset-label="Main Cities" aria-label="City"></select></label>
-        <label>Service<select data-nq-filter="service" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Service"></select></label>
-        <label>Technology<select data-nq-filter="technology" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Technology"></select></label>
-        <label>Test Name<select data-nq-filter="test_name" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Test Name"></select></label>
-        <label>Result<select data-nq-filter="result" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Result"></select></label>
+        <label title="NSA or SA: with Campaign it says which CDRs the calls come from (each call once, from the CDR the combined CDR tables include)">NR Mode<select data-nq-filter="nr_mode" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="NR Mode"></select></label>
+        <label>Campaign<select data-nq-filter="campaign" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Campaign"></select></label>
+        <label title="The day of the call, whatever its time">Call Date<select data-nq-filter="start_date" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Call Date"></select></label>
+        <label>Operator<select data-nq-filter="operator" data-multiselect-exclude data-multiselect-patterns multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Operator"></select></label>
+        <label>Operator_Vendor<select data-nq-filter="operator_vendor" data-multiselect-exclude data-operator-vendor-pair="operator_vendor" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Operator_Vendor"></select></label>
+        <label>Vendor_Operator<select data-nq-filter="vendor_operator" data-multiselect-exclude data-operator-vendor-pair="vendor_operator" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Vendor_Operator"></select></label>
+        <label>Vendor<select data-nq-filter="vendor" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Vendor"></select></label>
+        <label>Region<select data-nq-filter="region" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Region"></select></label>
+        <label>Cluster<select data-nq-filter="cluster" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Cluster"></select></label>
+        <label>City<select data-nq-filter="city" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" data-multiselect-preset-label="Main Cities" aria-label="City"></select></label>
+        <label>Service<select data-nq-filter="service" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Service"></select></label>
+        <label>Technology<select data-nq-filter="technology" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Technology"></select></label>
+        <label>Test Name<select data-nq-filter="test_name" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Test Name"></select></label>
+        <label>Result<select data-nq-filter="result" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Result"></select></label>
         <label title="How the CDRs see each call: the latest version, changed between CDRs, a newer version in a CDR that is not chosen, not in the Final CDR of its campaign, or Completed in a newer CDR (listed only when chosen here)">CDR Version<select data-nq-filter="version" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDR Version"></select></label>
       </div>
       </section>
@@ -128,9 +128,9 @@
       <div class="nq-filter-grid" data-nq-filter-host="dta"></div>
       <p class="nq-filter-subtitle" data-nq-filter-subtitle="netcheck">{{ provider.rca | default('NetCheck RCA', true) }}</p>
       <div class="nq-filter-grid" data-nq-filter-host="netcheck">
-        <label>Failure Classification<select data-nq-filter="failure_classification" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Classification"></select></label>
-        <label>Failure Category<select data-nq-filter="failure_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Category"></select></label>
-        <label>Failure Subcategory<select data-nq-filter="failure_subcategory" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Subcategory"></select></label>
+        <label>Failure Classification<select data-nq-filter="failure_classification" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Classification"></select></label>
+        <label>Failure Category<select data-nq-filter="failure_category" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Category"></select></label>
+        <label>Failure Subcategory<select data-nq-filter="failure_subcategory" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Subcategory"></select></label>
       </div>
       <p class="nq-filter-subtitle" data-nq-filter-subtitle="ericsson">Ericsson RCA</p>
       <div class="nq-filter-grid" data-nq-filter-host="ericsson"></div>
@@ -138,21 +138,21 @@
       <section class="nq-filter-card nq-filter-source-card" data-nq-origin="tool" data-nq-filter-card="tool">
       <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="tool">DT Analyzer</span>Automatic Fields Filters: <small>filled by the tool: Status Rules, NQ Prioritization, hotspots</small></p>
       <div class="nq-filter-grid" data-nq-filter-host="tool">
-        <label>Global Status<em class="nq-filter-alias">Analysis Finished</em><select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
-        <label title="Whether the status follows the Status Rules or was set by hand">Status Set<select data-nq-filter="status_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Status Set"></select></label>
+        <label>Global Status<em class="nq-filter-alias">Analysis Finished</em><select data-nq-filter="status" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
+        <label title="Whether the status follows the Status Rules or was set by hand">Status Set<select data-nq-filter="status_mode" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Status Set"></select></label>
         <label title="How far each call has been followed up: attended or not, stalled, closed, with a team, an analyst, comments or a root cause">Follow-up<select data-nq-filter="state" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Follow-up"></select></label>
       </div>
       </section>
       <section class="nq-filter-card nq-filter-source-card" data-nq-origin="analyst" data-nq-filter-card="analyst">
       <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="analyst">Analyst</span>Analysis Team Fields Filters: <small>filled by the analysts</small></p>
       <div class="nq-filter-grid" data-nq-filter-host="analyst">
-        <label>Team<em class="nq-filter-alias">Responsible Stream</em><select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
-        <label>Analyst<select data-nq-filter="analyst" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Analyst"></select></label>
-        <label>Reviewer<select data-nq-filter="reviewer" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Reviewer"></select></label>
-        <label>Root Domain<select data-nq-filter="root_domain" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Domain"></select></label>
-        <label>Root Category<em class="nq-filter-alias">Final Failure Category</em><select data-nq-filter="root_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
-        <label>Root Cause<em class="nq-filter-alias">Final Failure Subcategory</em><select data-nq-filter="root_cause" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
-        <label>Root Technology<select data-nq-filter="root_technology" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Technology"></select></label>
+        <label>Team<em class="nq-filter-alias">Responsible Stream</em><select data-nq-filter="team" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
+        <label>Analyst<select data-nq-filter="analyst" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Analyst"></select></label>
+        <label>Reviewer<select data-nq-filter="reviewer" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Reviewer"></select></label>
+        <label>Root Domain<select data-nq-filter="root_domain" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Domain"></select></label>
+        <label>Root Category<em class="nq-filter-alias">Final Failure Category</em><select data-nq-filter="root_category" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
+        <label>Root Cause<em class="nq-filter-alias">Final Failure Subcategory</em><select data-nq-filter="root_cause" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
+        <label>Root Technology<select data-nq-filter="root_technology" data-multiselect-exclude multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Technology"></select></label>
       </div>
       </section>
       <section class="nq-filter-card" hidden>
