@@ -1852,7 +1852,7 @@
     bar.append(fill);
     box.append(bar);
     cell.append(box);
-    cell.title = complete ? `Every field of the analysts is filled (${progress.total})`
+    box.title = complete ? `Every field of the analysts is filled (${progress.total})`
       : `${progress.filled} of ${progress.total} fields of the analysts filled. Still empty:\n${progress.missing.join('\n')}`;
     return cell;
   };
@@ -1935,7 +1935,6 @@
       updated.append(statusModeBadge(call), ` ${call.updated_at ? `Updated ${relativeTime(call.updated_at)}${call.updated_by ? ` by ${call.updated_by}` : ''}` : 'Not followed up yet'}`);
       updated.title = call.updated_at ? `Last follow-up by ${call.updated_by ? userName(call.updated_by) : '—'} · ${exactTime(call.updated_at)}` : 'Nobody has changed this call yet';
       status.append(updated);
-      const comments = node('td', undefined, 'nq-comments-cell');
       const commentButton = node('button', undefined, 'nq-comment-button');
       commentButton.type = 'button';
       const bubble = node('span', String(call.comment_count || 0), `nq-comment-count${call.comment_count ? '' : ' is-empty'}`);
@@ -1960,7 +1959,10 @@
       openButton.setAttribute('aria-label', 'Open the call details and activity');
       const commentActions = node('div', undefined, 'nq-comment-actions-cell');
       commentActions.append(commentButton, openButton);
-      comments.append(commentActions);
+      // The Analyst Fields above the comments, in one column.
+      const progressAndComments = analystFieldsCell(call);
+      progressAndComments.classList.add('nq-comments-cell');
+      progressAndComments.append(commentActions);
       // Two related values share a cell: the main one first, the other below it.
       const stacked = (main, secondary) => {
         const cell = node('td', undefined, 'nq-stacked');
@@ -1990,7 +1992,7 @@
         stacked(call.test_name, call.technology), failure, ...optionalColumns().map((column) => optionalCell(call, column)),
         ...groups.filter((group) => group.field.section === 'rca').map(fieldGroupCell),
         root, ...groups.filter((group) => group.field.section !== 'rca').map(fieldGroupCell), status,
-        tracking('analyst', 'team'), analystFieldsCell(call), comments,
+        tracking('analyst', 'team'), progressAndComments,
       );
       orderRowCells(row);
       row.addEventListener('click', (event) => {
