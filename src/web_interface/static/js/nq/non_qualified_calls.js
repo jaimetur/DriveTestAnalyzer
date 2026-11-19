@@ -1553,9 +1553,11 @@
   const STATIC_HEADERS = [...($('nq-table')?.tHead.rows[0].cells || [])];
   // Where each browser kept the order before the layouts: it becomes the order of the user's own layout, once.
   const LEGACY_ORDER_STORAGE = `nq-column-order:${$('nq-table')?.dataset.workspace || ''}`;
-  // Columns shown by default before another one: Session Type (CDR) before Test / Technology instead of after Result /
-  // Failure, and the Repeated Issue before the Scoring Points Lost.
-  const DEFAULT_COLUMN_PLACES = {session_type: 'test_name', 'field:repeated_issue': 'field:scoring_points_lost'};
+  // Columns shown by default before another one (the first of its places shown): Session Type (CDR) before Test / Technology
+  // instead of after Result / Failure, the Repeated Issue before the Scoring Points Lost (when it is a column of its own) and
+  // Analyst / Team before the statuses.
+  const DEFAULT_COLUMN_PLACES = {session_type: ['test_name'], 'field:repeated_issue': ['field:scoring_points_lost'],
+    team: ['field:analysis_status', 'field:implementation_status', 'status']};
   // The column keys in the order the rows are built, and in the order they are shown.
   let naturalColumns = [];
   let shownColumns = [];
@@ -1565,8 +1567,9 @@
   const storedColumnOrder = () => [...(state.layout.order || [])];
   const defaultColumnOrder = () => {
     const order = [...naturalColumns];
-    Object.entries(DEFAULT_COLUMN_PLACES).forEach(([key, before]) => {
-      if (!order.includes(key) || !order.includes(before)) return;
+    Object.entries(DEFAULT_COLUMN_PLACES).forEach(([key, places]) => {
+      const before = places.find((place) => order.includes(place));
+      if (!order.includes(key) || !before) return;
       order.splice(order.indexOf(key), 1);
       order.splice(order.indexOf(before), 0, key);
     });

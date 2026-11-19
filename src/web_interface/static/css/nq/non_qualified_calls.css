@@ -2799,3 +2799,5 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 /* Analyst Fields stays narrow on wide screens: its name on two lines over a short bar. */
 #nq-table th[data-column="analyst_fields"] { width: 1%; }
 #nq-table .nq-analyst-fields { width: 3.4rem; }
+/* A column of one name has it on the line of the upper names of the paired columns (the space of the lower name left empty). */
+#nq-table thead th:not(.nq-select-cell):not(:has(.nq-header-item + .nq-header-item)) { padding-bottom: calc(9px + 2.6rem + 1px); }
