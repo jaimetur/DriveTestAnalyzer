@@ -2798,18 +2798,16 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 #nq-table td.nq-analyst-fields-cell .nq-comment-actions-cell { margin-top: .35rem; }
 /* The header of the calls table: light, with the colour of each group in a thin band on top. Each column has two lines of
    names at the same heights: the main name (dark) on the first, the field below it (lighter) on the second, a column of
-   one name on the first; the word two names share (Status) small above them. The filters show strongly on hover and
+   one name on the first. The filters show strongly on hover and
    when one is on. */
 #nq-table thead th { padding-top: 10px; padding-bottom: 10px; background: #fcf8fa; color: #4a1630; font-weight: 750;
   letter-spacing: .03em; vertical-align: top; border-bottom: 1px solid #ecd3dc; }
 #nq-table thead th.nq-section-col { border-top: 3px solid var(--nq-section); }
-#nq-table th .nq-header-item { display: block; min-height: 1.6rem; }
+#nq-table th .nq-header-item { display: block; min-height: 1.9rem; }
 #nq-table th .nq-header-item + .nq-header-item { margin-top: .3rem; color: #93707f; font-weight: 650; }
 /* One line between the two lines of names, at the same height across the whole header. */
 #nq-table thead th:not(.nq-select-cell) { background-image: linear-gradient(#e6c6d2, #e6c6d2); background-repeat: no-repeat;
-  background-size: calc(100% - 6px) 1px; background-position: 3px calc(10px + 1.6rem + .15rem); }
-#nq-table thead th:has(.nq-header-common) { padding-top: 0; }
-#nq-table th .nq-header-common { display: block; height: 10px; color: #b294a1; font-size: .56rem; font-weight: 700; letter-spacing: .08em; line-height: 10px; }
+  background-size: calc(100% - 6px) 1px; background-position: 3px calc(10px + 1.9rem + .15rem); }
 #nq-table thead th.nq-select-cell { vertical-align: middle; }
 #nq-table .nq-column-filter-button { color: #c7a9b5; opacity: .55; transition: opacity .12s ease, color .12s ease; }
 #nq-table th:hover .nq-column-filter-button, #nq-table .nq-column-filter-button:focus-visible { opacity: 1; color: #8b5a6e; }

@@ -1743,21 +1743,14 @@
     const filterable = new Set(filterableFields().map((field) => field.key));
     anchor = rootHeader;
     fieldColumnGroups().forEach(({field, below}) => {
-      // Two names ending in the same word (Analysis Status, Implementation Status) share it above them: Status, then Analysis
-      // and Implementation.
-      const lastWord = (label) => String(label).trim().split(/\s+/).pop();
-      const common = below && String(field.label).trim().includes(' ') && String(below.label).trim().includes(' ')
-        && lastWord(field.label).toLowerCase() === lastWord(below.label).toLowerCase() ? lastWord(field.label) : '';
-      const withoutCommon = (label) => (common ? String(label).trim().slice(0, -common.length).trim() : label);
-      const cell = headerCell(common ? withoutCommon(field.label) : SHORT_HEADERS[field.label] || field.label, `field:${field.key}`,
+      const cell = headerCell(SHORT_HEADERS[field.label] || field.label, `field:${field.key}`,
         filterable.has(field.key) ? `field:${field.key}` : '', sectionOf(field.section));
       cell.title = `${sectionOf(field.section).label} · ${field.label}`;
       // The field shown below, in the same column, sorts and filters by its own name.
       if (below) {
-        cell.append(headerItem(withoutCommon(below.label), `field:${below.key}`, filterable.has(below.key) ? `field:${below.key}` : ''));
+        cell.append(headerItem(below.label, `field:${below.key}`, filterable.has(below.key) ? `field:${below.key}` : ''));
         cell.title = `${cell.title} · ${below.label}`;
       }
-      if (common) cell.prepend(node('span', common, 'nq-header-common'));
       if ([field, below].some((item) => item && ['list', 'yes_no'].includes(item.type))) cell.classList.add('nq-choice-col');
       if (field.section === 'rca') rootHeader.before(cell);
       else { anchor.after(cell); anchor = cell; }

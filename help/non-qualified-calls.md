@@ -579,7 +579,7 @@ Choose and arrange the columns of the table.
 - **Header:** light, with the colour of each group in a thin band on top. The main name of each column (dark) is on the first line and the field below it (lighter) on the second, a line between them across the whole header; the filter funnels light up on hover and when a filter is on. Related values share a column, one below the other, each name of the header sorting and filtering its own field:
   - **Prioritization** above **Priority** (chosen in the row).
   - **Points Lost** (the Scoring Points Lost) above **Repeated Issue**.
-  - **Status:** **Analysis** above **Implementation**, the word they share on top.
+  - **Analysis Status** above **Implementation Status**.
 - **Default columns of a new workspace:** after the root category and cause, the Prioritization with the Priority, the Scoring Points Lost with the Repeated Issue, then **Analyst / Team** before the statuses (the Analysis Status with the Implementation Status, then the Global Status). A column of one name (Global Status) has it on the first line. The Scoring Impact and the other fields are added with **Columns**.
 - **Scroll position:** reloading the page returns to it.
 
