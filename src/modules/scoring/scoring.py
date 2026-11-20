@@ -432,6 +432,7 @@ def calculate_scoring(
     map_areas=None,
     time_split: str | None = None,
     with_points_loss: bool = True,
+    with_global_kpis: bool = True,
 ) -> dict:
     """Calculate KPI scores at the selected dimensions without reallocating missing weights.
 
@@ -439,6 +440,8 @@ def calculate_scoring(
     ``time_split`` (Daily, Weekly, Monthly, Quarterly or Yearly) splits the Campaign level by the
     period of each test's start time instead of by campaign.
     Without ``with_points_loss`` only the scores are calculated (the same ones), not where the points are lost on the map.
+    Without ``with_global_kpis`` the KPIs of all the environments of each group (and their coverage) are not calculated:
+    the scores, totals and GAPs are the same.
     """
     config = _required_configuration(configuration)
     metrics = config['metrics']
@@ -514,6 +517,8 @@ def calculate_scoring(
             loss_shares.extend(shares)
             serving_tests.extend(served)
             geometry.add(frame if bool(valid.all()) else frame[valid])
+        if not with_global_kpis:
+            continue
         global_valid = frame['__matched_environments'].map(bool) & frame['Operator'].notna()
         if campaign_selected:
             global_valid &= frame['Campaign'].notna()

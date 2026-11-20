@@ -2665,6 +2665,9 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
             kwargs = _engine_kwargs(repository, saved_scoring, group_configuration, calculate)
             if 'with_points_loss' in parameters:
                 kwargs['with_points_loss'] = False
+            if 'with_global_kpis' in parameters:
+                # Only the totals and the tests of each area are shown, not the KPIs of all its environments.
+                kwargs['with_global_kpis'] = False
             group_frames = of_campaigns(group['campaigns'])
             if not group_frames:
                 continue

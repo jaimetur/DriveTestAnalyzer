@@ -79,6 +79,16 @@ def test_scores_are_the_same_without_the_points_lost_map(frames):
         assert light[field] == full[field]
 
 
+def test_scores_are_the_same_without_the_global_kpis(frames):
+    configuration = netcheck_2026_configuration()
+    full = calculate_scoring(frames, ['Operator'], baseline_operator='EE', configuration=configuration, with_points_loss=False)
+    light = calculate_scoring(frames, ['Operator'], baseline_operator='EE', configuration=configuration,
+                              with_points_loss=False, with_global_kpis=False)
+    assert light['global_kpis'] == [] and full['global_kpis']
+    for field in ('scoring', 'totals', 'gap', 'gap_totals', 'notices', 'test_counts'):
+        assert light[field] == full[field]
+
+
 def test_what_changed_between_the_methodologies_of_the_workspace():
     changes = scoring_impact.methodology_changes(validate_scoring_configuration(_methodology('NetCheck_2026')['configuration']),
                                                  validate_scoring_configuration(_methodology('NetCheck_2026-Q3')['configuration']))
