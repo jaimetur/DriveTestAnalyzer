@@ -12,6 +12,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable
 
 from src.modules.core.email_delivery import EVERY_TICKET_KEY, email_delivery_settings, send_email, subject_line
@@ -46,6 +47,63 @@ ACTION_COLOURS = {
     'Resolved': '#15803D', 'Closed': '#4B5563', 'Reopened': '#C2410C', 'Rejected': '#B42318', 'Comment Deleted': '#B42318',
     'Attachment Deleted': '#B42318', 'Ticket Deleted': '#B42318',
 }
+
+
+# How often a user is emailed of the NQ calls and of its tickets, each chosen apart in Email preferences (ticket #194),
+# and when the summaries go (local time of the server): every hour, every day at 17:00 or every Friday at 17:00.
+EMAIL_FREQUENCIES = {'immediate': 'Immediately', 'hourly': 'Every hour', 'daily': 'Daily at 17:00',
+                     'weekly': 'Weekly on Friday at 17:00', 'off': 'Never'}
+SUMMARY_HOUR = 17
+SUMMARY_WEEKDAY = 4  # Friday
+SUMMARY_NAMES = {'hourly': 'Hourly', 'daily': 'Daily', 'weekly': 'Weekly'}
+SUMMARY_PERIODS = {'hourly': 'the last hour', 'daily': 'the last day', 'weekly': 'the last week'}
+# The tickets are emailed at once unless the user chooses otherwise.
+TICKET_DEFAULT_FREQUENCY = 'immediate'
+# The changes of the tickets waiting for the summaries of their recipients (application database).
+TICKET_QUEUE_TABLE = 'ticket_email_queue'
+TICKET_QUEUE_SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS {TICKET_QUEUE_TABLE} (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    ticket_id INTEGER NOT NULL,
+    own_ticket INTEGER NOT NULL,
+    own_title TEXT NOT NULL DEFAULT '',
+    base_url TEXT NOT NULL DEFAULT '',
+    ticket_json TEXT NOT NULL,
+    change_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_{TICKET_QUEUE_TABLE}_username ON {TICKET_QUEUE_TABLE}(username);
+"""
+
+
+def chosen_frequency(value: object, default: str) -> str:
+    """The frequency a user chose, else ``default``."""
+    return str(value) if str(value or '') in EMAIL_FREQUENCIES else default
+
+
+def last_summary_time(frequency: str, now: datetime) -> datetime:
+    """The latest time a summary of ``frequency`` was due at or before ``now`` (aware, local time): the changes made before
+    it go in that summary."""
+    if frequency == 'hourly':
+        return now.replace(minute=0, second=0, microsecond=0)
+    if frequency in {'daily', 'weekly'}:
+        due = now.replace(hour=SUMMARY_HOUR, minute=0, second=0, microsecond=0)
+        if due > now:
+            due -= timedelta(days=1)
+        if frequency == 'weekly':
+            due -= timedelta(days=(due.weekday() - SUMMARY_WEEKDAY) % 7)
+        return due
+    return now
+
+
+def due_before(frequency: str, now: datetime) -> str:
+    """The time (UTC, as the queues store it) before which the changes waiting go in the summary of ``frequency``."""
+    return last_summary_time(frequency, now).astimezone(timezone.utc).isoformat(timespec='seconds')
+
+
+def queued_at() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
 # The changes of a ticket waiting to be emailed, by (address of the recipient in lower case, ticket number).
@@ -282,6 +340,13 @@ def ticket_changes_email(app_name: str, ticket: dict[str, Any], changes: list[di
                          names: dict[str, str], *, own_ticket: int | None = None, own_title: str = '') -> tuple[str, str]:
     """The subject and HTML of one email about the ``changes`` of ``ticket`` made one after another (``ticket`` as the last
     one left it): what happened, in its colour, leads the title, and each change after the state of the ticket."""
+    subject, parts, link, actions = _ticket_changes_parts(ticket, changes, base_url, names, own_ticket=own_ticket, own_title=own_title)
+    return subject, email_page(app_name, subject, parts, link=link, action=actions)
+
+
+def _ticket_changes_parts(ticket: dict[str, Any], changes: list[dict[str, Any]], base_url: str, names: dict[str, str], *,
+                          own_ticket: int | None = None, own_title: str = '') -> tuple[str, list[str], tuple[str, str] | None, list[str]]:
+    """The subject, the paragraphs, the link and what happened of the email of the ``changes`` of ``ticket``."""
     number, title = int(ticket['id']), str(ticket['title'])
     # One subject for every email of a ticket; the title says what happened.
     subject = f'Ticket #{number}: {title}'
@@ -299,7 +364,7 @@ def ticket_changes_email(app_name: str, ticket: dict[str, Any], changes: list[di
                          f'<span style="color:#9ca3af"> · </span>{did}</p>' + ''.join(details) + '</div>')
     deleted = any(change['event'] == 'deleted' for change in changes)
     link = None if deleted or not base_url else (f'Open ticket #{number}', f'{base_url}/tickets/{number}')
-    return subject, email_page(app_name, f'Ticket #{number}: {title}', parts, link=link, action=list(dict.fromkeys(actions)))
+    return subject, parts, link, list(dict.fromkeys(actions))
 
 
 def ticket_action(event: str, changes: dict[str, Any] | None = None) -> str:
@@ -336,6 +401,7 @@ def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, ev
         if not emails:
             return
         names = people_names(repository)
+        preferences = repository.email_preferences(owners)
         base = str(base_url or '').rstrip('/')
         listed = list(files)
         references = {}
@@ -354,6 +420,13 @@ def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, ev
             change = {'event': event, 'actor_name': names.get(str(actor).casefold(), str(actor)), 'changes': changes,
                       'comment': comment, 'files': listed, 'references': references, 'description': ticket.get('description'),
                       'actor': actor}
+            # At once (the default), in the summary the user chose (ticket #194) or never.
+            frequency = chosen_frequency((preferences.get(username) or {}).get('ticket_frequency'), TICKET_DEFAULT_FREQUENCY)
+            if frequency == 'off':
+                continue
+            if frequency != 'immediate':
+                queue_ticket_summary(repository, username, ticket, change, base_url=base, own_ticket=own_ticket, own_title=own_title)
+                continue
             queue_ticket_email(repository, app_name, address, username, ticket, change, base_url=base, names=names,
                                own_ticket=own_ticket, own_title=own_title)
     except Exception as exc:  # Never let an email break the change it tells of.
@@ -427,3 +500,104 @@ def flush_ticket_emails() -> None:
         keys = list(_PENDING)
     for key in keys:
         _send_ticket_email(key, None)
+
+
+def queue_ticket_summary(repository: Any, username: str, ticket: dict[str, Any], change: dict[str, Any], *, base_url: str,
+                         own_ticket: int, own_title: str = '') -> None:
+    """Keep a change of ``ticket`` for the summary of ``username`` (ticket #194)."""
+    with repository.global_connection() as conn:
+        conn.executescript(TICKET_QUEUE_SCHEMA)
+        conn.execute(f'INSERT INTO {TICKET_QUEUE_TABLE} (username, ticket_id, own_ticket, own_title, base_url, ticket_json, '
+                     'change_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                     (username, int(ticket['id']), int(own_ticket), own_title, base_url, json.dumps(ticket, ensure_ascii=False, default=str),
+                      json.dumps(change, ensure_ascii=False, default=str), queued_at()))
+
+
+def _queued_change(text: str) -> dict[str, Any]:
+    change = json.loads(text)
+    # The titles of the tickets a text mentions, by number (JSON keeps the numbers as text).
+    change['references'] = {int(number): title for number, title in (change.get('references') or {}).items()}
+    return change
+
+
+def ticket_summary_email(app_name: str, frequency: str, tickets: list[dict[str, Any]], base_url: str,
+                         names: dict[str, str]) -> tuple[str, str]:
+    """The subject and HTML of the summary of the tickets changed since the previous one: each ticket with its changes,
+    one after another, after its state as the last one left it."""
+    period = SUMMARY_PERIODS.get(frequency, 'the last period')
+    count = 'this ticket' if len(tickets) == 1 else f'{len(tickets)} tickets'
+    parts = [f'<p>The changes of {period} in {count}.</p>']
+    actions: list[str] = []
+    for item in tickets:
+        subject, ticket_parts, link, ticket_actions = _ticket_changes_parts(
+            item['ticket'], item['changes'], base_url, names, own_ticket=item['own_ticket'], own_title=item['own_title'])
+        actions += ticket_actions
+        heading = html.escape(subject)
+        if link:
+            heading = f'<a href="{html.escape(link[1], quote=True)}" style="color:#1E61A3">{heading}</a>'
+        parts.append(f'<p style="margin:26px 0 6px;font-size:16px;font-weight:bold;border-top:1px solid #e5e9ee;padding-top:14px">'
+                     f'{heading}</p>' + ''.join(ticket_parts))
+    name = SUMMARY_NAMES.get(frequency, 'Tickets')
+    title = f"{name} summary · {len(tickets)} ticket{'s' if len(tickets) != 1 else ''}"
+    subject = f"Tickets - {name} summary - {len(tickets)} ticket{'s' if len(tickets) != 1 else ''}"
+    link = ('Open Ticket Center', f'{base_url}/tickets') if base_url else None
+    return subject, email_page(app_name, title, parts, link=link, action=list(dict.fromkeys(actions)))
+
+
+def send_due_ticket_summaries(repository: Any, app_name: str, now: datetime | None = None) -> int:
+    """Email each user the summary of its tickets whose time has come (every hour, day or Friday at 17:00, as it chose);
+    how many emails were sent. A summary too large for a flow goes as one email per ticket. A user's changes wait while
+    the email cannot be sent (they all go at once when it chose Immediately since), and are dropped once it chose Never, has no address or ticket emails are
+    switched off."""
+    now = (now or datetime.now()).astimezone()
+    settings = email_delivery_settings(repository)
+    with repository.global_connection() as conn:
+        conn.executescript(TICKET_QUEUE_SCHEMA)
+        rows = [dict(row) for row in conn.execute(f'SELECT * FROM {TICKET_QUEUE_TABLE} ORDER BY id').fetchall()]
+    if not rows or not settings['configured']:
+        return 0
+    if not settings.get('notify_tickets'):
+        _drop_ticket_rows(repository, [row['id'] for row in rows])
+        return 0
+    by_user: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_user.setdefault(row['username'], []).append(row)
+    preferences = repository.email_preferences(by_user)
+    emails = repository.user_emails(by_user)
+    names = people_names(repository)
+    sent = 0
+    for username, user_rows in by_user.items():
+        frequency = chosen_frequency((preferences.get(username) or {}).get('ticket_frequency'), TICKET_DEFAULT_FREQUENCY)
+        address = emails.get(username)
+        if frequency == 'off' or not address:
+            _drop_ticket_rows(repository, [row['id'] for row in user_rows])
+            continue
+        ready = [row for row in user_rows if row['created_at'] <= due_before(frequency, now)]
+        if not ready:
+            continue
+        tickets: dict[int, dict[str, Any]] = {}
+        for row in ready:
+            item = tickets.setdefault(int(row['ticket_id']), {'changes': [], 'own_ticket': int(row['own_ticket']),
+                                                              'own_title': row['own_title']})
+            item['ticket'] = json.loads(row['ticket_json'])
+            item['changes'].append(_queued_change(row['change_json']))
+        base = str(ready[-1]['base_url'] or '').rstrip('/')
+        subject, body = ticket_summary_email(app_name, frequency, list(tickets.values()), base, names)
+        emails_of = [(subject, body, list(tickets))]
+        if len(tickets) > 1 and len(body.encode()) > TICKET_DIGEST_HTML_LIMIT:
+            emails_of = [(*ticket_summary_email(app_name, frequency, [item], base, names), [number]) for number, item in tickets.items()]
+        for subject, body, numbers in emails_of:
+            delivered = deliver(repository, kind='ticket_summary', recipients=[address], subject=subject, html_body=body,
+                                actor='system', details={'user': username.upper(), 'frequency': frequency, 'tickets': numbers,
+                                                         'changes': sum(len(tickets[number]['changes']) for number in numbers)},
+                                switch='notify_tickets', background=False)
+            if delivered:
+                sent += 1
+                _drop_ticket_rows(repository, [row['id'] for row in ready if int(row['ticket_id']) in numbers])
+    return sent
+
+
+def _drop_ticket_rows(repository: Any, ids: list[int]) -> None:
+    if ids:
+        with repository.global_connection() as conn:
+            conn.executemany(f'DELETE FROM {TICKET_QUEUE_TABLE} WHERE id = ?', [(identifier,) for identifier in ids])

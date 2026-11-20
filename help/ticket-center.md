@@ -195,7 +195,7 @@ Every action (opening, editing, comments, attachments added, deleted and cleaned
 
 ## Email updates
 
-When [Email Delivery](app-config.md#email-delivery) is set up with **Ticket Center** checked, emails go to the address of each account (see [Users](super-admin.md#users); each user changes it with **Email address** in the user badge menu):
+When [Email Delivery](app-config.md#email-delivery) is set up with **Ticket Center** checked, emails go to the address of each account (see [Users](super-admin.md#users); each user changes it with **Email preferences** in the user badge menu):
 
 - **The reporter** gets the confirmation that the ticket was opened, with its description; every change made to it, also its own: a comment (with its text), an edited or deleted comment, attachments added or deleted, an edit of the title, module, description or priority, a change of status, type, assignee or versions (each field before and after), and its deletion; and the same changes in any other ticket that mentions its ticket as `#<number>` in the description or a comment, and a new ticket that mentions it (the email says which of its tickets it mentions).
 - **Whoever commented** a ticket gets the emails of its changes from then on, as its reporter does.
@@ -206,6 +206,10 @@ How they look:
 
 - **One conversation:** every email of a ticket has the same subject, `DT Analyzer - Ticket #<number>: <title>`; through an SMTP server they all go in one conversation of the mail clients (Outlook, Gmail and the others), through a Power Automate flow Outlook shows each as a conversation of its own.
 - **Grouped changes:** the changes of a ticket made less than a minute apart reach each recipient in one email (sent at most 10 minutes after the first change), showing each change in turn.
+- **How often:** at once by default; each user chooses in **Email preferences** of the user badge, apart from the NQ call emails:
+  - **Every hour**, **Daily at 17:00** or **Weekly on Friday at 17:00:** one summary (`DT Analyzer - Tickets - Daily summary - <n> tickets`) with each ticket changed since the previous one and its changes in turn; a summary too large for a Power Automate flow goes as one email per ticket.
+  - **Never:** no ticket emails.
+  - The changes waiting for a summary are kept in the **Ticket Email Queue** table, so a restart loses none.
 - **Title:** what happened, large and in its colour, before the number and title of the ticket: **New Ticket**, **New Comment**, **Ticket Updated**, **Comment Edited**, **Comment Deleted**, **New Attachments**, **Attachment Deleted**, the new status (**In Progress**, **Waiting for Info**, **Resolved**, **Closed**, **Rejected**, **Back to New**, or **Reopened** when a done or rejected ticket opens again) or **Ticket Deleted**.
 - **Contents:** who made the change, the status, priority, type and reporter of the ticket, and a link to its page. The description and comments read as on the page of the ticket, with their formats (headings, titles, bullets and numbers, tasks, quotes and cards, code, links), and their `#<number>` link to the tickets they mention.
 - **In the background:** the emails never slow a page down; App Events records each one (see [Email Delivery](app-config.md#email-delivery)).

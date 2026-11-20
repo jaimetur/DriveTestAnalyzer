@@ -9501,7 +9501,12 @@ function showInfoDialog(message, options = {}) {
     try {
       const response = await fetch('/account/email', {headers: {'Accept': 'application/json'}, cache: 'no-store'});
       const payload = await response.json();
-      if (response.ok) form.email.value = payload.email || '';
+      if (response.ok) {
+        form.email.value = payload.email || '';
+        if (form.nq_email_frequency) form.nq_email_frequency.value = payload.nq_email_frequency || 'daily';
+        if (form.nq_email_own_changes) form.nq_email_own_changes.checked = Boolean(payload.nq_email_own_changes);
+        if (form.ticket_email_frequency) form.ticket_email_frequency.value = payload.ticket_email_frequency || 'immediate';
+      }
     } catch (_error) { /* The field stays empty: the user can still type the address. */ }
     form.email.focus();
   };
@@ -9516,9 +9521,10 @@ function showInfoDialog(message, options = {}) {
     try {
       const response = await fetch('/account/email', {method: 'POST', body: new FormData(form), headers: {'Accept': 'application/json'}});
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || 'The email address could not be saved.');
+      if (!response.ok) throw new Error(payload.detail || 'The email preferences could not be saved.');
       close();
-      showInfoDialog(payload.email ? `The tool sends your emails to ${payload.email}.` : 'The tool sends you no emails.', {title: 'Email address saved', tone: 'info'});
+      showInfoDialog(payload.email ? `The tool sends your emails to ${payload.email}. NQ call emails: ${payload.nq_email_frequency_label}. Ticket emails: ${payload.ticket_email_frequency_label}.`
+        : 'The tool sends you no emails.', {title: 'Email preferences saved', tone: 'info'});
     } catch (requestError) {
       if (error) { error.textContent = requestError.message; error.hidden = false; }
     } finally {

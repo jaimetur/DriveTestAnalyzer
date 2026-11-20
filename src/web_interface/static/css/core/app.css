@@ -6292,3 +6292,5 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 .server-update-close { flex: 0 0 auto; width: 1.9rem; height: 1.9rem; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 1.2rem; line-height: 1; cursor: pointer; }
 .server-update-close:hover, .server-update-close:focus-visible { background: rgba(18, 50, 77, .1); }
 @media (max-width: 640px) { .server-update-notice { flex-wrap: wrap; top: 8px; } .server-update-text { flex-basis: calc(100% - 3rem); } }
+/* Email preferences: the NQ call emails apart from the address (ticket #194). */
+#email-overlay .account-email-nq { margin-top: .9rem; }

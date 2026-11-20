@@ -3531,12 +3531,14 @@ async def lifespan(_: FastAPI):
     export_package_dir().mkdir(parents=True, exist_ok=True)
     backup_scheduler_stop = Event()
     report_scheduler_stop = Event()
+    nq_summary_stop = Event()
     # A mirror of another installation (DRIVETEST_ANALYZER_MIRROR_OF, see tools/mirror) keeps no schedules: the
     # recurring backups and the Reporting schedules run on the installation it is synchronized from, and would be
     # made twice (the emails sent twice) if the mirror ran them on its copy of the data.
     SCHEDULER_THREADS[:] = [] if mirror_of() else [
         Thread(target=recurring_backup_scheduler_loop, args=(backup_scheduler_stop,), name='recurring-backup-scheduler', daemon=True),
         Thread(target=report_task_scheduler_loop, args=(report_scheduler_stop,), name='reporting-jobs-scheduler', daemon=True),
+        Thread(target=nq_email_summary_loop, args=(nq_summary_stop,), name='nq-email-summaries', daemon=True),
     ]
     for scheduler_thread in SCHEDULER_THREADS:
         scheduler_thread.start()
@@ -3569,6 +3571,7 @@ async def lifespan(_: FastAPI):
     backup_scheduler_stop.set()
     idle_task_stop.set()
     report_scheduler_stop.set()
+    nq_summary_stop.set()
     for scheduler_thread in SCHEDULER_THREADS:
         scheduler_thread.join(timeout=1)
     idle_task_thread.join(timeout=1)
@@ -6552,24 +6555,56 @@ def change_password(
 @app.get('/account/email')
 def account_email(user: SessionUser = Depends(current_user)) -> JSONResponse:
     """The address the emails of the tool send to the signed-in user (its tickets, its password resets)."""
+    from src.modules.nq import nq_call_emails
     record = repository.get_user(user.username)
-    return JSONResponse({'email': record.email if record else '', 'delivery': email_delivery_settings(repository)['configured']},
+    preference = repository.email_preferences([user.username]).get(user.username.casefold()) or {}
+    return JSONResponse({'email': record.email if record else '', 'delivery': email_delivery_settings(repository)['configured'],
+                         'nq_email_frequency': nq_call_emails.frequency_of(preference),
+                         'nq_email_own_changes': bool(preference.get('nq_own_changes')),
+                         'ticket_email_frequency': notifications.chosen_frequency(preference.get('ticket_frequency'),
+                                                                                  notifications.TICKET_DEFAULT_FREQUENCY)},
                         headers={'Cache-Control': 'no-store'})
 
 
 @app.post('/account/email')
-def change_account_email(email: str = Form(''), user: SessionUser = Depends(current_user)) -> JSONResponse:
-    """Each user changes its own address from the account badge, as its password (empty: no emails)."""
+def change_account_email(email: str = Form(''), nq_email_frequency: str = Form(''), nq_email_own_changes: str = Form(''),
+                         ticket_email_frequency: str = Form(''), user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """Each user changes its own address from the account badge, as its password (empty: no emails), and how often it
+    is emailed of the NQ calls and of its tickets (ticket #194; a form of earlier versions without them keeps the choice)."""
+    from src.modules.nq import nq_call_emails
     address = email.strip()
     if address and not EMAIL_ADDRESS_PATTERN.match(address):
         raise HTTPException(status_code=400, detail='Enter a valid email address.')
     record = repository.get_user(user.username)
     if not record or not record.active:
         raise HTTPException(status_code=403, detail='The current user is not active.')
+    before = repository.email_preferences([user.username]).get(user.username.casefold()) or {}
+    frequency = nq_email_frequency.strip() or nq_call_emails.frequency_of(before)
+    ticket_before = notifications.chosen_frequency(before.get('ticket_frequency'), notifications.TICKET_DEFAULT_FREQUENCY)
+    ticket_frequency = ticket_email_frequency.strip() or ticket_before
+    if frequency not in nq_call_emails.FREQUENCIES or ticket_frequency not in notifications.EMAIL_FREQUENCIES:
+        raise HTTPException(status_code=400, detail='Choose how often you receive the NQ call and ticket emails.')
+    own_changes = bool(nq_email_own_changes) if nq_email_frequency.strip() else bool(before.get('nq_own_changes'))
     repository.set_user_email(user.username, address)
+    repository.set_email_preferences(user.username, nq_frequency=frequency, nq_own_changes=own_changes,
+                                     ticket_frequency=ticket_frequency)
+    changes = {}
     if address != record.email:
-        repository.add_log(user.username, 'change_email', json.dumps({'changes': {'email': [record.email, address]}}))
-    return JSONResponse({'email': address})
+        changes['email'] = [record.email, address]
+    if frequency != nq_call_emails.frequency_of(before):
+        changes['nq_email_frequency'] = [nq_call_emails.FREQUENCIES[nq_call_emails.frequency_of(before)],
+                                         nq_call_emails.FREQUENCIES[frequency]]
+    if own_changes != bool(before.get('nq_own_changes')):
+        changes['nq_email_own_changes'] = [bool(before.get('nq_own_changes')), own_changes]
+    if ticket_frequency != ticket_before:
+        changes['ticket_email_frequency'] = [notifications.EMAIL_FREQUENCIES[ticket_before],
+                                             notifications.EMAIL_FREQUENCIES[ticket_frequency]]
+    if changes:
+        repository.add_log(user.username, 'change_email', json.dumps({'changes': changes}))
+    return JSONResponse({'email': address, 'nq_email_frequency': frequency,
+                         'nq_email_frequency_label': nq_call_emails.FREQUENCIES[frequency], 'nq_email_own_changes': own_changes,
+                         'ticket_email_frequency': ticket_frequency,
+                         'ticket_email_frequency_label': notifications.EMAIL_FREQUENCIES[ticket_frequency]})
 
 
 def admin_user(user: SessionUser = Depends(current_user)) -> SessionUser:
@@ -9393,6 +9428,22 @@ def start_manual_database_restore(
             repository.try_add_log(username, 'manual_database_restore_failed', json.dumps({'job_id': job_id, 'error': str(exc)}))
     submit_background_task(run)
     return job
+
+
+def nq_email_summary_loop(stop_event: Event) -> None:
+    """Every minute, the summaries of the NQ calls and of the tickets whose time has come (every hour, day or Friday at
+    17:00, ticket #194)."""
+    from src.modules.nq import nq_call_emails
+    last_error = ''
+    while not stop_event.wait(60):
+        try:
+            nq_call_emails.send_due_summaries(repository, __app_name__)
+            notifications.send_due_ticket_summaries(repository, __app_name__)
+            last_error = ''
+        except Exception as exc:  # noqa: BLE001 - the next minute tries again; the same error is recorded once.
+            if str(exc) != last_error:
+                last_error = str(exc)
+                repository.try_add_log('system', 'email_failed', json.dumps({'kind': 'nq_call_summary', 'error': last_error}))
 
 
 def recurring_backup_scheduler_loop(stop_event: Event) -> None:
@@ -15015,6 +15066,8 @@ def render_admin_template(
         'tickets': 'Tickets',
         'ticket_comments': 'Ticket Comments',
         'ticket_attachments': 'Ticket Attachments',
+        'ticket_email_queue': 'Ticket Email Queue',
+        'nq_email_queue': 'NQ Email Queue',
         'admin_notices_seen': 'Admin Notices Seen',
         'report_tasks': 'Report Tasks',
         'bundle_report_templates': 'Bundle Report Templates',

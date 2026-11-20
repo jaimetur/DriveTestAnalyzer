@@ -1,5 +1,6 @@
 """Fields that do not apply to a call (ticket #186) and the emails to the reviewers of the NQ calls (ticket #187)."""
 import json
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -100,6 +101,8 @@ def test_the_reviewer_is_emailed_when_a_call_changes_a_status(prioritized, flow)
         'link_days': 7, email_delivery.EVERY_NQ_CALL_KEY: ['super'],
     }, keep_password=False, keep_webhook_url=False)
     core.repository.set_user_email('super', 'super@example.com')
+    # At once, and of its own changes too (ticket #194: a daily summary of the changes of others by default).
+    core.repository.set_email_preferences('super', nq_frequency='immediate', nq_own_changes=True)
     key = call_of('data')
     call = detail(client, key)
     # Choosing the reviewer changes no status: nobody is emailed.
@@ -163,3 +166,87 @@ def test_the_table_filters_by_the_day_of_the_call_and_tells_the_analyst_fields_f
     assert updated.status_code == 200, updated.text
     after = progress()
     assert after['filled'] == before['filled'] + 1 and 'Header · Analyst' not in after['missing']
+
+
+def test_the_reviewers_get_a_summary_of_the_nq_calls_as_often_as_they_chose(prioritized, flow):
+    """Ticket #194: a daily summary at 17:00 by default, every hour, every Friday at 17:00, at once or never; one's own
+    changes only when asked for."""
+    client = prioritized['client']
+    email_delivery.save_email_delivery_settings(core.repository, {
+        'transport': 'webhook', 'webhook_url': FLOW, 'port': 587, 'from_address': 'admin@example.com', 'max_attachments_mb': 20,
+        'link_days': 7, email_delivery.EVERY_NQ_CALL_KEY: ['super'],
+    }, keep_password=False, keep_webhook_url=False)
+    core.repository.set_user_email('super', 'super@example.com')
+    key = call_of('data')
+    version = detail(client, key)['version']
+    for status in ('Ongoing', 'Finished'):
+        updated = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'fields': {'analysis_status': status}},
+                                                                              'version': version})
+        assert updated.status_code == 200, updated.text
+        version = updated.json()['call']['version']
+    # The changes made by the user itself are not told by default.
+    assert flow == [] and nq_call_emails.send_due_summaries(core.repository, 'DT Analyzer') == 0
+    with core.repository.global_connection() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM nq_email_queue').fetchone()[0] == 0
+    core.repository.set_email_preferences('super', nq_frequency='daily', nq_own_changes=True)
+    updated = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'fields': {'analysis_status': 'Rejected'}},
+                                                                          'version': version})
+    version = updated.json()['call']['version']
+    client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'fields': {'analysis_status': 'Ongoing'}}, 'version': version})
+    assert flow == []
+    with core.repository.global_connection() as conn:
+        created = conn.execute('SELECT MAX(created_at) FROM nq_email_queue').fetchone()[0]
+    made = datetime.fromisoformat(created).astimezone()
+    # Nothing goes before 17:00 of the day after the changes when they were made after 17:00 (or of the same day otherwise).
+    due = made.replace(hour=17, minute=0, second=0, microsecond=0)
+    if due <= made:
+        due += timedelta(days=1)
+    assert nq_call_emails.send_due_summaries(core.repository, 'DT Analyzer', now=due - timedelta(minutes=1)) == 0
+    assert nq_call_emails.send_due_summaries(core.repository, 'DT Analyzer', now=due) == 1
+    assert len(flow) == 1
+    sent = json.dumps(flow[0])
+    # One call, its status from before the first change to after the last one.
+    assert 'Daily summary' in sent and 'Analysis Status' in sent and 'Finished' in sent and 'Ongoing' in sent
+    assert any(json.loads(row['details']).get('kind') == 'nq_call_summary' for row in core.repository.list_logs() if row['action'] == 'email_sent')
+    with core.repository.global_connection() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM nq_email_queue').fetchone()[0] == 0
+
+
+def test_the_summaries_go_at_their_time_and_tell_each_call_once():
+    friday = datetime(2026, 11, 20, 18, 30).astimezone()
+    assert nq_call_emails.last_summary_time('hourly', friday).hour == 18
+    assert nq_call_emails.last_summary_time('daily', friday) == friday.replace(hour=17, minute=0)
+    assert nq_call_emails.last_summary_time('daily', friday.replace(hour=9)).day == 19
+    assert nq_call_emails.last_summary_time('weekly', friday) == friday.replace(hour=17, minute=0)
+    # Before 17:00 on a Friday, and on the Thursday after it, the last weekly summary was the Friday before.
+    assert nq_call_emails.last_summary_time('weekly', friday.replace(hour=16)).day == 13
+    assert nq_call_emails.last_summary_time('weekly', datetime(2026, 11, 26, 20).astimezone()).day == 20
+    assert nq_call_emails.frequency_of({}) == 'daily' and nq_call_emails.frequency_of({'nq_frequency': 'weekly'}) == 'weekly'
+    state = {'call_key': 'k1', 'complete': False}
+    rows = [{'call_key': 'k1', 'actor': 'a', 'event_json': json.dumps({'state': state, 'changes': [['Analysis Status', 'Pending', 'Ongoing']], 'completed': False})},
+            {'call_key': 'k1', 'actor': 'b', 'event_json': json.dumps({'state': state, 'changes': [['Analysis Status', 'Ongoing', 'Finished']], 'completed': False})},
+            {'call_key': 'k2', 'actor': 'a', 'event_json': json.dumps({'state': state, 'changes': [['Analysis Status', 'Pending', 'Ongoing'], ['NQ Call Status', 'A', 'B']], 'completed': False})},
+            {'call_key': 'k2', 'actor': 'a', 'event_json': json.dumps({'state': state, 'changes': [['Analysis Status', 'Ongoing', 'Pending']], 'completed': False})}]
+    events, actors = nq_call_emails.merge_events(rows)
+    assert events['k1']['changes'] == [('Analysis Status', 'Pending', 'Finished')] and actors == ['a', 'b']
+    # A status back to its value is left out.
+    assert events['k2']['changes'] == [('NQ Call Status', 'A', 'B')]
+
+
+def test_each_user_chooses_how_often_it_gets_the_nq_call_emails(prioritized):
+    """Ticket #194: Email preferences of the user badge."""
+    client = prioritized['client']
+    assert client.get('/account/email').json()['nq_email_frequency'] == 'daily'
+    page = client.get('/non-qualified-calls').text
+    assert 'Email preferences' in page and 'name="nq_email_frequency"' in page
+    saved = client.post('/account/email', data={'email': 'super@example.com', 'nq_email_frequency': 'weekly', 'nq_email_own_changes': '1'})
+    assert saved.status_code == 200 and saved.json()['nq_email_frequency_label'] == 'Weekly on Friday at 17:00'
+    stored = client.get('/account/email').json()
+    assert stored['nq_email_frequency'] == 'weekly' and stored['nq_email_own_changes'] is True
+    assert client.post('/account/email', data={'email': '', 'nq_email_frequency': 'monthly'}).status_code == 400
+    # A form without the choice keeps it.
+    assert client.post('/account/email', data={'email': 'super@example.com'}).json()['nq_email_frequency'] == 'weekly'
+    assert any(row['action'] == 'change_email' and 'nq_email_frequency' in row['details'] for row in core.repository.list_logs())
+    # It travels with Users & Access.
+    exported = next(user for user in core.repository.users_access_payload({})['users'] if user['username'] == 'super')
+    assert exported['nq_email_frequency'] == 'weekly' and exported['nq_email_own_changes'] is True

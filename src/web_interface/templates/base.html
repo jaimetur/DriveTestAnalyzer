@@ -194,7 +194,7 @@
         <button type="button" class="topnav-user-control" popovertarget="topnav-user-options" aria-haspopup="true" aria-expanded="false" title="User options" aria-label="User options for {{ user.username }}" data-user-menu-trigger><span class="topnav-link topnav-user-badge topnav-user-badge-{{ user.role }}" {% if user.role not in ['admin', 'super-admin'] and user_modules_profile.color %}style="--user-badge-color: {{ user_modules_profile.color }}"{% endif %}>{{ user.username }} ({{ user.role }} · {{ user_modules_profile.name }})</span></button>
         <nav id="topnav-user-options" class="module-config-options topnav-user-options" aria-label="User options" popover data-user-menu-options>
           <button type="button" data-change-password-open>{{ menu_icon(section_icons['key']) }}<span>Change password</span></button>
-          <button type="button" data-account-email-open>{{ menu_icon(section_icons['mail']) }}<span>Email address</span></button>
+          <button type="button" data-account-email-open>{{ menu_icon(section_icons['mail']) }}<span>Email preferences</span></button>
           {% if user_api_key_writers %}<button type="button" data-api-keys-open title="Your API keys for {{ user_api_key_writers | join(' and ') }}">{{ menu_icon(section_icons['key']) }}<span>API keys</span></button>{% endif %}
           {% if demo_mode_info.can_start %}<button type="button" class="topnav-demo-start" data-demo-mode-start{% if demo_mode_info.active %} hidden{% endif %} title="Keep the platform for the users of a demo and sign out everybody else until it is over"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M10 8l4 2-4 2z"/></svg><span>Start Demo Mode…</span></button>{% endif %}
         </nav>
@@ -438,14 +438,31 @@
   <div id="email-overlay" class="confirm-overlay" hidden>
     <div class="confirm-panel" role="dialog" aria-modal="true" aria-labelledby="account-email-title">
       <p class="eyebrow">Account</p>
-      <h3 id="account-email-title">Email address</h3>
+      <h3 id="account-email-title">Email preferences</h3>
       <form data-account-email-form>
         <label>Your email address<input type="email" name="email" autocomplete="email" placeholder="name.surname@ericsson.com"></label>
         <p class="form-note">The tool sends here the updates of your tickets and the links to choose a new password. Leave it empty to receive no emails.</p>
+        <label class="account-email-nq">NQ call emails<select name="nq_email_frequency">
+          <option value="immediate">Immediately, one email per change</option>
+          <option value="hourly">Every hour, in one summary</option>
+          <option value="daily">Daily at 17:00, in one summary</option>
+          <option value="weekly">Weekly on Friday at 17:00, in one summary</option>
+          <option value="off">Never</option>
+        </select></label>
+        <label class="confirm-option"><input type="checkbox" name="nq_email_own_changes" value="1"><span>Also email me the changes I make</span></label>
+        <p class="form-note">Of the NQ calls you review (all of them if you are in Email Every NQ Call Change To). A summary tells each call once, from its first to its last status.</p>
+        <label class="account-email-nq">Ticket emails<select name="ticket_email_frequency">
+          <option value="immediate">Immediately, one email per change</option>
+          <option value="hourly">Every hour, in one summary</option>
+          <option value="daily">Daily at 17:00, in one summary</option>
+          <option value="weekly">Weekly on Friday at 17:00, in one summary</option>
+          <option value="off">Never</option>
+        </select></label>
+        <p class="form-note">Of your tickets, those you commented and those that mention them.</p>
         <p class="form-note" data-account-email-error hidden></p>
         <div class="confirm-actions">
           <button type="button" class="ghost-link confirm-cancel" data-account-email-cancel>Cancel</button>
-          <button type="submit" class="action-link-primary">Save email address</button>
+          <button type="submit" class="action-link-primary">Save email preferences</button>
         </div>
       </form>
     </div>

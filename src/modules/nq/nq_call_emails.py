@@ -4,11 +4,17 @@ The reviewer of a call, and the users of Email Every NQ Call Change To, are told
 call is filled and when its NQ Call Status or the status of one of its phases changes: one email per recipient for each
 change (a bulk change or a copy to a group lists its calls in one email), with the follow-up of each call, what changed,
 the fields filled by section and those still empty, and a link that opens the call.
+
+Each user chooses how often (ticket #194): at once, or in a summary every hour, every day at 17:00 or every Friday at
+17:00 (the default is the daily summary), or never; and whether it is told of its own changes too (not by default). The
+changes waiting for a summary are kept in ``nq_email_queue`` (application database), so a restart loses none; a summary
+tells of each call once, with each status from its value before the first change to its value after the last one.
 """
 from __future__ import annotations
 
 import html
 import json
+from datetime import datetime
 from typing import Any, Iterable
 
 from src.modules.core import notifications
@@ -17,6 +23,31 @@ from src.modules.core.email_delivery import EVERY_NQ_CALL_KEY, email_delivery_se
 # A call of more is listed by its JOIN_ID only: an email stays readable (and under the size a flow accepts).
 DETAILED_CALLS = 10
 LISTED_CALLS = 200
+
+# How often a user is emailed of the NQ calls (ticket #194), and when the summaries go (local time of the server).
+FREQUENCIES = notifications.EMAIL_FREQUENCIES
+DEFAULT_FREQUENCY = 'daily'
+SUMMARY_NAMES = notifications.SUMMARY_NAMES
+last_summary_time = notifications.last_summary_time
+QUEUE_TABLE = 'nq_email_queue'
+QUEUE_SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS {QUEUE_TABLE} (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    workspace TEXT NOT NULL,
+    call_key TEXT NOT NULL,
+    actor TEXT NOT NULL DEFAULT '',
+    base_url TEXT NOT NULL DEFAULT '',
+    event_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_{QUEUE_TABLE}_username ON {QUEUE_TABLE}(username);
+"""
+
+
+def frequency_of(preference: dict[str, Any] | None) -> str:
+    """The frequency a user chose for the NQ calls, else the default (a daily summary)."""
+    return notifications.chosen_frequency((preference or {}).get('nq_frequency'), DEFAULT_FREQUENCY)
 
 
 def call_events(before: dict[str, dict[str, Any]], after: dict[str, dict[str, Any]], report: dict[str, dict[str, list[str]]],
@@ -153,13 +184,21 @@ def notify_call_changes(app_repository: Any, app_name: str, workspace: str, acto
             return 0
         told = recipients_of(events, settings.get(EVERY_NQ_CALL_KEY) or [])
         emails = app_repository.user_emails(told)
+        preferences = app_repository.email_preferences(told)
         names = notifications.people_names(app_repository)
         actor_name = names.get(str(actor).casefold(), str(actor))
         base = str(base_url or '').rstrip('/')
         sent = 0
+        waiting: dict[str, list[str]] = {}
         for username, keys in told.items():
             address = emails.get(username)
-            if not address:
+            preference = preferences.get(username) or {}
+            frequency = frequency_of(preference)
+            # Nobody is told of its own changes unless it asked to be; a user who chose Never is told of none.
+            if not address or frequency == 'off' or (username == str(actor).casefold() and not preference.get('nq_own_changes')):
+                continue
+            if frequency != 'immediate':
+                waiting[username] = keys
                 continue
             subject, body = call_email(app_name, workspace, actor_name, events, keys, base, names)
             notifications.deliver(app_repository, kind='nq_call', recipients=[address], subject=subject, html_body=body, actor=actor,
@@ -167,8 +206,137 @@ def notify_call_changes(app_repository: Any, app_name: str, workspace: str, acto
                                            'join_ids': [events[key]['state'].get('join_id') or key for key in keys[:20]]},
                                   switch='notify_nq_calls', thread=call_thread(workspace, keys[0]) if len(keys) == 1 else '')
             sent += 1
+        if waiting:
+            queue_for_summaries(app_repository, workspace, actor, base, events, waiting)
         return sent
     except Exception as exc:  # noqa: BLE001 - an email never breaks the change it tells of.
         app_repository.try_add_log(actor or 'system', 'email_failed', json.dumps(
             {'kind': 'nq_call', 'workspace': workspace, 'calls': len(events), 'error': str(exc)}, ensure_ascii=False))
         return 0
+
+
+def _queue_connection(app_repository: Any):
+    """The application database, where the changes wait for their summaries."""
+    return app_repository.global_connection()
+
+
+def queue_for_summaries(app_repository: Any, workspace: str, actor: str, base_url: str, events: dict[str, dict[str, Any]],
+                        waiting: dict[str, list[str]]) -> int:
+    """Keep the changes of ``events`` for the summaries of the users of ``waiting`` (username: call keys)."""
+    now = notifications.queued_at()
+    rows = [(username, workspace, key, str(actor or ''), base_url,
+             json.dumps({'state': events[key]['state'], 'changes': events[key]['changes'], 'completed': events[key]['completed']},
+                        ensure_ascii=False, default=str), now)
+            for username, keys in waiting.items() for key in keys]
+    with _queue_connection(app_repository) as conn:
+        conn.executescript(QUEUE_SCHEMA)
+        conn.executemany(f'INSERT INTO {QUEUE_TABLE} (username, workspace, call_key, actor, base_url, event_json, created_at) '
+                         'VALUES (?, ?, ?, ?, ?, ?, ?)', rows)
+    return len(rows)
+
+
+def merge_events(rows: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """The calls of some queued changes (oldest first), each told once: its latest follow-up, each status from its value
+    before the first change to its value after the last one (left out when it came back), and completed when it was
+    completed and still is; with the users who made the changes."""
+    merged: dict[str, dict[str, Any]] = {}
+    actors: list[str] = []
+    for row in rows:
+        event = json.loads(row['event_json'])
+        if row['actor'] and row['actor'] not in actors:
+            actors.append(row['actor'])
+        current = merged.setdefault(row['call_key'], {'state': event['state'], 'changes': {}, 'completed': False})
+        current['state'] = event['state']
+        current['completed'] = current['completed'] or bool(event.get('completed'))
+        for label, old, new in event.get('changes') or []:
+            if label in current['changes']:
+                current['changes'][label][1] = new
+            else:
+                current['changes'][label] = [old, new]
+    calls = {}
+    for key, event in merged.items():
+        changes = [(label, old, new) for label, (old, new) in event['changes'].items() if old != new]
+        completed = event['completed'] and bool(event['state'].get('complete'))
+        if changes or completed:
+            calls[key] = {'state': event['state'], 'changes': changes, 'completed': completed}
+    return calls, actors
+
+
+def summary_email(app_name: str, workspace: str, frequency: str, events: dict[str, dict[str, Any]], actors: list[str],
+                  base_url: str, names: dict[str, str]) -> tuple[str, str]:
+    """The subject and HTML of the summary of the NQ calls changed since the previous one."""
+    keys = list(events)
+    shown = keys[:LISTED_CALLS]
+    period = notifications.SUMMARY_PERIODS.get(frequency, 'the last period')
+    people = ', '.join(html.escape(names.get(str(actor).casefold(), str(actor))) for actor in actors) or 'the analysts'
+    count = 'this NQ call' if len(keys) == 1 else f'{len(keys)} NQ calls'
+    intro = (f'<p>The changes of {period} in {count} of the workspace <strong>{html.escape(workspace)}</strong>, made by {people}: '
+             'each status from its value before the first change to its value after the last one.</p>')
+    parts = [intro, *(_call_part(events[key], base_url, names, detailed=index < DETAILED_CALLS) for index, key in enumerate(shown))]
+    if len(keys) > len(shown):
+        parts.append(f'<p>And {len(keys) - len(shown)} more calls.</p>')
+    completed = sum(1 for key in keys if events[key]['completed'])
+    changed = sum(1 for key in keys if events[key]['changes'])
+    actions = [*(['Completed'] if completed else []), *(['Status changed'] if changed else [])]
+    title = f"{SUMMARY_NAMES.get(frequency, 'NQ')} summary · {len(keys)} NQ call{'s' if len(keys) != 1 else ''}"
+    link = (('Open the call', f'{base_url}/non-qualified-calls#call={shown[0]}') if len(shown) == 1 else
+            ('Open Non-Qualified Calls', f'{base_url}/non-qualified-calls')) if base_url else None
+    subject = f"NQ Calls - {SUMMARY_NAMES.get(frequency, 'NQ')} summary - {len(keys)} call{'s' if len(keys) != 1 else ''} ({workspace})"
+    return subject, notifications.email_page(app_name, title, parts, link=link, action=actions)
+
+
+def send_due_summaries(app_repository: Any, app_name: str, now: datetime | None = None) -> int:
+    """Email each user the summary of the NQ calls whose time has come (every hour, day or Friday at 17:00, as it chose);
+    how many summaries were sent. A user's changes wait while the email cannot be sent, and are dropped once it chose
+    Never, has no address or NQ call emails are switched off."""
+    now = (now or datetime.now()).astimezone()
+    settings = email_delivery_settings(app_repository)
+    with _queue_connection(app_repository) as conn:
+        conn.executescript(QUEUE_SCHEMA)
+        rows = [dict(row) for row in conn.execute(f'SELECT * FROM {QUEUE_TABLE} ORDER BY id').fetchall()]
+    if not rows or not settings['configured']:
+        return 0
+    if not settings.get('notify_nq_calls'):
+        _drop(app_repository, [row['id'] for row in rows])
+        return 0
+    by_user: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_user.setdefault(row['username'], []).append(row)
+    preferences = app_repository.email_preferences(by_user)
+    emails = app_repository.user_emails(by_user)
+    names = notifications.people_names(app_repository)
+    sent = 0
+    for username, user_rows in by_user.items():
+        frequency = frequency_of(preferences.get(username))
+        address = emails.get(username)
+        if frequency == 'off' or not address:
+            _drop(app_repository, [row['id'] for row in user_rows])
+            continue
+        due = notifications.due_before(frequency, now)
+        ready = [row for row in user_rows if row['created_at'] <= due]
+        by_workspace: dict[str, list[dict[str, Any]]] = {}
+        for row in ready:
+            by_workspace.setdefault(row['workspace'], []).append(row)
+        for workspace, workspace_rows in by_workspace.items():
+            events, actors = merge_events(workspace_rows)
+            ids = [row['id'] for row in workspace_rows]
+            if not events:
+                _drop(app_repository, ids)
+                continue
+            base = str(workspace_rows[-1]['base_url'] or '').rstrip('/')
+            subject, body = summary_email(app_name, workspace, frequency, events, actors, base, names)
+            delivered = notifications.deliver(
+                app_repository, kind='nq_call_summary', recipients=[address], subject=subject, html_body=body, actor='system',
+                details={'workspace': workspace, 'recipient': username, 'frequency': frequency, 'calls': len(events),
+                         'changes': len(workspace_rows), 'join_ids': [event['state'].get('join_id') or key for key, event in list(events.items())[:20]]},
+                switch='notify_nq_calls', background=False)
+            if delivered:
+                _drop(app_repository, ids)
+                sent += 1
+    return sent
+
+
+def _drop(app_repository: Any, ids: list[int]) -> None:
+    if ids:
+        with _queue_connection(app_repository) as conn:
+            conn.executemany(f'DELETE FROM {QUEUE_TABLE} WHERE id = ?', [(identifier,) for identifier in ids])

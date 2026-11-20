@@ -27,7 +27,8 @@ SENSITIVE_FIELDS = frozenset({'password_hash'})
 FIELD_LABELS = {
     'password_hash': 'Password', 'query_sql': 'SQL', 'is_default': 'Default', 'default': 'Default', 'created_by': 'Creator',
     'assigned_to': 'Assignee', 'cdrs': 'CDRs', 'nr_mode': 'NR Mode', 'access_requested_at': 'Access Request',
-    'last_login_at': 'Last Log-in',
+    'last_login_at': 'Last Log-in', 'nq_email_frequency': 'NQ Call Emails', 'nq_email_own_changes': 'Emails Of Own NQ Changes',
+    'ticket_email_frequency': 'Ticket Emails',
     'send_email': 'Send Email', 'scoring_profile_id': 'Scoring Methodology', 'context_filters': 'Filters',
     'area_summary': 'Country Areas & Scoring Trends', 'operator_mappings': 'Operator Maps',
     'operator_name_comments': 'Comments of the Operator Names', 'vendor_mappings': 'Vendor Maps',

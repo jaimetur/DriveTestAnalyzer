@@ -2,6 +2,7 @@
 activation of their users, password resets from the login page, the email address of each user, the updates of Ticket
 Center for the reporters of the tickets, and the download links of the Reporting emails."""
 import json
+from datetime import datetime, timedelta
 import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -125,9 +126,9 @@ def test_users_have_an_email_derived_from_their_names_that_they_and_the_administ
     # Each user changes it from the account badge.
     login(client)
     page = client.get('/documents/view/help').text
-    assert 'data-account-email-open' in page and 'Email address' in page
+    assert 'data-account-email-open' in page and 'Email preferences' in page
     assert client.post('/account/email', data={'email': 'not an address'}).status_code == 400
-    assert client.post('/account/email', data={'email': 'super.user@example.com'}).json() == {'email': 'super.user@example.com'}
+    assert client.post('/account/email', data={'email': 'super.user@example.com'}).json()['email'] == 'super.user@example.com'
     assert client.get('/account/email').json()['email'] == 'super.user@example.com'
     assert logged('change_email')[-1] == {'changes': {'email': ['', 'super.user@example.com']}}
     # And the super-admins from Users.
@@ -572,3 +573,40 @@ def test_every_email_of_a_ticket_goes_in_one_conversation_of_the_mail_clients(cl
                                                'priority': 'P2', 'ticket_type': 'bug'}).json()['id']
     notifications.flush_ticket_emails()
     assert sent and all(item['thread'] == f'ticket-{number}' and item['kind'] == 'ticket' for item in sent)
+
+
+def test_each_user_chooses_how_often_it_gets_the_emails_of_its_tickets(client, flow):
+    """Ticket #194: the ticket emails at once by default, or in a summary every hour, day or Friday at 17:00, or never,
+    chosen apart from those of the NQ calls."""
+    use_flow(notify_tickets=True)
+    user_id = core.repository.create_user('EREPORT', 'secret123', 'user-editor', first_name='Ereport', last_name='User',
+                                          email='reporter@example.com')
+    profile = next(item['id'] for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
+    core.repository.set_users_modules_profile([user_id], profile)
+    core.invalidate_module_access_cache()
+    login(client, 'EREPORT', 'secret123')
+    assert client.get('/account/email').json()['ticket_email_frequency'] == 'immediate'
+    saved = client.post('/account/email', data={'email': 'reporter@example.com', 'nq_email_frequency': 'daily',
+                                                'ticket_email_frequency': 'weekly'})
+    assert saved.json()['ticket_email_frequency_label'] == 'Weekly on Friday at 17:00'
+    number = client.post('/api/tickets', data={'title': 'Export fails', 'description': 'It fails.', 'module': 'scoring',
+                                               'priority': 'P2', 'ticket_type': 'bug'}).json()['id']
+    login(client)
+    client.post(f'/api/tickets/{number}/comments', data={'body': 'Looking at it.'})
+    notifications.flush_ticket_emails()
+    assert [item['to'] for item in flow if item['to'] == 'reporter@example.com'] == []
+    with core.repository.global_connection() as conn:
+        created = conn.execute('SELECT MAX(created_at) FROM ticket_email_queue').fetchone()[0]
+    made = datetime.fromisoformat(created).astimezone()
+    friday = made.replace(hour=17, minute=0, second=0, microsecond=0) + timedelta(days=(4 - made.weekday()) % 7)
+    if friday <= made:
+        friday += timedelta(days=7)
+    assert notifications.send_due_ticket_summaries(core.repository, 'DT Analyzer', now=friday - timedelta(minutes=1)) == 0
+    assert notifications.send_due_ticket_summaries(core.repository, 'DT Analyzer', now=friday) == 1
+    summary = [item for item in flow if item['to'] == 'reporter@example.com']
+    assert len(summary) == 1 and summary[0]['subject'] == 'DT Analyzer - Tickets - Weekly summary - 1 ticket'
+    page = summary[0]['html']
+    assert f'Ticket #{number}: Export fails' in page and page.index('It fails.') < page.index('Looking at it.')
+    assert logged('email_sent')[-1]['kind'] == 'ticket_summary'
+    exported = next(user for user in core.repository.users_access_payload({})['users'] if user['username'] == 'EREPORT')
+    assert exported['ticket_email_frequency'] == 'weekly'

@@ -646,7 +646,10 @@ CREATE TABLE IF NOT EXISTS users (
     last_name TEXT NOT NULL DEFAULT '',
     access_requested_at TEXT NOT NULL DEFAULT '',
     last_login_at TEXT NOT NULL DEFAULT '',
-    email TEXT NOT NULL DEFAULT ''
+    email TEXT NOT NULL DEFAULT '',
+    nq_email_frequency TEXT NOT NULL DEFAULT '',
+    nq_email_own_changes INTEGER NOT NULL DEFAULT 0,
+    ticket_email_frequency TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS user_login_sessions (
@@ -1439,6 +1442,14 @@ class Repository:
                 counts[address] = counts.get(address, 0) + 1
             conn.executemany('UPDATE users SET email = ? WHERE id = ?',
                              [(address, user_id) for user_id, address in derived.items() if address and counts[address] == 1])
+        # How often each user is emailed of the NQ calls (ticket #194): empty is the default (a daily summary).
+        if 'nq_email_frequency' not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN nq_email_frequency TEXT NOT NULL DEFAULT ''")
+        if 'nq_email_own_changes' not in user_columns:
+            conn.execute('ALTER TABLE users ADD COLUMN nq_email_own_changes INTEGER NOT NULL DEFAULT 0')
+        # And of its tickets: empty is the default (at once).
+        if 'ticket_email_frequency' not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN ticket_email_frequency TEXT NOT NULL DEFAULT ''")
         # The identity of each account, Modules Profile and Workspace Group, which never changes: a Users & Access import
         # finds them again by it after a rename.
         for table in ('users', 'modules_profiles', 'workspace_groups'):
@@ -3291,6 +3302,32 @@ class Repository:
                             (email.strip(), username.strip())).rowcount != 1:
                 raise ValueError('User not found')
 
+    def email_preferences(self, usernames: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
+        """How often each user is emailed of the NQ calls and whether of its own changes too, and how often of its tickets
+        (ticket #194), by username in lower case: ``nq_frequency`` and ``ticket_frequency`` are empty for the default."""
+        wanted = None if usernames is None else {str(name).strip().casefold() for name in usernames if str(name or '').strip()}
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            rows = conn.execute('SELECT username, nq_email_frequency, nq_email_own_changes, ticket_email_frequency FROM users').fetchall()
+        return {str(row['username']).casefold(): {'nq_frequency': str(row['nq_email_frequency'] or ''),
+                                                  'nq_own_changes': bool(row['nq_email_own_changes']),
+                                                  'ticket_frequency': str(row['ticket_email_frequency'] or '')}
+                for row in rows if wanted is None or str(row['username']).casefold() in wanted}
+
+    def set_email_preferences(self, username: str, *, nq_frequency: str | None = None, nq_own_changes: bool | None = None,
+                              ticket_frequency: str | None = None) -> None:
+        """Each user chooses how often it is emailed of the NQ calls and of its tickets (ticket #194); None keeps a value."""
+        values = {'nq_email_frequency': nq_frequency, 'nq_email_own_changes': None if nq_own_changes is None else int(bool(nq_own_changes)),
+                  'ticket_email_frequency': ticket_frequency}
+        values = {column: value for column, value in values.items() if value is not None}
+        if not values:
+            return
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            if conn.execute(f"UPDATE users SET {', '.join(f'{column} = ?' for column in values)} WHERE username COLLATE NOCASE = ?",
+                            (*values.values(), username.strip())).rowcount != 1:
+                raise ValueError('User not found')
+
     def user_emails(self, usernames: Iterable[str]) -> dict[str, str]:
         """The addresses of the active accounts among ``usernames`` that have one, by username in lower case."""
         wanted = {str(name).strip().casefold() for name in usernames if str(name or '').strip()}
@@ -3468,7 +3505,7 @@ class Repository:
             self._ensure_user_access_schema(conn)
             users = conn.execute(
                 'SELECT id, uid, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name, access_requested_at, '
-                'email, last_login_at FROM users ORDER BY id'
+                'email, last_login_at, nq_email_frequency, nq_email_own_changes, ticket_email_frequency FROM users ORDER BY id'
             ).fetchall()
             profile_uids = {int(row['id']): str(row['uid']) for row in conn.execute('SELECT id, uid FROM modules_profiles').fetchall()}
             group_uids = {int(row['id']): str(row['uid']) for row in conn.execute('SELECT id, uid FROM workspace_groups').fetchall()}
@@ -3486,6 +3523,9 @@ class Repository:
                        'active': bool(row['active']), 'created_at': str(row['created_at'] or ''),
                        'access_requested_at': str(row['access_requested_at'] or '') if not row['active'] else '',
                        'last_login_at': str(row['last_login_at'] or ''),
+                       'nq_email_frequency': str(row['nq_email_frequency'] or ''),
+                       'nq_email_own_changes': bool(row['nq_email_own_changes']),
+                       'ticket_email_frequency': str(row['ticket_email_frequency'] or ''),
                        'modules_profile': profile_by_user.get(int(row['id'])),
                        'workspace_groups': sorted(groups_by_user.get(int(row['id']), []), key=str.casefold),
                        'workspaces': names(self._workspace_ids_from_json(row['workspace_ids_json']))} for row in users],
@@ -3592,8 +3632,8 @@ class Repository:
                 summary['workspace_groups'] += 1
             summary['renamed'] += [f'Workspace Group {line}' for line in group_matcher.summary()]
             user_rows = {int(row['id']): row for row in conn.execute(
-                'SELECT id, uid, username, role, active, password_hash, workspace_ids_json, access_requested_at, email, last_login_at '
-                'FROM users').fetchall()}
+                'SELECT id, uid, username, role, active, password_hash, workspace_ids_json, access_requested_at, email, last_login_at, '
+                'nq_email_frequency, nq_email_own_changes, ticket_email_frequency FROM users').fetchall()}
             user_matcher = ItemMatcher([(user_id, str(row['username']), str(row['uid'])) for user_id, row in user_rows.items()])
             for account in payload['users']:
                 if not isinstance(account, dict):
@@ -3625,6 +3665,13 @@ class Repository:
                 # Each server records the sign-ins it receives: the account keeps the most recent of both (packages of
                 # earlier versions carry none, so the local one stays).
                 last_login = later_timestamp(account.get('last_login_at'), row['last_login_at'] if row else '')
+                # How often it is emailed of the NQ calls (packages of earlier versions keep the local choice, ticket #194).
+                nq_frequency = str(account.get('nq_email_frequency') or '') if 'nq_email_frequency' in account else (
+                    str(row['nq_email_frequency'] or '') if row else '')
+                nq_own = int(bool(account.get('nq_email_own_changes'))) if 'nq_email_own_changes' in account else (
+                    int(row['nq_email_own_changes'] or 0) if row else 0)
+                ticket_frequency = str(account.get('ticket_email_frequency') or '') if 'ticket_email_frequency' in account else (
+                    str(row['ticket_email_frequency'] or '') if row else '')
                 if row:
                     user_id = int(row['id'])
                     new_username = final
@@ -3639,20 +3686,23 @@ class Repository:
                     conn.execute(
                         'UPDATE users SET username = ?, role = ?, active = ?, password_hash = ?, workspace_ids_json = ?, modules_profile_id = ?, '
                         "first_name = ?, last_name = ?, access_requested_at = ?, email = ?, last_login_at = ?, "
+                        "nq_email_frequency = ?, nq_email_own_changes = ?, ticket_email_frequency = ?, "
                         "uid = CASE WHEN ? <> '' THEN ? ELSE uid END WHERE id = ?",
                         (new_username, role, int(active), password_hash,
                          self._workspace_ids_json(resolve(account.get('workspaces'), self._workspace_ids_from_json(row['workspace_ids_json']))),
-                         profile_id, first_name, last_name, '' if active else requested_at, email, last_login, uid, uid, user_id),
+                         profile_id, first_name, last_name, '' if active else requested_at, email, last_login, nq_frequency, nq_own,
+                         ticket_frequency, uid, uid, user_id),
                     )
                     summary['users_updated'] += 1
                 else:
                     user_id = int(conn.execute(
                         'INSERT INTO users (username, password_hash, role, active, created_at, workspace_ids_json, modules_profile_id, '
-                        "first_name, last_name, access_requested_at, email, last_login_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        "CASE WHEN ? <> '' THEN ? ELSE lower(hex(randomblob(16))) END)",
+                        "first_name, last_name, access_requested_at, email, last_login_at, nq_email_frequency, nq_email_own_changes, "
+                        "ticket_email_frequency, uid) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? <> '' THEN ? ELSE lower(hex(randomblob(16))) END)",
                         (username, password_hash, role, int(active), str(account.get('created_at') or '') or local_now_iso(),
                          self._workspace_ids_json(resolve(account.get('workspaces'))), profile_id, first_name, last_name,
-                         '' if active else requested_at, email, last_login, uid, uid),
+                         '' if active else requested_at, email, last_login, nq_frequency, nq_own, ticket_frequency, uid, uid),
                     ).lastrowid)
                     summary['users_created'] += 1
                 conn.executemany('DELETE FROM workspace_group_members WHERE group_id = ? AND user_id = ?',

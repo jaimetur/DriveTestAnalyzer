@@ -598,8 +598,11 @@ _DESCRIBERS: dict[str, Callable[[Any], str]] = {
                                                  'signed out by Demo Mode.'),
     'email_sent': _email(True),
     'email_failed': _email(False),
-    'change_email': lambda details: _sentence('Email address', [
-        f"{value_text(details['changes']['email'][0]) or 'none'} → {value_text(details['changes']['email'][1]) or 'none'}"]),
+    'change_email': lambda details: _sentence('Email preferences', [
+        f"{label} {value_text(details['changes'][key][0]) or 'none'} → {value_text(details['changes'][key][1]) or 'none'}"
+        for key, label in (('email', 'address'), ('nq_email_frequency', 'NQ call emails'),
+                           ('nq_email_own_changes', 'emails of own NQ changes'), ('ticket_email_frequency', 'ticket emails'))
+        if key in details.get('changes', {})]),
     'password_reset_requested': lambda details: f"Link to choose a new password emailed to {details.get('email')}.",
     'password_reset': lambda details: 'Password changed with the link of a password reset email.',
     'download_reporting_file_link': lambda details: (
