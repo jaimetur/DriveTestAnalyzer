@@ -16,7 +16,8 @@ MIRROR_NOTICE = 'Mirror of the development Mac.</strong> This server is a synchr
 
 
 def test_ordinary_server_starts_its_schedulers(client) -> None:
-    assert sorted(thread.name for thread in app_module.SCHEDULER_THREADS) == ['recurring-backup-scheduler', 'reporting-jobs-scheduler']
+    assert sorted(thread.name for thread in app_module.SCHEDULER_THREADS) == ['nq-email-summaries', 'recurring-backup-scheduler',
+                                                                         'reporting-jobs-scheduler']
     assert all(thread.is_alive() for thread in app_module.SCHEDULER_THREADS)
     assert client.get('/healthz').json() == {'status': 'ok', 'version': __version__}
     assert 'mirror-notice' not in client.get('/login').text
@@ -74,7 +75,7 @@ def test_development_copy_names_the_server_with_the_data_in_use(client, monkeypa
     assert '<strong>Development copy.</strong> The data in use is on <a href="https://dta.example.com">https://dta.example.com</a>' in page
     assert client.get('/healthz').json()['development_copy_of'] == 'https://dta.example.com'
     # It keeps its schedules and is no mirror.
-    assert len(app_module.SCHEDULER_THREADS) == 2
+    assert len(app_module.SCHEDULER_THREADS) == 3
     assert 'mirror-notice' not in page
     assert client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False).status_code == 303
     assert 'development-notice' in client.get('/documents/view/help').text
