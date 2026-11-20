@@ -181,7 +181,7 @@
       <p class="lede">Bring the source files that feed every product workflow into one managed workspace: {{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }} workbooks (Data, Voice and Speech), Layer3 Logs (the parsed drivetest logs of each campaign), and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
       {% if user.role not in ['user-editor', 'admin', 'super-admin'] %}<p class="form-note workspace-read-only-note">The user-viewer role can explore the workspace datasets and generate jobs, but cannot delete, reprocess or map datasets.</p>{% endif %}
       {% if user.role in ['admin', 'super-admin'] %}
-      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-multivendor-mapping-count="{{ multivendor_mapping_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}' data-flex-areas='{{ flex_area_names | default([]) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix']) | list %} data-other-datasets{% endif %}>
+      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-multivendor-mapping-count="{{ multivendor_mapping_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}' data-flex-areas='{{ flex_area_names | default([]) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix', 'master_grid']) | list %} data-other-datasets{% endif %}>
       <label class="dropzone-field" data-upload-dropzone>
         <span class="dropzone-title">Drop workbooks or browse</span>
         <span class="dropzone-copy">Accepted: CSV, XLS, XLSX, XLSM, GeoJSON, JSON, ZIP (shapefile or KMZ package), KMZ, KML</span>
@@ -239,7 +239,7 @@
       <label class="queue-type-filter-control">Dataset Type
         <select data-queue-type-filter>
           <option value="">All Types</option>
-          {% set has_other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix']) | list | length > 0 %}
+          {% set has_other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix', 'master_grid']) | list | length > 0 %}
           {% set queue_type_options = [
             ('data', 'CDR-Data'),
             ('speech', 'CDR-Speech'),
@@ -252,7 +252,8 @@
             ('clusters', 'Clusters — Geospatial'),
             ('vendors', 'Vendors — Geospatial'),
             ('l3_dt_logs', 'Layer3 Logs'),
-            ('ca_appendix', 'CA Appendix')
+            ('ca_appendix', 'CA Appendix'),
+            ('master_grid', 'Master Grid')
           ] %}
           {% for kind, label in queue_type_options %}
           <option value="{{ kind }}" {% if kind not in input_kind_options %}disabled{% endif %}>{{ label }}</option>
@@ -575,7 +576,8 @@
     {% set l3_datasets = datasets | selectattr('dataset_kind', 'equalto', 'l3_dt_logs') | list %}
     {% set ca_datasets = datasets | selectattr('dataset_kind', 'equalto', 'ca_appendix') | list %}
     {% set ca_matches = ca_appendix_matches | default({}) %}
-    {% set other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix']) | list %}
+    {% set grid_datasets = datasets | selectattr('dataset_kind', 'equalto', 'master_grid') | list %}
+    {% set other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix', 'master_grid']) | list %}
     <div class="dataset-cards">
       {# The campaigns of the CDRs, offered while a Campaign is written. #}
       <datalist id="cdr-campaign-options">{% for campaign in datasets | selectattr('dataset_kind', 'in', cdr_kinds) | map(attribute='campaign') | select | unique | sort %}<option value="{{ campaign }}"></option>{% endfor %}</datalist>
@@ -699,6 +701,31 @@
             <tbody data-dataset-card-body="ca-appendix">
               {% for dataset in ca_datasets %}{{ compact_dataset_row(dataset) }}{% else %}
               <tr data-dataset-card-empty><td colspan="6"><article class="empty-state-inline">No CA Appendix yet. Upload the quarterly CA Appendix of NetCheck (its XLSX, CSV or ZIP) and choose CA Appendix as its type.</article></td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="dataset-card dataset-card-compact dataset-card-master-grid" data-dataset-card="master-grid">
+        <header class="dataset-card-head">
+          <div><p class="eyebrow">Network plan</p><h3><span class="dataset-card-icon dataset-card-icon-master-grid" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M4 10h16M4 15h16M10 4v16M15 4v16"/></svg></span>{% set grid_latest = grid_datasets | selectattr('master_grid') | first %}<span class="dataset-card-badges">{% if grid_latest and grid_latest.master_grid.sites %}<span class="dataset-card-campaigns" title="Sites of the newest Master Grid (its Keep sites)">{{ '{:,}'.format(grid_latest.master_grid.sites) }} sites · {{ '{:,}'.format(grid_latest.master_grid.keep or 0) }} Keep</span>{% endif %}{% if grid_latest and grid_latest.master_grid.week %}<span class="dataset-card-campaigns" title="Week of the newest Master Grid">{{ grid_latest.master_grid.week }}</span>{% endif %}</span>Master Grid <span class="dataset-card-count">{{ grid_datasets | length }}</span></h3></div>
+          <p class="form-note">The weekly Master Grid List of the VodafoneThree sites: Keep or Remove, High / Med / Low configuration and the financial year of the NNS upgrade of each site. The newest one gives the NNS Break-down of Scoring &amp; GAP Analysis its capacities and planned NNS sites.</p>
+        </header>
+        <div class="table-wrap queue-table-wrap">
+          <table class="queue-table queue-table-compact" data-queue-sortable-table>
+            <thead>
+              <tr>
+            <th aria-sort="descending">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<span class="queue-select-head"><input type="checkbox" class="queue-select" data-queue-select-all aria-label="Select every dataset of this table" title="Select every dataset of this table">{% endif %}<button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button>{% if user.role in ['user-editor', 'admin', 'super-admin'] %}</span>{% endif %}</th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="rows" data-queue-sort-type="number">Rows<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="status" data-queue-sort-type="text">Status<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="updated" data-queue-sort-type="text">Updated<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody data-dataset-card-body="master-grid">
+              {% for dataset in grid_datasets %}{{ compact_dataset_row(dataset) }}{% else %}
+              <tr data-dataset-card-empty><td colspan="6"><article class="empty-state-inline">No Master Grid yet. Upload the Master Grid List workbook (XLSX) and choose Master Grid as its type.</article></td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -1220,6 +1247,7 @@
     ['speech', `${cdrLabel} — Speech`],
     ['l3_dt_logs', 'Layer3 Logs'],
     ['ca_appendix', 'CA Appendix'],
+    ['master_grid', 'Master Grid'],
     ['multivendor_mapping', 'Multivendor Mapping'],
     ['network_inventory', 'Network Inventory'],
     ['regions', 'Regions — Geospatial'],
@@ -1236,6 +1264,7 @@
     speech: '<path d="M4 12h2M8 8v8M12 5v14M16 9v6M20 11v2"/>',
     l3_dt_logs: '<path d="M4 18c3-1 3-6 6-6s3 4 6 3 2-7 4-9"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="6" r="1.6"/><path d="M8 21h8"/>',
     ca_appendix: '<path d="M4 20V14M8 20V10M12 20V6M16 20V9M20 20V4"/><path d="M3 20h18"/>',
+    master_grid: '<path d="M4 4h16v16H4z"/><path d="M4 10h16M4 15h16M10 4v16M15 4v16"/>',
     mapping_vodafone: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
     network_inventory: '<circle cx="12" cy="9" r="1.6"/><path d="M12 10.6V21M9 21l3-9 3 9M8.6 5.6a4.8 4.8 0 0 0 0 6.8M15.4 5.6a4.8 4.8 0 0 1 0 6.8"/>',
     regions: '<path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
@@ -1298,6 +1327,8 @@
     // The CA Appendix of a quarter (20261017_NET CHECK_DATA CA Appendix_Q3 2026.xlsx, 20260619_CA_Q2_apendix.xlsx),
     // before the CDR words its name also has.
     if (/\bapp?endix\b/.test(normalized) && /\.(csv|xlsx|xlsm|zip|parquet)$/.test(normalized)) return 'ca_appendix';
+    // The Master Grid List of the sites (RED_PINK_MasterGridList V1.5 2026_Wk46 ….xlsx), before the operator words it has.
+    if (/master ?grid/.test(normalized) && /\.(xlsx|xlsm)$/.test(normalized)) return 'master_grid';
     // A provider other than NetCheck names each CDR after its service (Voice_M2M_Calls, HTTP_File_DL...).
     if (isSummaryFile(fileName)) return '';
     const service = (cdrProfile.kind_words || []).find(([word]) => nameWords(fileName).includes(` ${word} `));

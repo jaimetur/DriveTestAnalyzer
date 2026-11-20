@@ -131,7 +131,15 @@ def _normalize_area_summary(raw: Any) -> dict[str, Any]:
         # The Areas and Cities on their own of the trends, when they are not those of Country Areas.
         **({'trend_breakdown': str(raw.get('trend_breakdown') or 'None'), 'trend_cities': _strings(raw.get('trend_cities')),
             **({'trend_main_cities': True} if raw.get('trend_main_cities') else {})} if 'trend_cities' in raw else {}),
+        # The NNS Break-down with its own configuration (only said when switched on, see scoring_nns_breakdown).
+        **_nns_breakdown(raw),
     }
+
+
+def _nns_breakdown(raw: dict[str, Any]) -> dict[str, Any]:
+    from src.modules.scoring.scoring_nns_breakdown import KEY, normalize_request
+    request = normalize_request(raw.get(KEY))
+    return {KEY: request} if request else {}
 
 
 def has_geographic_filters(scenario: dict[str, Any]) -> bool:

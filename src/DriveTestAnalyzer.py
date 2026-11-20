@@ -96,6 +96,7 @@ from src.modules.cdr.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary 
 from src.modules.cdr.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
 from src.modules.cdr.ca_appendix import KIND as CA_APPENDIX_KIND, dataset_summary as ca_dataset_summary, forget_datasets as ca_forget_datasets
 from src.modules.cdr.ca_appendix import preview_frame as ca_preview_frame, source_columns as ca_source_columns
+from src.modules.network import master_grid
 from src.modules.network.serving_cells import suggest_mapping_operators, vendor_mapping_signature
 from src.modules.cdr.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.network.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
@@ -437,9 +438,10 @@ INPUT_KIND_LABELS = {
     'vendors': 'Vendors — Geospatial',
     'l3_dt_logs': 'Layer3 Logs',
     CA_APPENDIX_KIND: 'CA Appendix',
+    master_grid.KIND: master_grid.LABEL,
     'generic': 'Other',
 }
-UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND, 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', CA_APPENDIX_KIND, 'generic'})
+UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND, 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', CA_APPENDIX_KIND, master_grid.KIND, 'generic'})
 # The datasets chosen as a mapping of the Vendor: a Multivendor Mapping gives only that, VFUK and 3UK are Network Inventories too.
 MAPPING_DATASET_KINDS = frozenset({'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND})
 # The datasets that other datasets use: they are processed first.
@@ -4114,6 +4116,9 @@ def serialize_dataset_row(row) -> dict[str, Any]:
     if item.get('dataset_kind') == CA_APPENDIX_KIND:
         # The tests, fields and operators of the CA Appendix (the CDRs that take its fields: add_ca_appendix_matches).
         item['ca'] = ca_dataset_summary(item)
+    if item.get('dataset_kind') == master_grid.KIND:
+        # The sites, Keep sites and week of the Master Grid.
+        item['master_grid'] = master_grid.dataset_summary(item)
     if item.get('dataset_kind') in SNAPSHOT_DATASET_KINDS:
         # The date of the network the inventory describes: chosen, else in its file name, else its upload date.
         item['snapshot_date'] = str(item.get('snapshot_date') or '')[:10]
@@ -5427,6 +5432,19 @@ def rebuild_dataset_artifacts(
             'df': None, 'summary': None, 'analysis': None, 'filter_options': {}, 'vendor_mapping_error': None,
             'region_mapping_error': None, 'vendor_values_complete': False, 'dataset_kind': L3_DT_LOGS_KIND,
             'l3_dt_logs': delivery,
+        }
+    if forced_dataset_kind == master_grid.KIND:
+        # A Master Grid keeps only its sites, in a table of their own (see master_grid): its rows are not dataset rows.
+        task_repository.update_dataset_profile(dataset_id, processing_step='Reading the Master Grid')
+        delivery = master_grid.process_delivery(
+            task_repository, dataset_id, dataset_path, progress=progress_callback,
+            normalization_version=DATASET_NORMALIZATION_VERSION)
+        task_repository.add_log(str(task_repository.get_dataset(dataset_id)['uploaded_by'] or ''), 'master_grid_processed',
+                                json.dumps({'dataset_id': dataset_id, 'source': dataset_path.name, **delivery}, ensure_ascii=False))
+        return {
+            'df': None, 'summary': None, 'analysis': None, 'filter_options': {}, 'vendor_mapping_error': None,
+            'region_mapping_error': None, 'vendor_values_complete': False, 'dataset_kind': master_grid.KIND,
+            'master_grid': delivery,
         }
     if forced_dataset_kind == CA_APPENDIX_KIND:
         # A CA Appendix never goes through SQLite: it is written as a Parquet source and its fields are derived from
@@ -15028,6 +15046,7 @@ def render_admin_template(
     from src.modules.scoring.scoring_exclusions import TABLE_TITLES as SCORING_EXCLUSION_TABLE_TITLES
     from src.modules.cdr.l3_dt_logs import TABLE_TITLES as L3_DT_LOGS_TABLE_TITLES
     from src.modules.cdr.ca_appendix import TABLE_TITLES as CA_APPENDIX_TABLE_TITLES
+    from src.modules.network.master_grid import TABLE_TITLES as MASTER_GRID_TABLE_TITLES
 
     friendly_tables = {
         WORKSPACE_REGISTRY_TABLE: 'Workspace Registry',
@@ -15082,6 +15101,7 @@ def render_admin_template(
         **CDR_STORE_TABLE_TITLES,
         **L3_DT_LOGS_TABLE_TITLES,
         **CA_APPENDIX_TABLE_TITLES,
+        **MASTER_GRID_TABLE_TITLES,
     }
     global_database_tables = (set(repository.list_global_database_tables()) - {'report_templates'}) if active_workspace else set()
     for table_name in repository.list_database_tables() if active_workspace else []:
@@ -19083,8 +19103,11 @@ def preview_dataset(
     # A Layer3 Logs dataset is read, read-only, from its Parquet source: its rows are never in SQLite.
     # So is a CA Appendix.
     ca_preview = dataset['dataset_kind'] == CA_APPENDIX_KIND
-    l3_preview = dataset['dataset_kind'] == L3_DT_LOGS_KIND or ca_preview
-    available_columns = ((ca_source_columns if ca_preview else l3_source_columns)(dataset['stored_path']) if l3_preview
+    # A Master Grid shows its sites, from their own table.
+    grid_preview = dataset['dataset_kind'] == master_grid.KIND
+    l3_preview = dataset['dataset_kind'] == L3_DT_LOGS_KIND or ca_preview or grid_preview
+    available_columns = (master_grid.preview_columns() if grid_preview
+                         else (ca_source_columns if ca_preview else l3_source_columns)(dataset['stored_path']) if l3_preview
                          else repository.list_dataset_row_columns(dataset_id))
     if dataset['dataset_kind'] in MAPPING_DATASET_KINDS:
         available_columns = [column for column in available_columns if not str(column).casefold().startswith('unnamed')]
@@ -19153,7 +19176,8 @@ def preview_dataset(
         )
     else:
         preview_frame = (
-            (ca_preview_frame if ca_preview else l3_preview_frame)(dataset['stored_path'], preview_columns, row_limit) if l3_preview
+            master_grid.preview_frame(repository, dataset_id, preview_columns, row_limit) if grid_preview
+            else (ca_preview_frame if ca_preview else l3_preview_frame)(dataset['stored_path'], preview_columns, row_limit) if l3_preview
             else repository.load_dataset_rows(dataset_id, preview_columns, preview_filters))
         if dataset['dataset_kind'] in MAPPING_DATASET_KINDS:
             _initial_labels, initial_kinds, _initial_rules = _preview_column_metadata(
@@ -22510,6 +22534,16 @@ def scoring_saved_scoring_export(
         }
         if selected_environment not in valid_environments:
             raise HTTPException(status_code=400, detail='The selected scoring environment is not available for this Saved Scoring.')
+    if export_kind == 'nns':
+        # The NNS Break-down (ticket #195) as an Excel workbook: both scorings, every NR Mode and every site count.
+        from src.modules.scoring.scoring_nns_breakdown import workbook as nns_workbook
+        if not isinstance(result.get('nns_breakdown'), dict):
+            raise HTTPException(status_code=409, detail='This Saved Scoring has no NNS Break-down: switch it on and calculate it.')
+        name = re.sub(r'[^A-Za-z0-9._-]+', '-', str(saved_scoring.get('name') or f'saved-scoring-{filter_id}')).strip('-') or f'saved-scoring-{filter_id}'
+        return logged_export(Response(
+            nns_workbook(result['nns_breakdown'], title=str(saved_scoring.get('name') or '')),
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition': f'attachment; filename="{name}-nns-breakdown.xlsx"'}))
     if export_kind in {'scoring', 'gap'}:
         if scoring == 'most_reliable':
             # The CSV keeps its schema; it carries the Most Reliable points instead of the Best Network ones.
@@ -24856,6 +24890,8 @@ def delete_workspace_datasets(
     # The derived files of deleted CA Appendices; the CDRs that had their fields lose them in the background.
     ca_forget_datasets(repository)
     queue_ca_appendix_fill(repository)
+    # The sites of deleted Master Grids.
+    master_grid.forget_datasets(repository)
     queue_combined_cdr_inclusion_sync(user.username)
     invalidate_workspace_size_cache()
     resolved_paths = {str(path.resolve()) for path in deleted_paths}
@@ -24899,6 +24935,8 @@ def delete_dataset(dataset_id: int, return_to: str = Form(''), user: SessionUser
     # The derived files of deleted CA Appendices; the CDRs that had their fields lose them in the background.
     ca_forget_datasets(repository)
     queue_ca_appendix_fill(repository)
+    # The sites of deleted Master Grids.
+    master_grid.forget_datasets(repository)
     if str(dataset_payload.get('dataset_kind') or '').casefold() in CDR_DATASET_KINDS:
         # Deleting a Final CDR brings back the Daily CDRs it replaced.
         queue_combined_cdr_inclusion_sync(user.username)

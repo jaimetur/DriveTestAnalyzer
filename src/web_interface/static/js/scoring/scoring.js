@@ -169,7 +169,7 @@
     encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
     encodeURIComponent(root.dataset.scoringWorkspaceId || 'unknown'),
   ].join(':');
-  const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points', 'impact']);
+  const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'nns', 'gap', 'points', 'impact']);
   function readScoringViewState() {
     try {
       const stored = JSON.parse(window.sessionStorage.getItem(scoringViewStorageKey) || 'null');
@@ -430,6 +430,12 @@
   // Country Areas and the Scoring Trends switched off are not calculated and their tabs hide.
   const countryAreasEnabled = root.querySelector('[data-scoring-country-areas-enabled]');
   const trendsEnabled = root.querySelector('[data-scoring-trends-enabled]');
+  // The NNS Break-down (ticket #195): off by default, with its own campaigns, Regions and grouping of the roads.
+  const nnsEnabled = root.querySelector('[data-scoring-nns-enabled]');
+  const nnsCampaigns = root.querySelector('[data-scoring-nns-campaigns]');
+  const nnsRegions = root.querySelector('[data-scoring-nns-regions]');
+  const nnsRoads = root.querySelector('[data-scoring-nns-roads]');
+  const NNS_DEFAULT_CAMPAIGNS = ['@latest-4-campaigns'];
   // The areas of the National & Country Areas Trends: those of Country Areas (Same as Country Areas), or their own.
   const trendAreasSame = root.querySelector('[data-scoring-trend-areas-same]');
   const trendBreakdownSelect = root.querySelector('[data-scoring-trend-breakdown]');
@@ -809,13 +815,21 @@
     }
     refreshAreaSummaryCities(selectedIds);
     refreshTrendCampaigns();
+    refreshNnsOptions();
   }
 
   // The campaigns of the Scoring Trends are those of the Campaign filter (with its automatic choices), plus those chosen
   // before.
   function refreshTrendCampaigns() {
+    refreshCampaignChoices(trendCampaigns);
+  }
+
+  // The campaigns a part of the scoring chooses on its own (Scoring Trends, NNS Break-down): the automatic choices, then
+  // the campaigns of the Campaign filter, plus those chosen before.
+  function refreshCampaignChoices(select) {
     const campaignSelect = contextFilterSelects.get('Campaign');
-    if (!trendCampaigns || !campaignSelect) return;
+    if (!select || !campaignSelect) return;
+    const trendCampaigns = select;
     const chosen = [...trendCampaigns.selectedOptions].map(option => option.value).filter(Boolean);
     const options = [...campaignSelect.options].filter(option => option.value && !isCampaignPreset(option.value))
       .map(option => [option.value, option.textContent, {label: option.textContent, ...campaignOptionTag(option.value)}]);
@@ -842,6 +856,56 @@
     });
     trendCampaigns.replaceChildren(...entries);
     trendCampaigns.dispatchEvent(new Event('multiselect:options-updated'));
+  }
+
+  // The Regions of the NNS Break-down: those of the Region filter, plus those chosen before.
+  function refreshNnsOptions() {
+    refreshCampaignChoices(nnsCampaigns);
+    const regionSelect = contextFilterSelects.get('Region');
+    if (!nnsRegions || !regionSelect) return;
+    const chosen = [...nnsRegions.selectedOptions].map(option => option.value).filter(Boolean);
+    // (Without the G_Level_2 values the Region filter also lists: City and Connecting Roads are the kinds of area.)
+    const values = [...regionSelect.options].map(option => option.value)
+      .filter(value => value && !value.startsWith('@') && !['city', 'connecting roads'].includes(value.toLocaleLowerCase()));
+    const known = new Set(values.map(value => value.toLocaleLowerCase()));
+    const options = [...values, ...chosen.filter(value => !known.has(value.toLocaleLowerCase()))];
+    const signature = JSON.stringify({options, chosen});
+    if (nnsRegions.dataset.scoringCatalogueSignature === signature) return;
+    nnsRegions.dataset.scoringCatalogueSignature = signature;
+    const selected = new Set(chosen.map(value => value.toLocaleLowerCase()));
+    nnsRegions.replaceChildren(...options.map(value => new Option(value, value, false, selected.has(value.toLocaleLowerCase()))));
+    nnsRegions.dispatchEvent(new Event('multiselect:options-updated'));
+  }
+
+  // The NNS Break-down of the configuration when it is switched on, else null.
+  function selectedNnsBreakdown() {
+    if (!nnsEnabled?.checked) return null;
+    const preset = nnsCampaigns ? chosenCampaignPreset(nnsCampaigns) : '';
+    const campaigns = preset ? [preset] : [...(nnsCampaigns?.selectedOptions || [])].map(option => option.value).filter(Boolean);
+    return {campaigns: campaigns.length ? campaigns : NNS_DEFAULT_CAMPAIGNS,
+      regions: [...(nnsRegions?.selectedOptions || [])].map(option => option.value).filter(Boolean),
+      roads: nnsRoads?.value === 'each' ? 'each' : 'region'};
+  }
+
+  // The fields of the NNS Break-down as a selection has them (its defaults when it has none).
+  function applyNnsBreakdown(value) {
+    const nns = value && typeof value === 'object' ? value : null;
+    if (nnsEnabled) nnsEnabled.checked = Boolean(nns);
+    for (const [select, values] of [[nnsCampaigns, nns?.campaigns || NNS_DEFAULT_CAMPAIGNS], [nnsRegions, nns?.regions || []]]) {
+      if (!select) continue;
+      const wanted = (Array.isArray(values) ? values : []).map(String).filter(Boolean);
+      const known = new Set([...select.options].map(option => option.value.toLocaleLowerCase()));
+      for (const item of wanted) {
+        if (!known.has(item.toLocaleLowerCase())) select.append(new Option(campaignPresetLabels[item] || item, item));
+      }
+      const chosen = new Set(wanted.map(item => item.toLocaleLowerCase()));
+      for (const option of select.options) option.selected = chosen.has(option.value.toLocaleLowerCase());
+      delete select.dataset.scoringCatalogueSignature;
+    }
+    if (nnsRoads) nnsRoads.value = nns?.roads === 'each' ? 'each' : 'region';
+    refreshNnsOptions();
+    nnsCampaigns?.dispatchEvent(new Event('multiselect:options-updated'));
+    nnsRegions?.dispatchEvent(new Event('multiselect:options-updated'));
   }
 
   // An automatic choice (Latest 2 campaigns…) stands alone; empty, the trends follow the Campaign filter.
@@ -918,6 +982,7 @@
       country_areas: typeof countryAreasEnabled !== 'undefined' && countryAreasEnabled ? countryAreasEnabled.checked : true,
       trends: typeof trendsEnabled !== 'undefined' && trendsEnabled ? trendsEnabled.checked : true,
       ...(typeof selectedTrendAreas === 'function' ? selectedTrendAreas() : {}),
+      ...(typeof selectedNnsBreakdown === 'function' && selectedNnsBreakdown() ? {nns_breakdown: selectedNnsBreakdown()} : {}),
     };
   }
 
@@ -1221,8 +1286,226 @@
         country_areas: countryAreas !== false, trends: trends !== false,
         trend_areas: Array.isArray(selection?.area_summary?.trend_cities) ? [String(selection.area_summary.trend_breakdown || ''),
           selection.area_summary.trend_cities.map(String), Boolean(selection.area_summary.trend_main_cities)] : null,
+        nns_breakdown: nnsSignature(selection?.area_summary?.nns_breakdown),
       }))(selection?.area_summary || {}),
     });
+  }
+
+  // The NNS Break-down tab (ticket #195): each city and the connecting roads campaign by campaign with their serving
+  // sites, then the latest campaign by city size and scenario. Best Network or Most Reliable, one NR Mode at a time.
+  let nnsScoring = 'best';
+  let nnsMode = '';
+  function renderNnsBreakdown(pane, payload) {
+    if (!pane) return;
+    const nns = payload?.nns_breakdown;
+    if (!nns || typeof nns !== 'object') {
+      pane.replaceChildren(Object.assign(document.createElement('div'), {className: 'scoring-empty',
+        textContent: 'No NNS Break-down: switch it on in step 6 of the configuration and calculate the scoring.'}));
+      return;
+    }
+    const el = (tag, className, text) => {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined && text !== null) node.textContent = String(text);
+      return node;
+    };
+    const modes = (nns.modes || []).filter(mode => mode && mode.nr_mode);
+    if (!modes.some(mode => mode.nr_mode === nnsMode)) nnsMode = modes[0]?.nr_mode || '';
+    const mode = modes.find(item => item.nr_mode === nnsMode) || {campaigns: [], latest_campaign: ''};
+    const campaignLabel = value => hierarchyDisplayValue({level: 'Campaign', value});
+    const head = el('div', 'scoring-nns-head');
+    const grid = nns.master_grid;
+    const facts = el('div', 'scoring-nns-facts');
+    const fact = (label, value, title) => {
+      const item = el('span', 'scoring-nns-fact');
+      item.append(el('b', '', label), el('span', '', value));
+      if (title) item.title = title;
+      facts.append(item);
+    };
+    fact('Campaigns', (mode.campaigns || []).map(campaignLabel).join(', ') || 'None');
+    fact('Regions', (nns.request?.regions || []).length ? nns.request.regions.join(', ') : 'Every Region');
+    fact('Master Grid', grid ? `${grid.week || grid.file_name}${grid.sites ? ` · ${Number(grid.sites).toLocaleString()} sites` : ''}` : 'None in the workspace',
+      grid ? grid.file_name : 'Upload the Master Grid in Workspace: without it the NNS sites have no capacity and none is planned');
+    const controls = el('div', 'scoring-nns-controls');
+    const choice = (label, options, value, onChange) => {
+      const wrap = el('label', 'scoring-environment-filter');
+      wrap.append(el('span', '', label));
+      const select = el('select');
+      for (const [optionValue, text] of options) select.append(new Option(text, optionValue, false, optionValue === value));
+      select.addEventListener('change', () => { onChange(select.value); renderNnsBreakdown(pane, payload); });
+      wrap.append(select);
+      return wrap;
+    };
+    controls.append(choice('Scoring', [['best', 'Best Network'], ['reliable', 'Most Reliable']], nnsScoring, value => { nnsScoring = value; }));
+    if (modes.length > 1) controls.append(choice('NR Mode', modes.map(item => [item.nr_mode, item.nr_mode]), nnsMode, value => { nnsMode = value; }));
+    const exportLink = el('a', 'scoring-nns-export');
+    // (Drawn before the rest of the result: its Saved Scoring is that of the payload.)
+    const savedScoringId = savedScoringIdOf(payload?.saved_scoring || {}) || currentResultsSavedScoringId || '';
+    exportLink.href = `/scoring/saved-scorings/${encodeURIComponent(savedScoringId)}/export/nns`;
+    exportLink.title = 'Both tables of every NR Mode, with both scorings and every site count, as an Excel workbook';
+    exportLink.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to Excel</span>';
+    controls.append(exportLink);
+    head.append(facts, controls);
+    const points = value => value && Number.isFinite(Number(value.points)) ? value : null;
+    const cell = (value, tests) => {
+      const td = el('td', 'scoring-nns-score');
+      const scored = points(value);
+      if (!scored) { td.textContent = '–'; td.classList.add('is-empty'); return td; }
+      const share = scored.max_points > 0 ? Math.max(0, Math.min(1, scored.points / scored.max_points)) : 0;
+      td.style.setProperty('--nns-share', share.toFixed(3));
+      td.append(el('strong', '', Number(scored.points).toFixed(1)));
+      if (tests !== undefined) td.append(el('small', '', `${Number(tests || 0).toLocaleString()} tests`));
+      td.title = `${Number(scored.points).toFixed(2)} of ${Number(scored.max_points).toFixed(0)} points${scored.complete ? '' : ' (incomplete KPI or environment coverage)'}`;
+      return td;
+    };
+    const section = (title, note) => {
+      const box = el('section', 'scoring-nns-section');
+      box.append(el('h4', 'scoring-table-section-title', title));
+      if (note) box.append(el('p', 'scoring-note', note));
+      return box;
+    };
+    // Cities and connecting roads.
+    const campaigns = mode.campaigns || [];
+    const areas = (nns.areas || []).filter(row => row.nr_mode === nnsMode);
+    const sites = new Map((nns.sites || []).filter(row => row.nr_mode === nnsMode).map(row => [`${row.region}|${row.area}`, row]));
+    const areasBox = section('Cities and connecting roads',
+      `${nnsScoring === 'best' ? 'Best Network' : 'Most Reliable'} points of each campaign; the sites serve the tests of ${campaignLabel(mode.latest_campaign) || 'the latest campaign'}.`);
+    const wrap = el('div', 'table-wrap scoring-nns-table-wrap');
+    const table = el('table', 'scoring-nns-table');
+    const thead = el('thead');
+    const headRow = el('tr');
+    ['Area', 'Size', 'Operator', ...campaigns.map(campaignLabel), 'NNS sites (High · Med · Low)', 'eMOCN / other sites', 'Planned NNS']
+      .forEach(text => headRow.append(el('th', '', text)));
+    thead.append(headRow);
+    const tbody = el('tbody');
+    const kindOrder = {City: 0, Road: 1};
+    const sizeOrder = value => ({'big cities': 0, 'medium cities': 1, 'small cities': 2}[String(value).toLowerCase()] ?? 3);
+    const grouped = new Map();
+    for (const row of areas) {
+      const key = `${row.region}|${row.area}`;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(row);
+    }
+    const ordered = [...grouped.entries()].sort(([, left], [, right]) => String(left[0].region).localeCompare(String(right[0].region))
+      || (kindOrder[left[0].kind] ?? 2) - (kindOrder[right[0].kind] ?? 2) || sizeOrder(left[0].size) - sizeOrder(right[0].size)
+      || String(left[0].area).localeCompare(String(right[0].area)));
+    let region = null;
+    let shaded = false;
+    for (const [key, rows] of ordered) {
+      if (rows[0].region !== region) {
+        region = rows[0].region;
+        const regionRow = el('tr', 'scoring-nns-region');
+        const regionCell = el('td', '', region);
+        regionCell.colSpan = 6 + campaigns.length;
+        regionRow.append(regionCell);
+        tbody.append(regionRow);
+      }
+      shaded = !shaded;
+      rows.sort((left, right) => String(left.operator).localeCompare(String(right.operator)));
+      const siteRow = sites.get(key) || {};
+      rows.forEach((row, index) => {
+        const tr = el('tr', shaded ? 'is-shaded' : '');
+        if (index === 0) {
+          const name = el('td', `scoring-nns-area is-${String(row.kind || '').toLowerCase()}`, row.area);
+          name.rowSpan = rows.length;
+          const size = el('td', 'scoring-nns-size', row.size);
+          size.rowSpan = rows.length;
+          tr.append(name, size);
+        }
+        tr.append(el('td', 'scoring-nns-operator', row.operator));
+        for (const campaign of campaigns) {
+          const values = (row.campaigns || {})[campaign] || {};
+          tr.append(cell(values[nnsScoring], values.tests));
+        }
+        if (index === 0) {
+          const nnsCounts = siteRow.nns || {};
+          const nnsCell = el('td', 'scoring-nns-sites',
+            `${nnsCounts.High || 0} · ${nnsCounts.Medium || 0} · ${nnsCounts.Low || 0}`);
+          const unknown = Object.entries(nnsCounts).filter(([name]) => !['High', 'Medium', 'Low'].includes(name)).reduce((sum, [, count]) => sum + count, 0);
+          nnsCell.title = `NNS sites by the capacity of the Master Grid${unknown ? `; ${unknown} not in the Master Grid` : ''}`;
+          if (unknown) nnsCell.append(el('small', '', `+${unknown} not in the Master Grid`));
+          const scenarios = Object.entries(siteRow.scenarios || {}).sort(([left], [right]) => left.localeCompare(right, undefined, {numeric: true}));
+          const other = el('td', 'scoring-nns-sites', String(scenarios.reduce((sum, [, count]) => sum + count, 0)));
+          other.title = scenarios.map(([name, count]) => `${name}: ${count}`).join('\n') || 'None';
+          if (scenarios.length) other.append(el('small', '', scenarios.map(([name, count]) => `${name} ${count}`).join(' · ')));
+          const planned = Object.entries(siteRow.planned || {}).sort(([left], [right]) => left.localeCompare(right, undefined, {numeric: true}));
+          const plannedCell = el('td', 'scoring-nns-sites', String(planned.reduce((sum, [, count]) => sum + count, 0)));
+          plannedCell.title = 'Keep sites serving these tests that the Master Grid plans for NNS, by financial year';
+          if (planned.length) plannedCell.append(el('small', '', planned.map(([name, count]) => `${name} ${count}`).join(' · ')));
+          [nnsCell, other, plannedCell].forEach(item => { item.rowSpan = rows.length; tr.append(item); });
+        }
+        tbody.append(tr);
+      });
+    }
+    if (!ordered.length) {
+      const empty = el('tr');
+      const td = el('td', 'scoring-empty', 'No tests in the chosen Regions.');
+      td.colSpan = 6 + campaigns.length;
+      empty.append(td);
+      tbody.append(empty);
+    }
+    table.append(thead, tbody);
+    wrap.append(table);
+    areasBox.append(wrap);
+    // The latest campaign by city size and scenario: the operators side by side.
+    const scenarioRows = (nns.scenarios || []).filter(row => row.nr_mode === nnsMode);
+    const scenarioBox = section(`${campaignLabel(mode.latest_campaign) || 'Latest campaign'} by city size and scenario`,
+      'Each test is scored with the kind of site of the cell that served it: an NNS site by the capacity of the Master Grid, or its eMOCN scenario.');
+    const operators = [...new Set(scenarioRows.map(row => row.operator))].sort((left, right) => String(left).localeCompare(String(right)));
+    const order = Array.isArray(nns.scenario_order) ? nns.scenario_order : [];
+    const sizes = [...new Set(scenarioRows.map(row => row.size))].sort((left, right) => sizeOrder(left) - sizeOrder(right) || String(left).localeCompare(String(right)));
+    const scenarioWrap = el('div', 'table-wrap scoring-nns-table-wrap');
+    const scenarioTable = el('table', 'scoring-nns-table');
+    const scenarioHead = el('tr');
+    ['Size', 'Scenario', ...operators].forEach(text => scenarioHead.append(el('th', '', text)));
+    const scenarioHeadSection = el('thead');
+    scenarioHeadSection.append(scenarioHead);
+    const scenarioBody = el('tbody');
+    const byKey = new Map(scenarioRows.map(row => [`${row.size}|${row.scenario}|${row.operator}`, row]));
+    shaded = false;
+    for (const size of sizes) {
+      const scenarios = order.filter(name => scenarioRows.some(row => row.size === size && row.scenario === name));
+      shaded = !shaded;
+      scenarios.forEach((scenario, index) => {
+        const tr = el('tr', shaded ? 'is-shaded' : '');
+        if (index === 0) {
+          const sizeCell = el('td', 'scoring-nns-area', size);
+          sizeCell.rowSpan = scenarios.length;
+          tr.append(sizeCell);
+        }
+        tr.append(el('td', `scoring-nns-scenario${scenario.startsWith('NNS') ? ' is-nns' : ''}`, scenario));
+        for (const operator of operators) {
+          const row = byKey.get(`${size}|${scenario}|${operator}`);
+          tr.append(cell(row?.[nnsScoring], row ? row.tests : undefined));
+        }
+        scenarioBody.append(tr);
+      });
+    }
+    scenarioTable.append(scenarioHeadSection, scenarioBody);
+    scenarioWrap.append(scenarioTable);
+    scenarioBox.append(scenarioWrap);
+    const warnings = (nns.warnings || []).filter(Boolean);
+    const nodes = [head];
+    if (warnings.length) nodes.push(el('p', 'scoring-note scoring-nns-warning', warnings.join(' ')));
+    nodes.push(areasBox, scenarioBox);
+    pane.replaceChildren(...nodes);
+  }
+
+  // The NNS Break-down of a Saved Scoring in a line: its campaigns, Regions and roads.
+  function savedScoringNnsText(savedScoring) {
+    const nns = savedScoring?.area_summary?.nns_breakdown;
+    if (!nns) return 'Off';
+    const campaigns = (nns.campaigns || NNS_DEFAULT_CAMPAIGNS).map(value => campaignPresetLabels[value] || hierarchyDisplayValue({level: 'Campaign', value}));
+    return `${campaigns.join(', ')} · ${(nns.regions || []).length ? nns.regions.join(', ') : 'Every Region'} · `
+      + (nns.roads === 'each' ? 'Each road on its own' : 'Roads grouped by Region');
+  }
+
+  // What tells two NNS Break-downs apart (null when switched off).
+  function nnsSignature(value) {
+    if (!value || typeof value !== 'object') return null;
+    const sorted = values => (Array.isArray(values) ? values : []).map(String).sort((left, right) => left.localeCompare(right));
+    return [sorted(value.campaigns?.length ? value.campaigns : NNS_DEFAULT_CAMPAIGNS), sorted(value.regions),
+      value.roads === 'each' ? 'each' : 'region'];
   }
 
   function selectionWarnings(body) {
@@ -1343,6 +1626,7 @@
       if (areaSummaryPostalCodes) areaSummaryPostalCodes.checked = Boolean(summary.postal_codes);
       if (typeof countryAreasEnabled !== 'undefined' && countryAreasEnabled) countryAreasEnabled.checked = summary.country_areas !== false;
       if (typeof trendsEnabled !== 'undefined' && trendsEnabled) trendsEnabled.checked = summary.trends !== false;
+      if (typeof applyNnsBreakdown === 'function') applyNnsBreakdown(summary.nns_breakdown);
       if (areaSummaryPostalMap) areaSummaryPostalMap.value = summary.postal_map || 'full';
       if (areaSummaryPostalMapField) areaSummaryPostalMapField.hidden = !summary.postal_codes;
       if (areaSummaryCities && Array.isArray(summary.cities)) {
@@ -1422,6 +1706,7 @@
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedScoring.area_summary?.time_split || 'Campaign',
           country_areas: savedScoring.area_summary?.country_areas, trends: savedScoring.area_summary?.trends,
+          ...(savedScoring.area_summary?.nns_breakdown ? {nns_breakdown: savedScoring.area_summary.nns_breakdown} : {}),
           ...(Array.isArray(savedScoring.area_summary?.trend_cities) ? {trend_breakdown: savedScoring.area_summary.trend_breakdown,
             trend_cities: savedScoring.area_summary.trend_cities, trend_main_cities: savedScoring.area_summary.trend_main_cities} : {}),
           campaigns: savedScoring.area_summary?.campaigns || [], ...(savedScoring.area_summary?.postal_codes ? {postal_codes: true, postal_map: savedScoring.area_summary.postal_map} : {})},
@@ -1688,6 +1973,7 @@
       ...(summary.postal_codes && summary.postal_map !== 'full' ? {postal_map: summary.postal_map} : {}),
       ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {}),
       ...(summary.country_areas === false ? {country_areas: false} : {}), ...(summary.trends === false ? {trends: false} : {}),
+      ...(summary.nns_breakdown ? {nns_breakdown: summary.nns_breakdown} : {}),
       ...('trend_cities' in summary ? {trend_breakdown: summary.trend_breakdown, trend_cities: summary.trend_cities,
         ...(summary.trend_main_cities ? {trend_main_cities: true} : {})} : {})};
   }
@@ -10803,7 +11089,9 @@
     held.forEach(([pane, height]) => { pane.style.minHeight = `${height}px`; });
     renderLoads = [];
     try {
-      renderResultParts(savedPayload, savedScoring, panesToRender);
+      // The NNS Break-down holds both NR Modes of NSA vs SA: it is drawn once, whatever the parts.
+      if (panesToRender.includes('nns')) renderNnsBreakdown(root.querySelector('[data-result-pane="nns"]'), savedPayload);
+      renderResultParts(savedPayload, savedScoring, panesToRender.filter(name => name !== 'nns'));
     } finally {
       if (held.length) {
         keepAnchor();
@@ -11688,14 +11976,14 @@
     // The switch of a card (Country Areas, Scoring Trends) switches its block on or off without opening it.
     const partSwitch = event.target.closest?.('[data-scoring-part-switch]');
     if (partSwitch) {
-      const input = partSwitch.dataset.scoringPartSwitch === 'country_areas' ? countryAreasEnabled : trendsEnabled;
+      const input = {country_areas: countryAreasEnabled, trends: trendsEnabled, nns_breakdown: nnsEnabled}[partSwitch.dataset.scoringPartSwitch];
       if (input) input.checked = partSwitch.checked;
       syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
       return;
     }
-    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns], [data-scoring-country-areas-enabled], [data-scoring-trends-enabled], [data-scoring-trend-areas-same], [data-scoring-trend-breakdown], [data-scoring-trend-cities]')) {
+    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns], [data-scoring-country-areas-enabled], [data-scoring-trends-enabled], [data-scoring-nns-enabled], [data-scoring-nns-campaigns], [data-scoring-nns-regions], [data-scoring-nns-roads], [data-scoring-trend-areas-same], [data-scoring-trend-breakdown], [data-scoring-trend-cities]')) {
       syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
@@ -12127,6 +12415,7 @@
         : savedScoringAreaSummaryParts(savedScoring).map(([, label, value]) => `${label}: ${value}`).join(' · ')],
       ['', 'Scoring Trends', savedScoring?.area_summary?.trends === false ? 'Off'
         : `${savedScoringTrendCampaigns(savedScoring)} · Time split: ${savedScoringTimeSplit(savedScoring)}`],
+      ...(savedScoring?.area_summary?.nns_breakdown ? [['', 'NNS Break-down', savedScoringNnsText(savedScoring)]] : []),
       ['', 'CDRs', savedScoringCdrNames(savedScoring).join(', ') || savedScoringCdrSummary(savedScoring)],
     ];
     const areaKey = areas.map(scope => `${scope.dimension}:${scope.text}`).join('|');
@@ -12618,7 +12907,7 @@
   const openResultTabFromHash = () => {
     const name = {'scoring-results-summary': 'summary', 'scoring-results-charts': 'charts', 'scoring-results-tables': 'scoring',
       'scoring-results-geographical-areas': 'geographical-areas', 'scoring-results-locations': 'geographical-areas',
-      'scoring-results-trends': 'trends', 'scoring-results-gap': 'gap',
+      'scoring-results-trends': 'trends', 'scoring-results-nns': 'nns', 'scoring-results-gap': 'gap',
       'scoring-results-points-lost': 'points', 'scoring-results-methodology-impact': 'impact'}[
       decodeURIComponent(window.location.hash.slice(1))];
     if (!name) return;
@@ -12733,6 +13022,7 @@
     split: {step: 3, title: 'Break down by', eyebrow: 'How the results are broken down', color: 'split'},
     areas: {step: 4, title: 'Country Areas', eyebrow: 'Country Areas tab only', color: 'areas', scope: true},
     trends: {step: 5, title: 'Scoring Trends', eyebrow: 'Scoring Trends tab only', color: 'trends'},
+    nns: {step: 6, title: 'NNS Break-down', eyebrow: 'NNS Break-down tab only', color: 'nns'},
   };
   let configOpenBlock = null;
   let configBefore = null;
@@ -12753,6 +13043,7 @@
         main_cities: Boolean(summary.main_cities)},
       trends: {trends: summary.trends !== false, campaigns: summary.campaigns, time_split: summary.time_split,
         areas: Array.isArray(summary.trend_cities) ? [summary.trend_breakdown, summary.trend_cities, Boolean(summary.trend_main_cities)] : null},
+      nns: {nns_breakdown: nnsSignature(summary.nns_breakdown)},
     };
   }
 
@@ -12765,6 +13056,11 @@
     if (key === 'cities') return [summary.cities, Boolean(summary.main_cities)];
     if (key === 'country_areas' || key === 'trends') return summary[key] !== false;
     if (key === 'trend_same') return !Array.isArray(summary.trend_cities);
+    if (key === 'nns_breakdown') return Boolean(summary.nns_breakdown);
+    if (['nns_campaigns', 'nns_regions', 'nns_roads'].includes(key)) {
+      const signature = nnsSignature(summary.nns_breakdown);
+      return signature ? signature[['nns_campaigns', 'nns_regions', 'nns_roads'].indexOf(key)] : null;
+    }
     if (key === 'trend_breakdown') return Array.isArray(summary.trend_cities) ? summary.trend_breakdown : null;
     if (key === 'trend_cities') return Array.isArray(summary.trend_cities) ? [summary.trend_cities, Boolean(summary.trend_main_cities)] : null;
     if (['breakdown', 'campaigns', 'time_split', 'postal_codes'].includes(key)) return summary[key];
@@ -12825,9 +13121,15 @@
         trendCityTexts.length ? trendCityTexts.join(', ') : ''].filter(Boolean).join(' + ') || 'None';
     const trends = [['Campaigns', trendCampaignTexts.length ? trendCampaignTexts.join(', ') : 'Same as the Campaign filter'],
       ['Time split', configSelectText(areaSummaryTimeSplit) || 'Campaign'], ['Areas', trendAreasText]];
+    const nnsCampaignTexts = configOptionTexts(nnsCampaigns);
+    const nnsRegionTexts = configOptionTexts(nnsRegions);
+    const nns = [['Campaigns', nnsCampaignTexts.length ? nnsCampaignTexts.join(', ') : 'Latest 4 campaigns'],
+      ['Regions', nnsRegionTexts.length ? nnsRegionTexts.join(', ') : 'Every Region'],
+      ['Roads', nnsRoads?.value === 'each' ? 'Each road on its own' : 'Grouped by Region']];
     const blocks = {setup, context, split,
       areas: countryAreasEnabled && !countryAreasEnabled.checked ? [['Country Areas', 'Off: not calculated']] : areasLines,
-      trends: trendsEnabled && !trendsEnabled.checked ? [['Scoring Trends', 'Off: not calculated']] : trends};
+      trends: trendsEnabled && !trendsEnabled.checked ? [['Scoring Trends', 'Off: not calculated']] : trends,
+      nns: nnsEnabled && !nnsEnabled.checked ? [['NNS Break-down', 'Off: not calculated']] : nns};
     return Object.fromEntries(Object.entries(blocks).map(([key, lines]) => [key, lines.filter(([, value]) => value)]));
   }
 
@@ -12896,7 +13198,7 @@
     }
     renderShowing(pending);
     // The fields of Country Areas and of the Scoring Trends fade while they are switched off.
-    for (const [input, part] of [[countryAreasEnabled, 'country_areas'], [trendsEnabled, 'trends']]) {
+    for (const [input, part] of [[countryAreasEnabled, 'country_areas'], [trendsEnabled, 'trends'], [nnsEnabled, 'nns_breakdown']]) {
       // (Country Areas switched off: the trends keep areas of their own, so its fields fade too.)
       const off = Boolean(input) && !input.checked;
       for (const fields of root.querySelectorAll(`[data-scoring-part-fields="${part}"]`)) fields.classList.toggle('is-part-off', off);
@@ -12906,10 +13208,11 @@
     }
     // The tabs of Country Areas and of the Scoring Trends hide when the scoring shown has them switched off.
     const shownSummary = shownSavedScoringId() && selectedSavedScoring?.area_summary ? selectedSavedScoring.area_summary : {};
-    for (const [tab, part] of [['geographical-areas', 'country_areas'], ['trends', 'trends']]) {
+    for (const [tab, part] of [['geographical-areas', 'country_areas'], ['trends', 'trends'], ['nns', 'nns_breakdown']]) {
       const button = root.querySelector(`[data-result-tab="${tab}"]`);
       if (!button) continue;
-      const hide = shownSummary[part] === false;
+      // (The NNS Break-down is off unless the scoring shown has it.)
+      const hide = part === 'nns_breakdown' ? !shownSummary[part] : shownSummary[part] === false;
       button.hidden = hide;
       // Their entries in the sections menus (the tab menu, Modules & Sections, the sections bar) hide with them.
       document.documentElement.toggleAttribute(`data-scoring-hide-${tab}`, hide);

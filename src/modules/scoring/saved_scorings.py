@@ -30,6 +30,7 @@ from src.modules.scoring.scoring_area_summary import (
     detach_area_summary, normalize_area_summary_request, resolve_main_cities, with_breakdown_cities,
 )
 from src.modules.scoring.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
+from src.modules.scoring.scoring_nns_breakdown import KEY as NNS_KEY, VERSION as NNS_VERSION, requested as requested_nns_breakdown
 from src.modules.cdr.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
 from src.modules.cdr.value_patterns import ValueSet
 from src.modules.mapping.operator_roles import EXCLUDE, normalize_mapping_role, out_of_scope_operators
@@ -777,6 +778,8 @@ def _row_to_saved_scoring(
         saved_scoring['methodology_groups'] = groups if isinstance(groups, list) else []
         trends = source_metadata_payload.get('area_trends')
         saved_scoring['area_trends'] = trends if isinstance(trends, dict) else None
+        nns = source_metadata_payload.get('nns_sources')
+        saved_scoring['nns_sources'] = nns if isinstance(nns, dict) else None
         saved_scoring['complete_from'] = source_metadata_payload.get('complete_from')
     return saved_scoring
 
@@ -920,6 +923,15 @@ def _prepare_saved_scoring_once(
     # Results calculated before the Geographical Areas followed the Breakdown and Separate cities on the whole country
     # are calculated again; with Main Cities, the result changes with the Main Cities of the workspace.
     key_area_summary = {**key_area_summary, 'geographical_version': GEOGRAPHICAL_AREAS_VERSION}
+    # The NNS Break-down (when switched on) changes with the CDRs and methodologies of its campaigns and the Master Grid.
+    nns_request = requested_nns_breakdown(normalized_area_summary)
+    nns_sources = None if nns_request is None else _shared(
+        cache, ('nns', selected_mode, json.dumps(nns_request, sort_keys=True), scoring_profile_id),
+        lambda: _nns_sources(repository, selected_mode, nns_request, scoring_profile_id))
+    if nns_sources is not None:
+        key_area_summary[NNS_KEY] = {**nns_request, 'version': NNS_VERSION, 'master_grid': nns_sources['master_grid'],
+                                     'modes': [[entry['nr_mode'], entry['campaigns'], entry['source_fingerprint'],
+                                                entry.get('configuration_hash', '')] for entry in nns_sources['modes']]}
     if normalized_area_summary.get('main_cities'):
         key_area_summary['main_cities'] = _shared(cache, ('main cities',), lambda: _workspace_main_cities(repository))
     # A City breakdown with a City filter scores those cities and the Separate cities only.
@@ -947,6 +959,8 @@ def _prepare_saved_scoring_once(
         snapshot['area_summary'] = normalized_area_summary
     if area_trends is not None:
         snapshot['area_trends'] = area_trends
+    if nns_sources is not None:
+        snapshot['nns_sources'] = nns_sources
     if len(groups) > 1:
         snapshot['methodology_groups'] = groups
     return {
@@ -2393,6 +2407,12 @@ def calculate_saved_scoring(repository: Repository, filter_id: int,
                                           update_progress)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings', [])]
             result['area_summary'] = summary
+        nns_request = requested_nns_breakdown(saved_scoring.get('area_summary'))
+        if nns_request and saved_scoring.get('nns_sources'):
+            breakdown = _nns_breakdown(repository, saved_scoring, nns_request, saved_scoring['nns_sources'], configuration,
+                                       context_filters, engine, update_progress)
+            result['warnings'] = [*(result.get('warnings') or []), *breakdown.get('warnings', [])]
+            result[NNS_KEY] = breakdown
         if given:
             parts, source = given
             for part in parts:
@@ -2525,6 +2545,166 @@ def _trend_area_summary(repository: Repository, saved_scoring: dict[str, Any], t
         summary = _serialize_result_value(summary)
         scoring_cache.write(repository, 'trends', key, summary)
     return summary
+
+
+def _nns_sources(repository: Repository, nr_mode: str, request: dict[str, Any],
+                 scoring_profile_id: str | None) -> dict[str, Any]:
+    """The campaigns, CDRs and methodologies of each NR Mode of an NNS Break-down (an automatic choice such as Latest 4
+    campaigns stands for its campaigns now), and the Master Grid it reads."""
+    from src.modules.network import master_grid
+    from src.modules.scoring.scoring_methodologies import BY_CAMPAIGN, methodology_groups
+    from src.modules.scoring.scoring_nns_breakdown import job_modes
+    from src.modules.scoring.scoring_selection import auto_scoring_cdr_ids, expand_scoring_campaigns
+    modes = []
+    for mode in job_modes(nr_mode):
+        campaigns = expand_scoring_campaigns(repository, mode, request['campaigns'])
+        dataset_ids = auto_scoring_cdr_ids(repository, mode, request['campaigns'])
+        entry: dict[str, Any] = {'nr_mode': mode, 'campaigns': list(campaigns), 'dataset_ids': list(dataset_ids),
+                                 'source_fingerprint': ''}
+        if dataset_ids:
+            sources, _campaigns, entry['source_fingerprint'] = _source_snapshot(repository, dataset_ids, expected_nr_mode=mode)
+            if scoring_profile_id == BY_CAMPAIGN:
+                # Each campaign with the methodology that applies to it, as the job's own campaigns.
+                wanted = {value.casefold() for value in campaigns}
+                found = [campaign for source in sources for campaign in source['metadata'].get('campaigns') or []
+                         if not wanted or campaign.casefold() in wanted]
+                groups = methodology_groups(repository.get_scoring_profiles(), found or [''])
+                entry['methodology_groups'] = groups
+                entry['configuration_hash'] = hashlib.sha256(json.dumps(
+                    [[group['profile_id'], configuration_hash(group['configuration']), group['campaigns']] for group in groups],
+                    sort_keys=True).encode('utf-8')).hexdigest()
+        modes.append(entry)
+    if not any(entry['dataset_ids'] for entry in modes):
+        raise ValueError(f'NNS Break-down: the chosen campaigns have no Data, Voice and Speech CDRs of {nr_mode_label(nr_mode)} now.')
+    return {'modes': modes, 'master_grid': master_grid.latest_dataset(repository), 'version': NNS_VERSION}
+
+
+def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], request: dict[str, Any], nns: dict[str, Any],
+                   configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
+                   update_progress: Callable[[int, str], None]) -> dict[str, Any]:
+    """The NNS Break-down of a job (see scoring_nns_breakdown): for each NR Mode, the CDRs of its campaigns scored with
+    the job's filters (its areas and campaigns aside) and methodology, split by Region and area (a city, or the
+    connecting roads) and, for the latest campaign, by city size and scenario; with the serving sites of each area. The
+    same CDRs, methodology, Master Grid and options calculated before are reused."""
+    from src.modules.network import master_grid
+    from src.modules.scoring import scoring as scoring_engine
+    from src.modules.scoring import scoring_cache
+    from src.modules.scoring import scoring_nns_breakdown as nb
+
+    grid = nns.get('master_grid')
+    current = master_grid.latest_dataset(repository)
+    if (current or {}).get('id') != (grid or {}).get('id') or (current or {}).get('processed_at') != (grid or {}).get('processed_at'):
+        raise ValueError('The Master Grid changed after this calculation was queued. Calculate it again.')
+    filters = whole_country_filters(context_filters)
+    filters.pop('Campaign', None)
+    key = None
+    if engine is scoring_engine:
+        key = scoring_cache.key_of({
+            'kind': 'nns', 'version': NNS_VERSION, 'method_version': scoring_engine.METHOD_VERSION, 'request': request,
+            'sources': [[entry['nr_mode'], entry['source_fingerprint'], entry.get('configuration_hash', '')]
+                        for entry in nns['modes']],
+            'methodology': configuration_hash(configuration), 'master_grid': grid, 'filters': _filters_key(filters),
+            'baseline_operator': saved_scoring['baseline_operator'], 'baseline_aliases': saved_scoring.get('baseline_aliases', []),
+            'operator_mappings': saved_scoring.get('operator_mappings', {}),
+            'operator_groups': repository.list_operator_mapping_groups(),
+        })
+        cached = scoring_cache.read(repository, 'nns', key)
+        if cached is not None:
+            update_progress(96, 'NNS Break-down: reused from a calculation of the same CDRs, methodology and Master Grid')
+            return cached
+    lookup = master_grid.site_lookup(master_grid.load_sites(repository, grid['id'])) if grid else {}
+    breakdown: dict[str, Any] = {'version': NNS_VERSION, 'request': request, 'master_grid': grid, 'modes': [],
+                                 'areas': [], 'sites': [], 'scenarios': [], 'warnings': []}
+    if not grid:
+        breakdown['warnings'].append(f'{nb.WARNING_PREFIX} no Master Grid in the workspace: the NNS sites have no capacity '
+                                     'and no NNS site is planned.')
+    calculate = engine.calculate_scoring
+    required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
+    parameters = inspect.signature(calculate).parameters
+    total = max(1, len(nns['modes']))
+    for index, entry in enumerate(nns['modes']):
+        mode = entry['nr_mode']
+
+        def progress(value: int, message: str, index: int = index, mode: str = mode) -> None:
+            update_progress(95 + round((index + value / 100) * 4 / total), f'NNS Break-down ({mode}): {message}')
+        if not entry['dataset_ids']:
+            breakdown['warnings'].append(f'{nb.WARNING_PREFIX} the chosen campaigns have no {mode} Data, Voice and Speech CDRs.')
+            continue
+        sources, _campaigns, fingerprint = _source_snapshot(repository, entry['dataset_ids'], expected_nr_mode=mode)
+        if fingerprint != entry['source_fingerprint']:
+            raise ValueError('A CDR of the NNS Break-down changed after this calculation was queued. Calculate it again.')
+        for source in sources:
+            source['levels'] = ['Operator', 'Campaign', 'Region', *nb.FIELDS]
+        frames = _load_source_frames(repository, sources, progress, required_columns,
+                                     {**filters, 'Campaign': list(entry['campaigns'])})
+        classified = {kind: nb.classify(frame, lookup, request) for kind, frame in frames.items()}
+        classified = {kind: frame for kind, frame in classified.items() if len(frame)}
+        if not classified:
+            breakdown['warnings'].append(f'{nb.WARNING_PREFIX} the {mode} CDRs have no tests in the chosen Regions.')
+            continue
+        campaign_of = {kind: frame[resolve_column_name(frame.columns, 'Campaign')].astype(object).astype(str).str.strip()
+                       for kind, frame in classified.items() if resolve_column_name(frame.columns, 'Campaign') is not None}
+        found = nb.sort_campaigns(value for values in campaign_of.values() for value in values.unique() if value and value != 'nan')
+        latest = found[-1] if found else ''
+        groups = entry.get('methodology_groups') or [{'campaigns': found, 'configuration': configuration}]
+        areas: dict[tuple, dict[str, Any]] = {}
+        scenarios: dict[tuple, dict[str, Any]] = {}
+        details = nb.area_details(classified)
+
+        def of_campaigns(campaigns: list[str]) -> dict[str, pd.DataFrame]:
+            wanted = {str(value).strip().casefold() for value in campaigns}
+            chosen = {}
+            for kind, frame in classified.items():
+                if kind in campaign_of:
+                    mask = campaign_of[kind].str.casefold().isin(wanted).to_numpy(dtype=bool)
+                    if mask.any():
+                        chosen[kind] = frame[mask]
+            return chosen
+        for group_index, group in enumerate(groups):
+            group_configuration = validate_scoring_configuration(group['configuration'])
+            kwargs = _engine_kwargs(repository, saved_scoring, group_configuration, calculate)
+            if 'with_points_loss' in parameters:
+                kwargs['with_points_loss'] = False
+            group_frames = of_campaigns(group['campaigns'])
+            if not group_frames:
+                continue
+            latest_frames = of_campaigns([latest]) if latest in group['campaigns'] or len(groups) == 1 else {}
+            # The cities and the connecting roads are scored apart: each area, measured in one environment, is scaled to
+            # the full points (as the areas of Country Areas).
+            for kind in (nb.CITY_KIND, nb.ROAD_KIND):
+                kind_frames = nb.of_kind(group_frames, kind)
+                if not kind_frames:
+                    continue
+                progress(60 + round(group_index * 30 / len(groups)),
+                         'Scoring each city' if kind == nb.CITY_KIND else 'Scoring the connecting roads')
+                result = calculate(nb.scoring_frames(kind_frames, '__nns_area'), ['Operator', 'Campaign', 'Region', 'City'], **kwargs)
+                reliable = scoring_engine.most_reliable_result(result, saved_scoring['baseline_operator'], group_configuration)
+                for (campaign, operator, region, area), values in nb.scores(
+                        result, reliable, ('campaign', 'operator', 'region', 'city')).items():
+                    area_kind, size = details.get((region, area), ('', ''))
+                    row = areas.setdefault((region, area, operator), {
+                        'nr_mode': mode, 'region': region, 'area': area, 'kind': area_kind, 'size': size,
+                        'operator': operator, 'campaigns': {}})
+                    row['campaigns'][campaign] = values
+                kind_latest = nb.of_kind(latest_frames, kind)
+                if kind_latest:
+                    progress(80, 'Scoring the latest campaign by city size and scenario')
+                    result = calculate(nb.scoring_frames(kind_latest, '__nns_size'), ['Operator', 'City', 'Cluster'], **kwargs)
+                    reliable = scoring_engine.most_reliable_result(result, saved_scoring['baseline_operator'], group_configuration)
+                    for (operator, size, scenario), values in nb.scores(result, reliable, ('operator', 'city', 'cluster')).items():
+                        scenarios[(size, scenario, operator)] = {'nr_mode': mode, 'campaign': latest, 'size': size,
+                                                                 'scenario': scenario, 'operator': operator, **values}
+        counts = nb.site_counts(of_campaigns([latest]), lookup) if latest else {}
+        breakdown['modes'].append({'nr_mode': mode, 'campaigns': found, 'latest_campaign': latest})
+        breakdown['areas'].extend(areas.values())
+        breakdown['scenarios'].extend(scenarios.values())
+        breakdown['sites'].extend({'nr_mode': mode, 'region': region, 'area': area, **counts_of}
+                                  for (region, area), counts_of in counts.items())
+    breakdown['scenario_order'] = nb.scenario_order(row['scenario'] for row in breakdown['scenarios'])
+    if key is not None:
+        breakdown = _serialize_result_value(breakdown)
+        scoring_cache.write(repository, 'nns', key, breakdown)
+    return breakdown
 
 
 def _scoring_result(repository: Repository, saved_scoring: dict[str, Any], configuration: dict[str, Any],

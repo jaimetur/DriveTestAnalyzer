@@ -6294,3 +6294,7 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 @media (max-width: 640px) { .server-update-notice { flex-wrap: wrap; top: 8px; } .server-update-text { flex-basis: calc(100% - 3rem); } }
 /* Email preferences: the NQ call emails apart from the address (ticket #194). */
 #email-overlay .account-email-nq { margin-top: .9rem; }
+/* Master Grid card of Workspace (ticket #195). */
+.dataset-card-icon-master-grid { --dataset-card-colour: #0f766e; }
+.dataset-card-master-grid { border-top: 5px solid #0f766e; }
+.dataset-card-master-grid .dataset-card-count { background: #0f766e; }

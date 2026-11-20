@@ -29,6 +29,7 @@ guide:scoring-gap-analysis.md
 | <span class="guide-sub">↳ Read the GAPs to the competition</span> | <span class="guide-sub">↳ [GAP Analysis](#gap-analysis)</span> |
 | <span class="guide-sub">↳ Find where and why points are lost</span> | <span class="guide-sub">↳ [Points Lost](#points-lost)</span> |
 | <span class="guide-sub">↳ Follow the scoring across campaigns</span> | <span class="guide-sub">↳ [Scoring Trends](#scoring-trends)</span> |
+| <span class="guide-sub">↳ Score each city and road with its NNS sites</span> | <span class="guide-sub">↳ [NNS Break-down](#nns-break-down)</span> |
 | <span class="guide-sub">↳ Compare two methodologies on the same tests</span> | <span class="guide-sub">↳ [Methodology Impact](#methodology-impact)</span> |
 | Leave calls out of the scoring | [Excluded Calls](#excluded-calls) |
 | Change the methodology and its KPIs | [Methodology](#methodology) |
@@ -79,10 +80,12 @@ Everything happens in the **Scoring & GAP Analysis** panel, with the results bel
 | **3 Break down by** | The levels that split the results |
 | **4 Country Areas** | The areas of the Country Areas tab, always scored on the whole country |
 | **5 Trends** | Campaigns, Time split and areas of the Scoring Trends tab |
+| **6 NNS Break-down** | Campaigns, Regions and connecting roads of the NNS Break-down tab (off by default) |
 
 - **Environment** is not a block: it is a view option beside **Scoring** above the results, applied without calculating.
 - **Switching Country Areas or Trends off:** each card has a switch in its top right corner (on by default). Off, it is not calculated (with both off, the rows of the whole country are not read either), its card says *Off* and its tab hides from that scoring. When the same scoring with them on is already calculated and up to date, its result is used at once (without the tabs switched off), nothing is calculated again; switched on again, a part already calculated for the same scoring (the Favourite Scoring with the other part off, up to date) is taken from it and only the other part is calculated. See [Country Areas & Scoring Trends](#country-areas-scoring-trends).
-- **Layout:** cards in two rows on large screens; one-line pills on phones and narrow windows.
+- **NNS Break-down:** off by default; switched on with the switch of its card, it is calculated with the scoring and its tab shows (see [NNS Break-down](#nns-break-down)).
+- **Layout:** cards in three rows on large screens (the NNS Break-down on a row of its own); one-line pills on phones and narrow windows.
 - **View:** Best Network or Most Reliable, NSA vs SA, NSA & SA charts and the KPI and GAP values, then **Report (PPT/Word)** with **Export this scoring** and **Custom report…** (see [Results exports](#results-exports)).
 
 #### Change a block
@@ -394,6 +397,7 @@ The title of every chart and table of the results tabs ends with three pills, so
 | [**Scoring Tables**](#scoring-tables) | The Summary and Breakdown tables and the Campaign Comparison |
 | [**Country Areas**](#country-areas) | The scoring Nationwide and per City, Cluster or Region, the locations ranked and each operator against the reference per location |
 | [**Scoring Trends**](#scoring-trends) | The Scoring Trend and the National & Country Areas Trends |
+| [**NNS Break-down**](#nns-break-down) | Each city and the connecting roads campaign by campaign with their NNS and eMOCN sites, and the latest campaign by city size and scenario (when switched on) |
 | [**GAP Analysis**](#gap-analysis) | The GAP tables, the GAP by part and the KPI GAP Profile |
 | [**Points Lost**](#points-lost) | Where the points go, per KPI, on the map, per Vendor, kind of site, RAN Vendor, site type (Legacy, eMOCN, NNS), site and along the Connecting Roads |
 | [**Methodology Impact**](#methodology-impact) | What two methodologies change in the scoring, categories, KPIs, areas, GAPs and points lost of each operator |
@@ -652,6 +656,32 @@ The Scoring Trends tab follows each operator's score over the campaigns or perio
 - **Charts:** one per area on the same scale, as tall as the table (labels tilted when needed), with pills, the score of every point and end scores kept apart. A double-click enlarges a chart or the table alone.
 - An area not measured in the latest campaign or period is listed without a score; its chart shows the earlier ones.
 
+### NNS Break-down
+
+The NNS Break-down tab scores each city and the connecting roads over several campaigns, with the sites that serve them, and the latest campaign by the kind of site that served each test: the table to project the scoring improvement of the NNS upgrade. It is **off by default**; switch it on in block **6 NNS Break-down**.
+
+| Setting | Choices |
+| --- | --- |
+| **Campaigns** | **Latest 4 campaigns** (the default), another automatic choice or chosen campaigns, whatever the Campaign filter (the complete campaigns of each NR Mode: Weekly, Daily and Flex CDRs are left out) |
+| **Regions** | The Regions it covers, such as Vendor A, VMO2 North and VMO2 South; none: every Region |
+| **Connecting roads** | **Grouped by Region** (a row for the Roads and one for the Highway of each Region, the default) or **Each road on its own** |
+
+- **Scored like the trends:** the CDRs of its campaigns with the filters of the scoring but Region, Cluster, City and Campaign, its methodology (By campaign: each campaign with its own) and GAP reference. **NSA vs SA** scores each NR Mode apart (an **NR Mode** selector in the tab).
+- **Areas:** a test is in a city when its `G_Level_2` is City (the city is `G_Level_4`, its size `G_Level_3`: Big, Medium or Small Cities), else on a connecting road (`G_Level_3`: Roads or Highway). Each area is scored on its own tests, scaled to the full points as in Country Areas.
+- **Scenario of a test:** the kind of site of the cell that served it (`Serving_eMOCN_Scenario` of the Network Inventory): an NNS site with the capacity of the **Master Grid** (its High/Med/Low config), or its eMOCN scenario (S0, S1, S1_CWP…).
+- **Master Grid:** the newest one uploaded in [Workspace Management](workspace-management.md#master-grid). Vodafone sites are matched by `Site ID`, 3 sites by `SITE ID + Pairing` and O2 sites by `SiteRef2`. Without one, the NNS sites have no capacity and no NNS site is planned (a warning says so); a new Master Grid calculates the NNS Break-down again.
+
+**Cities and connecting roads** (one table per NR Mode):
+
+- **Rows:** each Region, then its cities (big to small) and roads, each with a row per operator.
+- **Points:** Best Network or Most Reliable (the **Scoring** selector) of each campaign, with its tests, tinted by their share of the maximum points.
+- **Sites:** the serving sites of the tests of the latest campaign: **NNS sites** by capacity (High · Med · Low, plus those not in the Master Grid), the **eMOCN / other sites** by scenario, and the **Planned NNS**: the Keep sites among them, not NNS yet, that the Master Grid plans, by financial year (`Target Deployment FY`).
+
+**Latest campaign by city size and scenario:** each city size (and road type) with a row per scenario (NNS High, Medium and Low capacity, then each eMOCN scenario) and the operators side by side, each with its points and tests.
+
+- **Export to Excel:** both tables of every NR Mode with both scorings, in the sheets **Areas** (a column per campaign and scoring), **Sites** (every capacity, scenario and financial year), **Scenarios** and **About**. It is not part of the PowerPoint and Word documents, so it has no Scoring Export Panels.
+- **Cost:** it reads the CDRs of its campaigns (about as long as a scoring of them); the same CDRs, methodology, options and Master Grid are taken from the cache of the workspace.
+
 ### Methodology Impact
 
 **Methodology Impact** scores the same tests with two methodologies, so every difference comes from the methodology and none from the network. It keeps the scope of the open Saved Scoring (NR Mode, filters, GAP reference) and follows the **Scoring**, **Environment** and **Operators** of the page; Break down by does not matter and every operator starts enabled.
@@ -892,6 +922,7 @@ Export the results as CSV, images, PowerPoint or Word, and know what each save, 
 - **Report (PPT/Word) → Export this scoring:** the selected Saved Scoring as calculated, with editable tables and charts, covers and environment transitions, without the editor. Its dialog (**Export Selected Scoring Report**) asks for the scorings (**Best Network**, and **Most Reliable** when it has it), the environments (**All Environments** and each one; Best Network and All Environments ticked), **Export All Operators in Focus panels** (off by default) and PowerPoint or Word. Only the exportable panels of [Scoring Export Panels](workspace-config.md#scoring-export-panels) are included.
 - **Report (PPT/Word) → Custom report…:** the [report editor](#report-scenarios) with one scenario that takes the CDRs, NR Mode, filters, Break down by, Country Areas & Scoring Trends, GAP reference, methodology and theme of the page, and only chooses its content (scorings, environments and sections, remembered for the next time); no saved configurations, theme or JSON files. The reports of [Reporting](reporting.md) keep their own filters.
 - **Methodology Impact** has its own [exports](#methodology-impact).
+- **NNS Break-down → Export to Excel:** its tables as an Excel workbook (see [NNS Break-down](#nns-break-down)).
 - A progress dialog stays open while a document is generated.
 
 **Word** documents (and the PowerPoint, which ends with the closing slide) are composed as the Scoring section of a report of [Reporting](reporting.md#how-a-report-is-composed): portrait pages rendered exactly as the PowerPoint with LibreOffice (in the Docker image), under the title of each scoring and environment. Without LibreOffice, one page per slide with the tables and charts rebuilt.

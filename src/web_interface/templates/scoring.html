@@ -502,6 +502,38 @@
   [data-result-pane="summary"] { --pane-accent: #0369a1; }
   [data-result-pane="geographical-areas"] { --pane-accent: #7c3aed; }
   [data-result-pane="trends"] { --pane-accent: #4d7c0f; }
+  /* NNS Break-down (ticket #195): designed cells, the points tinted lightly by their share of the maximum. */
+  [data-result-pane="nns"] { --pane-accent: #0f766e; }
+  .scoring-nns-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem 1rem; margin-bottom: .8rem; }
+  .scoring-nns-facts { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .scoring-nns-fact { display: inline-flex; gap: .35rem; padding: .25rem .55rem; border: 1px solid #b7ded8; border-radius: 8px; background: #effaf8; color: #134e48; font-size: .8rem; }
+  .scoring-nns-fact b { color: #0f766e; font-weight: 800; }
+  .scoring-nns-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  .scoring-nns-export { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .7rem; border: 1px solid #0f766e; border-radius: 8px; color: #0f766e; font-size: .8rem; font-weight: 750; text-decoration: none; }
+  .scoring-nns-export:hover { background: #0f766e; color: #fff; }
+  .scoring-nns-export svg { width: 1rem; height: 1rem; }
+  .scoring-nns-section { margin-bottom: 1.2rem; }
+  .scoring-nns-warning { color: #8a5a00; }
+  .scoring-nns-table-wrap { max-width: 100%; overflow-x: auto; }
+  table.scoring-nns-table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #dde5eb; border-radius: 12px; overflow: hidden; font-size: .86rem; }
+  table.scoring-nns-table th { padding: .5rem .6rem; background: linear-gradient(180deg, #f0f4f7, #e2e9ee); color: #2b3f4c; font-size: .7rem; letter-spacing: .04em; text-align: center; text-transform: uppercase; white-space: nowrap; }
+  table.scoring-nns-table td { padding: .35rem .6rem; border-top: 1px solid #edf1f4; background: #fff; vertical-align: middle; }
+  table.scoring-nns-table tr.is-shaded td { background: #f7fafb; }
+  table.scoring-nns-table tr.scoring-nns-region td { padding: .45rem .7rem; background: #0f766e; color: #fff; font-size: .78rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+  table.scoring-nns-table td.scoring-nns-area { box-shadow: inset 4px 0 0 #1450a8; color: #17232d; font-weight: 800; }
+  table.scoring-nns-table td.scoring-nns-area.is-road { box-shadow: inset 4px 0 0 #8a5a00; }
+  table.scoring-nns-table td.scoring-nns-size { color: #4b5d6b; font-size: .8rem; white-space: nowrap; }
+  table.scoring-nns-table td.scoring-nns-operator { font-weight: 800; white-space: nowrap; }
+  table.scoring-nns-table td.scoring-nns-scenario { font-weight: 700; white-space: nowrap; }
+  table.scoring-nns-table td.scoring-nns-scenario.is-nns { color: #0f766e; }
+  table.scoring-nns-table td.scoring-nns-score { min-width: 5.2rem; text-align: center; background-image: linear-gradient(0deg, rgba(15,118,110,calc(var(--nns-share, 0) * .32)), rgba(15,118,110,calc(var(--nns-share, 0) * .32))); }
+  table.scoring-nns-table td.scoring-nns-score strong { display: block; font-size: .98rem; }
+  table.scoring-nns-table td :is(small) { display: block; color: #5b6b78; font-size: .7rem; font-weight: 600; white-space: nowrap; }
+  table.scoring-nns-table td.scoring-nns-score.is-empty { color: #9aa7b2; }
+  table.scoring-nns-table td.scoring-nns-sites { min-width: 6.5rem; max-width: 13rem; text-align: center; font-weight: 800; }
+  table.scoring-nns-table td.scoring-nns-sites small { white-space: normal; line-height: 1.3; }
+  /* With the NNS Break-down tab the results tabs stay on one row: a little less padding each. */
+  .scoring-result-tabs:has(> [data-result-tab="nns"]:not([hidden])) > .scoring-result-tab { padding-left: .62rem; padding-right: .62rem; }
   [data-result-pane="points"] { --pane-accent: #be123c; }
   :is([data-result-pane], .scoring-nr-mode-body) > * > :is(.scoring-table-section-title, h4):first-child { margin-top: 0; }
   /* NSA vs SA: the results of each NR Mode one below the other, each under its title in the colour of its tab. */
@@ -994,6 +1026,7 @@
   .scoring-results-tabbed:has([data-result-tab="summary"][aria-selected="true"]) { --result-accent: #0369a1; }
   .scoring-results-tabbed:has([data-result-tab="geographical-areas"][aria-selected="true"]) { --result-accent: #7c3aed; }
   .scoring-results-tabbed:has([data-result-tab="trends"][aria-selected="true"]) { --result-accent: #4d7c0f; }
+  .scoring-results-tabbed:has([data-result-tab="nns"][aria-selected="true"]) { --result-accent: #0f766e; }
   .scoring-results-tabbed:has([data-result-tab="points"][aria-selected="true"]) { --result-accent: #be123c; }
   .scoring-results-tabbed:has([data-result-tab="impact"][aria-selected="true"]) { --result-accent: #a21caf; }
   .scoring-result-tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: .3rem; margin: 0; padding: 0; border: 0; }
@@ -1018,6 +1051,7 @@
   .scoring-result-tab[data-result-tab="summary"] { --tab-color: #0369a1; }
   .scoring-result-tab[data-result-tab="geographical-areas"] { --tab-color: #7c3aed; }
   .scoring-result-tab[data-result-tab="trends"] { --tab-color: #4d7c0f; }
+  .scoring-result-tab[data-result-tab="nns"] { --tab-color: #0f766e; }
   /* The tabs not filtered by Region, Cluster or City (National, Breakdown and Separate cities). */
   .scoring-tab-scope { display: inline-flex; margin-left: -.1rem; opacity: .75; }
   .scoring-tab-scope svg { width: .95rem; height: .95rem; }
@@ -1877,6 +1911,7 @@
   .scoring-config-pill.is-split { --pill: #0d7c86; }
   .scoring-config-pill.is-areas { --pill: #6b3fb8; }
   .scoring-config-pill.is-trends { --pill: #1d8a5b; }
+  .scoring-config-pill.is-nns { --pill: #0f766e; }
   .scoring-config-pill-label { flex: 0 0 auto; color: var(--pill); font-weight: 800; white-space: nowrap; }
   .scoring-config-pill-value { min-width: 0; max-width: 30rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .scoring-config-pill-scope { flex: 0 0 auto; padding: .02rem .35rem; border-radius: 5px; background: #efe8fb; color: #6b3fb8; font-size: .66rem; font-weight: 800; white-space: nowrap; }
@@ -1926,8 +1961,8 @@
     .scoring-config-pill-value { display: none; }
     .scoring-config-card-lines { grid-area: lines; display: grid; gap: .15rem; min-width: 0; }
     .scoring-config-card-lines { grid-template-columns: auto minmax(0,1fr); column-gap: .7rem; row-gap: .22rem; }
-    .scoring-config-pill:is(.is-areas, .is-trends) .scoring-config-card-lines { grid-template-columns: auto minmax(0,max-content) auto minmax(0,1fr); column-gap: .7rem; }
-    .scoring-config-pill:is(.is-areas, .is-trends) .scoring-config-card-line:nth-child(2) b { margin-left: 1.2rem; }
+    .scoring-config-pill:is(.is-areas, .is-trends, .is-nns) .scoring-config-card-lines { grid-template-columns: auto minmax(0,max-content) auto minmax(0,1fr); column-gap: .7rem; }
+    .scoring-config-pill:is(.is-areas, .is-trends, .is-nns) .scoring-config-card-line:nth-child(2) b { margin-left: 1.2rem; }
     .scoring-config-card-line { display: contents; font-size: .78rem; line-height: 1.35; }
     .scoring-config-card-line b { color: var(--muted); font-size: .74rem; font-weight: 650; white-space: nowrap; }
     .scoring-config-card-line span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; font-weight: 600; }
@@ -2001,6 +2036,7 @@
   /* Their entries in the sections menus hide too (also the copies of the sections bar and of the phone menu). */
   html[data-scoring-hide-geographical-areas] :is(a[href$="#scoring-results-geographical-areas"], li:has(> a[href$="#scoring-results-geographical-areas"])),
   html[data-scoring-hide-trends] :is(a[href$="#scoring-results-trends"], li:has(> a[href$="#scoring-results-trends"])) { display: none !important; }
+  html[data-scoring-hide-nns] :is(a[href$="#scoring-results-nns"], li:has(> a[href$="#scoring-results-nns"])) { display: none !important; }
   /* The switch of the Country Areas and Scoring Trends cards, in their top right corner. */
   .scoring-config-pill-wrap { position: relative; display: flex; min-width: 0; }
   .scoring-config-pill-wrap > button.scoring-config-pill { flex: 1 1 auto; padding-right: 3.3rem; }
@@ -2011,11 +2047,14 @@
   .scoring-config-pill-switch input:checked + span { background: var(--brand); }
   .scoring-config-pill-wrap.is-areas .scoring-config-pill-switch input:checked + span { background: #6b3fb8; }
   .scoring-config-pill-wrap.is-trends .scoring-config-pill-switch input:checked + span { background: #1d8a5b; }
+  .scoring-config-pill-wrap.is-nns .scoring-config-pill-switch input:checked + span { background: #0f766e; }
   .scoring-config-pill-switch input:checked + span::after { transform: translateX(.9rem); }
   .scoring-config-pill-switch input:focus-visible + span { outline: 2px solid var(--brand-3); outline-offset: 2px; }
   @media(max-width:640px) { .scoring-config-pill-wrap { width: 100%; } }
   @media(min-width:1200px) {
     .scoring-config-pills > .scoring-config-pill-wrap { grid-column: span 3; }
+    /* (The NNS Break-down, a row of its own.) */
+    .scoring-config-pills > .scoring-config-pill-wrap.is-nns { grid-column: span 6; }
     .scoring-config-pill-switch { top: .5rem; transform: none; }
   }
   /* The blocks are numbered: the steps to configure a scoring. */
@@ -2083,6 +2122,7 @@
   .scoring-config-dialog-head[data-block="split"] { --block: #0d7c86; }
   .scoring-config-dialog-head[data-block="areas"] { --block: #6b3fb8; }
   .scoring-config-dialog-head[data-block="trends"] { --block: #1d8a5b; }
+  .scoring-config-dialog-head[data-block="nns"] { --block: #0f766e; }
   .scoring-config-dialog-head h3 { margin: .15rem 0 0; color: var(--block); }
   button.scoring-config-dialog-close { flex: 0 0 auto; width: 2.2rem; height: 2.2rem; padding: 0; border: 1px solid var(--line); background: #fff; color: var(--text); font-size: 1.3rem; line-height: 1; box-shadow: none; }
   .scoring-config-dialog-source, .scoring-config-dialog-scope { margin: .8rem 1.2rem 0; padding: .5rem .75rem; border-radius: 9px; font-size: .82rem; }
@@ -2343,6 +2383,34 @@
         <p class="scoring-context-filter-note">The Scoring Trends tab shows the National scoring, then the trend of each of these areas and cities. With <strong>Same as Country Areas</strong> they change with step 4; without it, each tab keeps its own: for example every Region in Country Areas and only London and Manchester in the trends.</p>
       </div>
     </section>
+    {# NNS Break-down (ticket #195): off by default; each city and the connecting roads campaign by campaign, with their
+       NNS and eMOCN sites and the NNS sites the Master Grid plans, and the latest campaign by city size and scenario. #}
+    <section class="scoring-config-section" data-scoring-config-section="nns" aria-labelledby="scoring-config-nns-title">
+      <h3 class="scoring-config-section-title" id="scoring-config-nns-title">NNS Break-down</h3>
+      <label class="scoring-config-switch" data-scoring-config-key="nns_breakdown" hidden><input type="checkbox" data-scoring-nns-enabled> <span><strong>Include the NNS Break-down</strong> Calculated with the scoring and shown in its own tab of the results; off (by default), the tab hides.</span></label>
+      <div class="scoring-picker scoring-area-summary scoring-nns-options" data-scoring-part-fields="nns_breakdown">
+        <div class="scoring-picker-head" title="Its own campaigns and Regions, whatever the Campaign, Region, Cluster and City of the Context Filters (the other filters apply)"><strong>NNS Break-down</strong><span>Independent of the Campaign and areas of the Context Filters</span></div>
+        <div class="scoring-area-grid scoring-nns-grid">
+          <label data-scoring-config-key="nns_campaigns">Campaigns
+            <select multiple size="1" data-scoring-nns-campaigns data-multiselect-auto-close="1000" data-multiselect-empty-label="Latest 4 campaigns" aria-label="Campaigns of the NNS Break-down">
+              <option value="@latest-4-campaigns" selected>Latest 4 campaigns</option>
+            </select>
+          </label>
+          <label data-scoring-config-key="nns_regions">Regions
+            <select multiple size="1" data-scoring-nns-regions data-multiselect-auto-close="1000" data-multiselect-empty-label="Every Region" aria-label="Regions of the NNS Break-down">
+              <option value="" disabled>No values</option>
+            </select>
+          </label>
+          <label data-scoring-config-key="nns_roads">Connecting roads
+            <select data-scoring-nns-roads aria-label="Connecting roads of the NNS Break-down" title="Grouped by Region: one row for the Roads and one for the Highway of each Region; each road on its own: a row per road">
+              <option value="region" selected>Grouped by Region</option>
+              <option value="each">Each road on its own</option>
+            </select>
+          </label>
+        </div>
+        <p class="scoring-context-filter-note"><strong>Areas:</strong> each city (G_Level_4, its size from G_Level_3) and the connecting roads, campaign by campaign, with the Best Network and Most Reliable points. <strong>Sites:</strong> the serving sites of the tests of the latest campaign, NNS by the capacity of the newest <strong>Master Grid</strong> (Workspace), the others by eMOCN scenario, and the Keep sites it plans for NNS by financial year. <strong>Scenarios:</strong> the latest campaign by city size and the kind of site that served each test. NSA vs SA scores each NR Mode apart.</p>
+      </div>
+    </section>
     {# Shown in the dialog of a Saved Scoring being edited or duplicated. #}
     <div class="scoring-config-edit-foot" data-scoring-config-edit-foot>
       <div class="scoring-actions">
@@ -2419,6 +2487,10 @@
             <div class="scoring-config-pill-wrap is-trends">
               <button type="button" class="scoring-config-pill is-trends" data-scoring-config-open="trends"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 5">5</span>Trends</span><span class="scoring-config-pill-value" data-scoring-config-summary="trends"></span><span class="scoring-config-card-lines" data-scoring-config-details="trends"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
               <label class="scoring-config-pill-switch" title="Include Scoring Trends: switched off, it is not calculated and its tab hides"><input type="checkbox" role="switch" data-scoring-part-switch="trends" checked aria-label="Include Scoring Trends"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="scoring-config-pill-wrap is-nns">
+              <button type="button" class="scoring-config-pill is-nns" data-scoring-config-open="nns"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 6">6</span>NNS Break-down</span><span class="scoring-config-pill-value" data-scoring-config-summary="nns"></span><span class="scoring-config-card-lines" data-scoring-config-details="nns"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+              <label class="scoring-config-pill-switch" title="Include the NNS Break-down: switched on, it is calculated with the scoring and shown in its own tab"><input type="checkbox" role="switch" data-scoring-part-switch="nns_breakdown" aria-label="Include the NNS Break-down"><span aria-hidden="true"></span></label>
             </div>
           </div>
           <div class="scoring-config-pending" data-scoring-config-pending role="status" hidden>
@@ -2502,6 +2574,7 @@
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-table-pane" data-result-tab="scoring"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M3 8h14M3 12h14M8 4v12"/></svg><span>Scoring Tables</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-geographical-areas-pane" data-result-tab="geographical-areas" title="Not filtered by Region, Cluster or City: the National scoring and the Areas and Cities on their own of Country Areas (the other filters apply; a City breakdown shows the cities of the City filter and the Cities on their own only)."><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.5s5.5-5 5.5-9.5a5.5 5.5 0 0 0-11 0c0 4.5 5.5 9.5 5.5 9.5z"/><circle cx="10" cy="8" r="2"/></svg><span>Country Areas</span><span class="scoring-tab-scope" role="img" aria-label="Not filtered by Region, Cluster or City"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5z"/><path d="M3 17 17 3"/></svg></span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-trends-pane" data-result-tab="trends" title="Not filtered by Region, Cluster or City: the National scoring and the Areas and Cities on their own of Country Areas, with the Campaigns of the Scoring Trends (the other filters apply; a City breakdown shows the cities of the City filter and the Cities on their own only)."><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="m3.5 13 4-4.5 3 2.5 5.5-6.5"/><path d="M13 4.5h3v3"/></svg><span>Scoring Trends</span><span class="scoring-tab-scope" role="img" aria-label="Not filtered by Region, Cluster or City"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5z"/><path d="M3 17 17 3"/></svg></span></button>
+        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-nns-pane" data-result-tab="nns" hidden title="Its own campaigns and Regions: each city and the connecting roads with their NNS and eMOCN sites, and the latest campaign by city size and scenario."><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3v4M6.5 5.5 10 7l3.5-1.5"/><path d="M10 7v10M7 17h6"/><circle cx="4.5" cy="12" r="1.5"/><circle cx="15.5" cy="12" r="1.5"/><path d="M6 12h2.5M11.5 12H14"/></svg><span>NNS Break-down</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-gap-pane" data-result-tab="gap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21h20"/><path d="M3 21V5h4v16"/><path d="M17 21v-9h4v9"/><path d="M7 5h3.5M13.5 12H17"/><path d="M12 5.5v6"/><path d="m10 7.5 2-2 2 2"/><path d="m10 9.5 2 2 2-2"/></svg><span>GAP Analysis</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-points-pane" data-result-tab="points"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/></svg><span>Points Lost</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-impact-pane" data-result-tab="impact"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3v14M6 17h8M4 5.5h12"/><path d="m4 5.5-2.5 6a2.6 2.6 0 0 0 5 0zM16 5.5l-2.5 6a2.6 2.6 0 0 0 5 0z"/></svg><span>Methodology Impact</span></button>
@@ -2512,6 +2585,7 @@
       <div class="scoring-result-pane" id="scoring-table-pane" role="tabpanel" data-result-pane="scoring" hidden><div class="scoring-table-export" data-table-export="scoring"><a href="#" data-export-scoring aria-disabled="true" tabindex="-1" title="The scoring table shown below as CSV"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to CSV</span></a></div><div class="scoring-empty">No scoring table is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-geographical-areas-pane" role="tabpanel" data-result-pane="geographical-areas" hidden><div class="scoring-empty">No Country Areas is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-trends-pane" role="tabpanel" data-result-pane="trends" hidden><div class="scoring-empty">No Scoring Trends are selected.</div></div>
+      <div class="scoring-result-pane" id="scoring-nns-pane" role="tabpanel" data-result-pane="nns" hidden><div class="scoring-empty">No NNS Break-down is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-gap-pane" role="tabpanel" data-result-pane="gap" hidden><div class="scoring-table-export" data-table-export="gap"><a href="#" data-export-gap aria-disabled="true" tabindex="-1" title="The GAP table shown below as CSV"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to CSV</span></a></div><div class="scoring-empty">No GAP analysis is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-points-pane" role="tabpanel" data-result-pane="points" hidden><div class="scoring-empty">No Points Lost are selected.</div></div>
       <div class="scoring-result-pane" id="scoring-impact-pane" role="tabpanel" data-result-pane="impact" hidden><div class="scoring-empty">No Methodology Impact is selected.</div></div>

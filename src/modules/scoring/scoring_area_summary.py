@@ -109,6 +109,11 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     for part in AREA_SUMMARY_PARTS:
         if area_summary.get(part) is False:
             normalized[part] = False
+    # The NNS Break-down, with its own configuration, is only said when it is switched on (see scoring_nns_breakdown).
+    from src.modules.scoring.scoring_nns_breakdown import KEY as NNS_KEY, normalize_request as normalize_nns_request
+    nns = normalize_nns_request(area_summary.get(NNS_KEY))
+    if nns:
+        normalized[NNS_KEY] = nns
     return normalized
 
 

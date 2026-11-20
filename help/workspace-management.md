@@ -31,6 +31,7 @@ guide:workspace-management.md
 | <span class="guide-sub">↳ Preview the rows of a dataset</span> | <span class="guide-sub">↳ [Dataset Preview](#dataset-preview)</span> |
 | <span class="guide-sub">↳ Add the Layer3 Logs of a campaign</span> | <span class="guide-sub">↳ [Layer3 Logs](#layer3-logs)</span> |
 | <span class="guide-sub">↳ Add the carrier aggregation appendix</span> | <span class="guide-sub">↳ [CA Appendix](#ca-appendix)</span> |
+| <span class="guide-sub">↳ Add the Master Grid of the sites</span> | <span class="guide-sub">↳ [Master Grid](#master-grid)</span> |
 | Fix a failed upload | [Troubleshooting](#troubleshooting) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
@@ -71,6 +72,7 @@ Only successfully processed datasets can be used by Design, Chart Builder or Rep
 - **Regions**, **Clusters**, **Vendors — Geospatial:** `GeoJSON`, `JSON` or a zipped shapefile (see [Cluster polygons](#cluster-polygons)).
 - **Layer3 Logs:** `CSV` files or their `ZIP`; see [Layer3 Logs](#layer3-logs).
 - **CA Appendix:** an `XLSX` workbook, `CSV` files or their `ZIP`; see [CA Appendix](#ca-appendix).
+- **Master Grid:** the `XLSX` Master Grid List of the sites; see [Master Grid](#master-grid).
 - **Other supported dataset:** offered on upload, and as **Other Datasets** in the Dataset Type filter, only while the workspace has such datasets.
 
 ### Upload Workflow
@@ -268,6 +270,7 @@ The **Datasets** panel header, before Collapse, counts the campaigns (of the Fin
 - **Multivendor Mappings** (with **Operators** and **Snapshot**), **Network Inventories** (with **Operator** and **Snapshot**; the VFUK and 3UK files too) and **Geographic Datasets** (Region, Cluster and Vendor polygons, with their **Type**), in one row on a wide window, with compact rows: the dataset with its type and rows, its status with progress and last update, and its actions. These reference datasets have no analysis or mappings, so their actions are **Preview**, **Reprocess** and **Delete**.
 - **Layer3 Logs**, full width: one dataset per campaign and NR Mode, with its Campaign (and that of its rows), NR Mode, Operators, Sessions (over its JoinIDs and the NQ calls of the workspace with a session in it), Rows, Size, status, last update and actions, sized to fit a laptop window; the header counts their campaigns and sessions and gives their size.
 - **CA Appendix**, beside the reference cards: each with its tests, fields and operators; its note says how many tests of how many CDRs have its fields now.
+- **Master Grid**, beside it: the sites, Keep sites and week of the newest one.
 - **Other Datasets**, when there are any.
 - **Combined CDR tables** (see [Combined CDR Tables](#combined-cdr-tables)), with Rows over Columns, status (**Ready**, **Updating**, **Recalculating**, **Queued**, **Missing Rows** or **Recalc Needed**), progress and last update; they mix NR Modes and come from no file, so they have no NR Mode, Size or Uploaded columns.
 
@@ -469,6 +472,16 @@ The **CA Appendix** is the quarterly NetCheck file with the Carrier Aggregation 
 - **Where it is used:** **PPT Designer** (section *CA Appendix* in Chart Builder), Query Builder, CDR Analysis and the AI Assistant, with the filters of the CDR; Network Insights → [Spectrum](network-insights.md#spectrum).
 - **Actions:** **Preview** reads its Parquet source; **Reprocess** reads it again; **Delete** removes it, and the CDRs lose its fields in the background.
 - **Transfers:** like the CDRs and Layer3 Logs: full backups, full workspace packages and transfers, not light backups.
+
+### Master Grid
+
+The weekly **Master Grid List** of the VodafoneThree sites gives the [NNS Break-down](scoring-gap-analysis.md#nns-break-down) of Scoring & GAP Analysis the capacity of the NNS sites and the NNS sites planned.
+
+- **Upload:** the workbook as it comes (`RED_PINK_MasterGridList V1.5 2026_Wk46 ….xlsx`), type **Master Grid**; a name with `Master Grid` is proposed with that type.
+- **What is kept:** from its `MasterSiteGridList` sheet (the header row with `Site ID` and `Keep / Remove Status`, below its notes), one row per site in the table **Master Grid Sites** (`master_grid_sites`): Site ID, SITE ID + Pairing, SiteRef2, JVCO_ID, Operator, Latitude, Longitude, Rural / Urban, Keep / Remove Status, High/Med/Low config, Target Deployment FY, CMA Year, NNS Vendor, Region and Vodafone Region. The week of its file name (`2026-W46`) is shown in its card. About 44,000 sites are read in a few seconds.
+- **Which one is used:** the newest ready Master Grid of the workspace; uploading a new one calculates the NNS Break-downs again.
+- **Actions:** **Preview** shows its sites; **Reprocess** reads the workbook again; **Delete** removes it and its sites.
+- **Transfers:** its sites travel with the workspace database and its workbook with the input files (backups, workspace packages and transfers).
 
 ### Auto-calculated Fields
 

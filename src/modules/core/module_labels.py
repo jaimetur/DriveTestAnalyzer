@@ -409,7 +409,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'scoring': [('Scoring & GAP Analysis', 'Scoring & GAP Analysis', 'chart', [
                     ('scoring-results-summary', 'Summary', 'summary'), ('scoring-results-charts', 'Scoring Charts', 'chart'),
                     ('scoring-results-tables', 'Scoring Tables', 'table'), ('scoring-results-geographical-areas', 'Country Areas', 'pin'),
-                    ('scoring-results-trends', 'Scoring Trends', 'activity'), ('scoring-results-gap', 'GAP Analysis', 'gap'),
+                    ('scoring-results-trends', 'Scoring Trends', 'activity'), ('scoring-results-nns', 'NNS Break-down', 'table'),
+                    ('scoring-results-gap', 'GAP Analysis', 'gap'),
                     ('scoring-results-points-lost', 'Points Lost', 'map'),
                     ('scoring-results-methodology-impact', 'Methodology Impact', 'sliders')]),
                 ('Excluded Calls', 'Excluded Calls', 'ban'),
