@@ -71,7 +71,7 @@ A round button at the bottom left, in the colour of the current module, appears 
 - **Active-workspace badge:** switches workspace. The workspace-size badge is recalculated after dataset and report operations.
 - **Username badge:** shows the role and the Modules Profile of the account (Full Access for a super-admin without one), with a left edge in the colour of the role for admins and super-admins and in that of the profile for the other users. Hover or focus it for its menu:
   - **Change password**;
-  - **Email preferences**, where the emails of the tool go (empty: none) and how often you get the emails of the NQ calls and, apart, those of your tickets (see [Email Delivery](app-config.md#email-delivery));
+  - **Email preferences**, where the emails of the tool go (empty: none) and how often you get the emails of your tickets and, apart, those of the NQ calls (see [Email Delivery](app-config.md#email-delivery));
   - **API keys**, your own keys for the LLM writers that Super Admin sets to each user's key (see [AI Comment Writers](super-admin.md#ai-comment-writers));
   - **Start Demo Mode…**, for admins and super-admins (see [Demo Mode](#demo-mode)).
 - **DEMO MODE · until …** pill: shown to the users of a running demo.

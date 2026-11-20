@@ -9523,7 +9523,7 @@ function showInfoDialog(message, options = {}) {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || 'The email preferences could not be saved.');
       close();
-      showInfoDialog(payload.email ? `The tool sends your emails to ${payload.email}. NQ call emails: ${payload.nq_email_frequency_label}. Ticket emails: ${payload.ticket_email_frequency_label}.`
+      showInfoDialog(payload.email ? `The tool sends your emails to ${payload.email}. Ticket emails: ${payload.ticket_email_frequency_label}. NQ call emails: ${payload.nq_email_frequency_label}.`
         : 'The tool sends you no emails.', {title: 'Email preferences saved', tone: 'info'});
     } catch (requestError) {
       if (error) { error.textContent = requestError.message; error.hidden = false; }

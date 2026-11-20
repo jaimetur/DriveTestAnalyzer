@@ -442,6 +442,14 @@
       <form data-account-email-form>
         <label>Your email address<input type="email" name="email" autocomplete="email" placeholder="name.surname@ericsson.com"></label>
         <p class="form-note">The tool sends here the updates of your tickets and the links to choose a new password. Leave it empty to receive no emails.</p>
+        <label class="account-email-nq">Ticket emails<select name="ticket_email_frequency">
+          <option value="immediate">Immediately, one email per change</option>
+          <option value="hourly">Every hour, in one summary</option>
+          <option value="daily">Daily at 17:00, in one summary</option>
+          <option value="weekly">Weekly on Friday at 17:00, in one summary</option>
+          <option value="off">Never</option>
+        </select></label>
+        <p class="form-note">Of your tickets, those you commented and those that mention them.</p>
         <label class="account-email-nq">NQ call emails<select name="nq_email_frequency">
           <option value="immediate">Immediately, one email per change</option>
           <option value="hourly">Every hour, in one summary</option>
@@ -451,14 +459,6 @@
         </select></label>
         <label class="confirm-option"><input type="checkbox" name="nq_email_own_changes" value="1"><span>Also email me the changes I make</span></label>
         <p class="form-note">Of the NQ calls you review (all of them if you are in Email Every NQ Call Change To). A summary tells each call once, from its first to its last status.</p>
-        <label class="account-email-nq">Ticket emails<select name="ticket_email_frequency">
-          <option value="immediate">Immediately, one email per change</option>
-          <option value="hourly">Every hour, in one summary</option>
-          <option value="daily">Daily at 17:00, in one summary</option>
-          <option value="weekly">Weekly on Friday at 17:00, in one summary</option>
-          <option value="off">Never</option>
-        </select></label>
-        <p class="form-note">Of your tickets, those you commented and those that mention them.</p>
         <p class="form-note" data-account-email-error hidden></p>
         <div class="confirm-actions">
           <button type="button" class="ghost-link confirm-cancel" data-account-email-cancel>Cancel</button>
