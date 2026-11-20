@@ -90,7 +90,7 @@ def test_best_network_charts_start_scoring_charts_and_legacy_tab_migrates():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
 
     assert 'data-result-tab="best-network"' not in template
-    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points', 'impact']);" in script
+    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'nns', 'gap', 'points', 'impact']);" in script
     assert "stored.result_tab === 'best-network' ? 'charts'" in script
     renderer = _function_source(script, 'renderBestNetworkChart')
     allocation_renderer = _function_source(script, 'renderCategoryAllocation')
@@ -1827,7 +1827,7 @@ def test_result_tabs_have_their_own_colours_on_a_panel_holding_every_result():
     from lxml import html
     tabbed = html.fromstring(template).xpath('//div[@class="scoring-results-tabbed"]')[0]
     tabs = tabbed.xpath('./div[@class="scoring-result-tabs"]/button')
-    names = ['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points', 'impact']
+    names = ['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'nns', 'gap', 'points', 'impact']
     assert [tab.get('data-result-tab') for tab in tabs] == names
     assert all(tab.xpath('./svg') for tab in tabs)
     # The eight result panes sit in one panel below the tabs, Summary shown first.

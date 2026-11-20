@@ -11424,7 +11424,7 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
         assert key in menus, key
         assert f'data-module-sections="{key}"' in page, key
     # Each entry has its icon, and the menu the colour of its module.
-    assert menus['scoring'].count('class="menu-item-icon"') == 11
+    assert menus['scoring'].count('class="menu-item-icon"') == 12
     # Excluded Calls, after Scoring & GAP Analysis and before the Favourite Scorings as on the page.
     assert menus['scoring'].index('href="/scoring#section-scoring-gap-analysis"') \
         < menus['scoring'].index('href="/scoring#section-excluded-calls"') < menus['scoring'].index('href="/scoring#section-manage-favourite-scorings"')

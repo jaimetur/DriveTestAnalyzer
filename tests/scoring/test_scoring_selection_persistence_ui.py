@@ -371,7 +371,7 @@ const contextFilterOptions = (key, values) => values.map(value => ({value, label
 const scoringVendorName = value => value;
 const mainCityIdentities = new Set();
 const decorateOperatorOptions = () => {};
-const refreshAreaSummaryCities = () => {}, refreshTrendCampaigns = () => {};
+const refreshAreaSummaryCities = () => {}, refreshTrendCampaigns = () => {}, refreshNnsOptions = () => {};
 const campaignPresetLabels = {};
 const isCampaignPreset = () => false;
 const chosenCampaignPreset = () => '';
@@ -449,7 +449,7 @@ const contextFilterOptions = (key, values) => values.map(value => ({value, label
 const scoringVendorName = value => value;
 const mainCityIdentities = new Set();
 const decorateOperatorOptions = () => {};
-const refreshAreaSummaryCities = () => {}, refreshTrendCampaigns = () => {};
+const refreshAreaSummaryCities = () => {}, refreshTrendCampaigns = () => {}, refreshNnsOptions = () => {};
 const campaignPresetLabels = {'@latest-campaign': 'Latest campaign', '@latest-2-campaigns': 'Latest 2 campaigns'};
 const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresetLabels, value);
 const chosenCampaignPreset = select => [...(select?.selectedOptions || [])].map(option => option.value).find(isCampaignPreset) || '';
