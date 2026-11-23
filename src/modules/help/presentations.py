@@ -539,8 +539,10 @@ def install_presentation_routes(core: Any) -> None:
         return RedirectResponse(HELP_CHAPTER_URL, status_code=302)
 
     @app.get('/presentations/{presentation_id}')
-    def presentation_link(presentation_id: str, slide: int = 1):
-        query = {'presentation': presentation_id, **({'slide': slide} if slide > 1 else {})}
+    def presentation_link(presentation_id: str, slide: int = 1, back: str = ''):
+        # ``back``: a page of this server to return to when the viewer is closed (the landing page passes it).
+        local = back.startswith('/') and not back.startswith(('//', '/\\')) and '://' not in back
+        query = {'presentation': presentation_id, **({'slide': slide} if slide > 1 else {}), **({'back': back} if local else {})}
         return RedirectResponse(f'{HELP_CHAPTER_URL}?{urlencode(query)}', status_code=302)
 
     @app.get('/presentations/files/{relative:path}')

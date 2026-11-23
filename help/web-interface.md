@@ -28,12 +28,12 @@ The address of the server (`/`) opens the landing page of DriveTest Analyzer to 
 
 - **Hero:** the slides of the Overview presentation in a laptop screen, with **Sign in** (**Open the app** when signed in) and **Watch the overview**.
 - **Figures:** live counts of the workspaces of the server (CDR rows, tests and calls, CDRs, campaigns, NQ calls, network cells, users and releases), the same ones as the presentations; a figure the server does not have yet is left out.
-- **Modules:** each one with the slides of its presentation (they play while in view; arrows, a swipe or a click to enlarge), what it does, **Watch the presentation** and **Read the guide** (its Help chapter). The main modules show their titles of [Interface Settings](super-admin.md#interface-settings).
+- **Modules:** each one with the slides of its presentation (they play while in view; arrows, a swipe or a click to enlarge), what it does, **Watch the presentation** and **Read the guide** (the guide of its Help chapter, opened in the viewer). The main modules show their titles of [Interface Settings](super-admin.md#interface-settings).
 - **Presentations:** the Full Presentation (play it or download it) and a card per presentation, opening it in the slide viewer of [Product Presentations](presentations.md).
 - **Technical guide:** the size and chapters of the whole documentation, a fan of its pages and its PDF and Word downloads; each chapter opens the guide at its page.
 - **What's new:** the new features and enhancements of the two latest releases of the Changelog, with a link to their release notes.
 - **Help:** cards to the main chapters of the Help, open to everyone.
-- **Way back:** **Home page** in the header of the sign-in page, the Help and the tickets (for a signed-in user, once the landing page was opened in the browser tab) and in the slide viewer opens the landing page again.
+- **Way back:** a presentation or a guide opened from the landing page goes back to it when the viewer is closed (**Close**, **×** or <kbd>Esc</kbd>); **Home page** in the header of the sign-in page, the Help and the tickets (for a signed-in user, once the landing page was opened in the browser tab) and in the slide viewer opens the landing page again.
 
 ## Navigation
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+{% set back = '%2F%3Flanding' if user else '%2F' %}<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>DriveTest Analyzer · From drive test CDRs to decisions</title>
 <meta name="description" content="DriveTest Analyzer turns drive test CDRs into scorings, GAPs, root causes and ready-made PowerPoint reports, for every operator and every campaign.">
 <meta name="theme-color" content="#060d1f">
@@ -217,7 +217,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
         <p class="lead">Score every operator, find the GAP to the leader, explain every failed call and deliver the report, in one platform built for drive test teams.</p>
         <div class="cta">
           {% if user %}<a class="btn pri" href="/documents/view/help">Open the app</a>{% else %}<a class="btn pri" href="/login">Sign in</a>{% endif %}
-          <a class="btn hot" href="/presentations/overview"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch the overview</a>
+          <a class="btn hot" href="/presentations/overview?back={{ back }}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch the overview</a>
           <a class="btn sec" href="#modules">Explore the modules</a>
         </div>
         <div class="chips"><span class="chip">NetCheck methodology</span><span class="chip">NSA &amp; SA</span><span class="chip">Root cause of every call</span><span class="chip">PowerPoint in one click</span><span class="chip">AI Assistant</span></div>
@@ -264,7 +264,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
       </div>
       <div><span class="tag"><i></i>{{ module.title }}</span><h3>{{ module.headline }}</h3><p>{{ module.text }}</p>
         <ul>{% for point in module.points %}<li>{{ point }}</li>{% endfor %}</ul>
-        <div class="acts"><a class="btn pri sm" href="/presentations/{{ module.presentation }}">Watch the presentation</a><a class="btn sec sm" href="/documents/view/help/{{ module.chapter }}">Read the guide</a></div>
+        <div class="acts"><a class="btn pri sm" href="/presentations/{{ module.presentation }}?back={{ back }}">Watch the presentation</a><a class="btn sec sm" href="/documents/view/help/{{ module.chapter }}?guide=1&amp;back={{ back }}">Read the guide</a></div>
       </div>
     </div>
     {% endfor %}
@@ -274,7 +274,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
     <div class="sh rv"><span class="kick">Presentations</span><h2>Ready to <span class="grad">present</span></h2><p>Every presentation of the tool, always up to date with the latest release and the figures of this server. Open it in the slide viewer, play it full screen or download the PowerPoint.</p></div>
     <div class="pfeat rv">
       <div><span class="pbadge">Full presentation</span><h3>The whole tool, <span class="grad">in one deck</span></h3><p id="fullText">Every presentation in one deck, each in a section of its own.</p>
-        <div class="cta"><a class="btn hot" href="/presentations/full-presentation"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play it</a><a class="btn sec" id="fullDownload" href="#">Download PowerPoint</a></div></div>
+        <div class="cta"><a class="btn hot" href="/presentations/full-presentation?back={{ back }}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play it</a><a class="btn sec" id="fullDownload" href="#">Download PowerPoint</a></div></div>
       <div class="mosaic" id="mosaic"></div>
     </div>
     <div class="pgrid" id="pgrid"></div>
@@ -285,7 +285,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
       <div class="rv"><span class="kick">Technical guide</span><h3>Every workflow, <span class="grad">documented</span></h3>
         <p>The complete documentation of DriveTest Analyzer in one guide: the modules, the scoring methodology, the architecture and the deployment. Read it page by page or take it with you.</p>
         <div class="gstats"><div><b data-guide="pages">—</b><span>pages</span></div><div><b data-guide="chapters">—</b><span>chapters</span></div><div><b data-fig="help_chapters">—</b><span>Help chapters</span></div></div>
-        <div class="cta"><a class="btn pri" href="/documents/view/help?guide=1">Read the guide</a><a class="btn sec" id="guidePdf" href="/api/help/export?scope=all&amp;format=pdf">Download PDF</a><a class="btn sec" id="guideWord" href="/api/help/export?scope=all&amp;format=docx">Word</a></div>
+        <div class="cta"><a class="btn pri" href="/documents/view/help?guide=1&amp;back={{ back }}">Read the guide</a><a class="btn sec" id="guidePdf" href="/api/help/export?scope=all&amp;format=pdf">Download PDF</a><a class="btn sec" id="guideWord" href="/api/help/export?scope=all&amp;format=docx">Word</a></div>
         <div class="guide-list" id="guideList"></div>
       </div>
       <div class="pages rv" id="pages"></div>
@@ -320,7 +320,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
     <img src="{{ static_path('img/brand-mark-192.png') }}" alt="">
     <h2>Win the <span class="grad">next campaign</span></h2>
     <p>Everything your team needs, from the first CDR to the last slide.</p>
-    <div class="cta">{% if user %}<a class="btn pri" href="/documents/view/help">Open the app</a>{% else %}<a class="btn pri" href="/login">Sign in</a>{% endif %}<a class="btn sec" href="/presentations/one-slider">The tool in one slide</a></div>
+    <div class="cta">{% if user %}<a class="btn pri" href="/documents/view/help">Open the app</a>{% else %}<a class="btn pri" href="/login">Sign in</a>{% endif %}<a class="btn sec" href="/presentations/one-slider?back={{ back }}">The tool in one slide</a></div>
   </div></section>
 </main>
 
@@ -349,6 +349,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
 (() => {
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const short = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'K' : n.toLocaleString('en');
+  const back = '{{ back }}';   // the page the viewer returns to when it is closed
   const preview = (id, n, key) => `/presentations/preview/${encodeURIComponent(id)}/${n}.jpg?k=${encodeURIComponent(key || '')}`;
   // A count that runs up to its value when it comes into view.
   const count = (el, value) => {
@@ -422,7 +423,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
     document.getElementById('pgrid').innerHTML = (data.presentations || []).filter(p => p.id !== 'full-presentation').map((p, i) => {
       const n = p.sections.reduce((t, s) => t + s.slides.length, 0);
       const title = String(p.title || '').replace(/^DriveTest Analyzer\s+—\s+/, '');
-      return `<a class="pcard rv in" href="/presentations/${encodeURIComponent(p.id)}" style="--k:${accents[i % accents.length]}">
+      return `<a class="pcard rv in" href="/presentations/${encodeURIComponent(p.id)}?back=${back}" style="--k:${accents[i % accents.length]}">
         <div class="cv"><img loading="lazy" alt="" src="${preview(p.id, 1, key)}"><div class="play"><b><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></b></div><span>${n} slide${n === 1 ? '' : 's'}</span></div>
         <div class="tx"><b>${esc(title)}</b><small>${esc(p.description || '')}</small><span class="dl">Open in the slide viewer →</span></div></a>`;
     }).join('');
@@ -438,10 +439,10 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
     count(document.querySelector('[data-guide="pages"]'), Number(guide.pages));
     count(document.querySelector('[data-guide="chapters"]'), parts.length);
     if (guide.downloads) { document.getElementById('guidePdf').href = guide.downloads.pdf; document.getElementById('guideWord').href = guide.downloads.docx; }
-    document.getElementById('guideList').innerHTML = parts.slice(0, 14).map(s => `<a href="/documents/view/help?guide=1&slide=${s.pages[0].index + 1}">${esc(s.title.replace(/^\d+\s+/, ''))}</a>`).join('');
+    document.getElementById('guideList').innerHTML = parts.slice(0, 14).map(s => `<a href="/documents/view/help?guide=1&slide=${s.pages[0].index + 1}&back=${back}">${esc(s.title.replace(/^\d+\s+/, ''))}</a>`).join('');
     const chosen = [{ index: 0 }, ...parts.map(s => s.pages[0])].filter((p, i, all) => all.findIndex(q => q.index === p.index) === i).slice(0, 7);
     const fan = document.getElementById('pages');
-    fan.innerHTML = chosen.map((p, i) => `<a href="/documents/view/help?guide=1&slide=${p.index + 1}" aria-label="Page ${p.index + 1}"><img loading="lazy" alt="" src="/api/help/guide/pages/${p.index}?thumb=1&k=${encodeURIComponent(guide.key || '')}"></a>`).join('');
+    fan.innerHTML = chosen.map((p, i) => `<a href="/documents/view/help?guide=1&slide=${p.index + 1}&back=${back}" aria-label="Page ${p.index + 1}"><img loading="lazy" alt="" src="/api/help/guide/pages/${p.index}?thumb=1&k=${encodeURIComponent(guide.key || '')}"></a>`).join('');
     const pages = [...fan.children], mid = (pages.length - 1) / 2;
     const lay = open => pages.forEach((a, i) => { const d = i - mid; a.style.zIndex = String(100 - Math.abs(Math.round(d))); a.style.transform = `translate(-50%,-50%) translateX(${d * (open ? 62 : 34)}px) rotate(${d * (open ? 7 : 4)}deg) translateY(${Math.abs(d) * (open ? 14 : 8)}px)`; });
     lay(false); fan.addEventListener('mouseenter', () => lay(true)); fan.addEventListener('mouseleave', () => lay(false));

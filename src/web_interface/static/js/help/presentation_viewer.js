@@ -59,6 +59,11 @@
     if (index > 0) url.searchParams.set('slide', String(index + 1));
     return url.href;
   };
+  // The page to return to when the viewer is closed (?back=, given by the landing page): only a page of this server.
+  const returnTo = (() => {
+    const back = new URLSearchParams(window.location.search).get('back') || '';
+    return /^\/(?![\/\\])/.test(back) && !back.includes('://') ? back : '';
+  })();
   // The presentation and slide (from 0) a link asks for.
   const linked = () => {
     const query = new URLSearchParams(window.location.search);
@@ -418,6 +423,11 @@
     share.addEventListener('click', () => copyLink(share, shareOf(current, viewerIndex)));
     // Closed, the page has its own address again.
     dialog.addEventListener('close', () => {
+      // Opened from the landing page: closing it (Close, × or Esc) goes back there.
+      if (returnTo) {
+        window.location.assign(returnTo);
+        return;
+      }
       const url = new URL(window.location.href);
       url.searchParams.delete('presentation');
       url.searchParams.delete('slide');

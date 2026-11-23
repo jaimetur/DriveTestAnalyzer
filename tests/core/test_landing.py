@@ -12,8 +12,8 @@ def test_visitors_see_the_landing_page_at_the_root(client):
     # Every module, its presentation and its Help chapter.
     for module in landing.MODULES:
         assert f'id="m-{module["key"]}"' in page.text
-        assert f'href="/presentations/{module["presentation"]}"' in page.text
-        assert f'href="/documents/view/help/{module["chapter"]}"' in page.text
+        assert f'href="/presentations/{module["presentation"]}?back=%2F"' in page.text
+        assert f'href="/documents/view/help/{module["chapter"]}?guide=1&amp;back=%2F"' in page.text
     # The latest release of the Changelog.
     assert f'v{core.__version__}' in page.text
 
@@ -85,3 +85,11 @@ def test_the_sign_in_page_and_the_help_lead_back_to_the_landing_page(client):
         page = client.get(path).text
         assert 'class="topnav-link topnav-link-home" href="/"' in page, path
     assert 'topnav-link-signin' not in client.get('/login').text
+
+
+def test_a_presentation_link_keeps_only_a_local_page_to_return_to(client):
+    response = client.get('/presentations/overview?back=%2F', follow_redirects=False)
+    assert response.status_code == 302 and response.headers['location'].endswith('presentation=overview&back=%2F')
+    for outside in ('https://example.com/', '//example.com/'):
+        response = client.get('/presentations/overview', params={'back': outside}, follow_redirects=False)
+        assert 'back=' not in response.headers['location']
