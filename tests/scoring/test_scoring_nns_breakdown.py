@@ -171,6 +171,15 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
     scenarios = {(row['size'], row['scenario']) for row in breakdown['scenarios']}
     assert ('Big Cities', 'NNS – High capacity') in scenarios and all(row['campaign'] == '2026-Q3' for row in breakdown['scenarios'])
     assert breakdown['scenario_order'][0] == 'NNS – High capacity'
+    # The GAP to #1 of each area: 0 for its leader, and the weighted GAPs summed per Region in its totals.
+    latest = [row['campaigns']['2026-Q3']['best'] for row in breakdown['areas'] if row['area'] == 'London']
+    assert min(item['gap'] for item in latest) < 0 and max(item['gap'] for item in latest) == 0
+    assert {item['leader'] for item in latest} == {next(item['leader'] for item in latest)}
+    south = {row['operator']: row for row in breakdown['gap_totals'] if row['region'] == 'South'}
+    for operator, total in south.items():
+        weighted = [row['campaigns']['2026-Q3']['best']['gap_region'] for row in breakdown['areas']
+                    if row['operator'] == operator and '2026-Q3' in row['campaigns'] and row['campaigns']['2026-Q3']['best']]
+        assert total['campaigns']['2026-Q3']['best'] == pytest.approx(sum(weighted), abs=1e-3)
 
     # The same selection without it is another Saved Scoring, whose result has none.
     plain, _ready = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA', username='admin',
@@ -181,8 +190,50 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
     response = client.get(f"/scoring/saved-scorings/{saved['id']}/export/nns")
     assert response.status_code == 200, response.text
     book = load_workbook(BytesIO(response.content))
-    assert book.sheetnames == ['Areas', 'Sites', 'Scenarios', 'About']
+    assert book.sheetnames == ['Areas', 'GAP Totals', 'Sites', 'Scenarios', 'About']
     header = [cell.value for cell in book['Areas'][1]]
     assert header[:6] == ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator'] and sum(str(name).endswith(' Best Network') for name in header) == 2
+    assert sum(str(name).endswith('Most Reliable weighted GAP in its Region') for name in header) == 2
+    assert [cell.value for cell in book['GAP Totals'][1]][:3] == ['NR Mode', 'Region', 'Operator']
     assert 'NNS High' in [cell.value for cell in book['Sites'][1]]
     assert client.get(f"/scoring/saved-scorings/{plain['id']}/export/nns").status_code in {404, 409}
+
+
+def test_each_city_belongs_to_the_region_with_most_of_its_tests():
+    """A city whose tests fall in two Regions (a wrong position, or streets across a Region border) is in one Region,
+    with all its tests; the roads keep the Region of each test."""
+    frame = pd.DataFrame({
+        'Region': ['Vendor A'] * 5 + ['VMO2 South'] * 2 + ['VMO2 South', 'Vendor A'],
+        'G_Level_2': ['City'] * 7 + ['Road', 'Road'],
+        'G_Level_3': ['Medium Cities'] * 7 + ['Roads', 'Roads'],
+        'G_Level_4': ['Reading'] * 7 + ['M4', 'M4'],
+        'Serving_eMOCN_Scenario': ['S0'] * 9, 'Serving_Host_Network': ['Vodafone'] * 9, 'Serving_Site_ID': ['1'] * 9,
+    })
+    owners = nb.city_regions([frame])
+    assert owners == {'Reading': 'Vendor A'}
+    classified = nb.classify(frame, {}, {'regions': ['Vendor A', 'VMO2 South'], 'roads': 'region'}, owners)
+    cities = classified[classified['__nns_kind'] == nb.CITY_KIND]
+    assert set(cities['__nns_region']) == {'Vendor A'} and len(cities) == 7
+    roads = classified[classified['__nns_kind'] == nb.ROAD_KIND]
+    assert sorted(roads['__nns_area']) == ['Roads – VMO2 South', 'Roads – Vendor A']
+    # Only VMO2 South chosen: Reading is not there any more.
+    south = nb.classify(frame, {}, {'regions': ['VMO2 South'], 'roads': 'region'}, owners)
+    assert set(south['__nns_kind']) == {nb.ROAD_KIND}
+
+
+def test_the_gap_to_number_one_is_weighted_by_the_tests_of_each_area():
+    def row(region, area, operator, points, tests):
+        return {'nr_mode': 'NSA', 'region': region, 'area': area, 'operator': operator,
+                'campaigns': {'Q3': {'best': {'points': points}, 'reliable': None, 'tests': tests}}}
+    rows = [row('Vendor A', 'Reading', 'EE', 960.0, 100), row('Vendor A', 'Reading', 'VF', 980.0, 100),
+            row('Vendor A', 'Luton', 'EE', 900.0, 300), row('Vendor A', 'Luton', 'VF', 850.0, 300),
+            row('VMO2 South', 'Oxford', 'VF', 800.0, 400), row('VMO2 South', 'Oxford', 'EE', 820.0, 400)]
+    totals = {(item['region'], item['operator']): item['campaigns']['Q3'] for item in nb.add_gaps(rows)}
+    reading_ee = rows[0]['campaigns']['Q3']['best']
+    assert reading_ee['leader'] == 'VF' and reading_ee['gap'] == -20.0
+    assert reading_ee['gap_region'] == pytest.approx(-20 * 100 / 400) and reading_ee['gap_all'] == pytest.approx(-20 * 100 / 800)
+    assert rows[1]['campaigns']['Q3']['best']['gap'] == 0 and rows[1]['campaigns']['Q3']['best']['leader'] == 'VF'
+    # Vendor A: EE loses 5 in Reading, VF 37.5 in Luton; all Regions: VF also loses 10 in Oxford.
+    assert totals[('Vendor A', 'EE')]['best'] == pytest.approx(-5.0) and totals[('Vendor A', 'VF')]['best'] == pytest.approx(-37.5)
+    assert totals[('', 'VF')]['best'] == pytest.approx(-50 * 300 / 800 - 20 * 400 / 800)
+    assert totals[('', 'EE')]['tests'] == 800 and 'reliable' not in totals[('', 'EE')]

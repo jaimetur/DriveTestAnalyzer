@@ -668,6 +668,7 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 
 - **Scored like the trends:** the CDRs of its campaigns with the filters of the scoring but Region, Cluster, City and Campaign, its methodology (By campaign: each campaign with its own) and GAP reference. **NSA vs SA** scores each NR Mode apart (an **NR Mode** selector in the tab).
 - **Areas:** a test is in a city when its `G_Level_2` is City (the city is `G_Level_4`, its size `G_Level_3`: Big, Medium or Small Cities), else on a connecting road (`G_Level_3`: Roads or Highway). Each area is scored on its own tests, scaled to the full points as in Country Areas.
+- **One Region per city:** the Region of a test is where it was measured, so a city near a Region border, or with tests of a wrong position (a GPS fix frozen elsewhere), would fall in two Regions. Each city belongs to the Region that holds most of its tests over the campaigns of the break-down, with all its tests; the connecting roads keep the Region of each test.
 - **Scenario of a test:** the kind of site of the cell that served it (`Serving_eMOCN_Scenario` of the Network Inventory): an NNS site with the capacity of the **Master Grid** (its High/Med/Low config), or its eMOCN scenario (S0, S1, S1_CWP…).
 - **Master Grid:** the newest one uploaded in [Workspace Management](workspace-management.md#master-grid). Vodafone sites are matched by `Site ID`, 3 sites by `SITE ID + Pairing` and O2 sites by `SiteRef2`. Without one, the NNS sites have no capacity and no NNS site is planned (a warning says so); a new Master Grid calculates the NNS Break-down again.
 
@@ -675,11 +676,15 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 
 - **Rows:** each Region, then its cities (big to small) and roads, each with a row per operator.
 - **Points:** Best Network or Most Reliable (the **Scoring** selector) of each campaign, with its tests, tinted by their share of the maximum points.
+- **GAP to #1** (latest campaign): the points of the operator minus those of the operator with the most points in the area (**#1** on its row).
+- **Weighted GAP** (latest campaign): the GAP to #1 times the tests of the operator in the area over its tests in all the areas of the Region; below it, over its tests in every chosen Region (**all**). Summed, they give the GAP of the whole Region.
 - **Sites:** the serving sites of the tests of the latest campaign: **NNS sites** by capacity (High · Med · Low, plus those not in the Master Grid), the **eMOCN / other sites** by scenario, and the **Planned NNS**: the Keep sites among them, not NNS yet, that the Master Grid plans, by financial year (`Target Deployment FY`).
+
+**GAP to #1 of each Region** (latest campaign): the weighted GAPs of the areas of each Region summed per operator, and of all the chosen Regions: how many points each operator is behind #1 over the whole Region.
 
 **Latest campaign by city size and scenario:** each city size (and road type) with a row per scenario (NNS High, Medium and Low capacity, then each eMOCN scenario) and the operators side by side, each with its points and tests.
 
-- **Export to Excel:** both tables of every NR Mode with both scorings, in the sheets **Areas** (a column per campaign and scoring), **Sites** (every capacity, scenario and financial year), **Scenarios** and **About**. It is not part of the PowerPoint and Word documents, so it has no Scoring Export Panels.
+- **Export to Excel:** both tables of every NR Mode with both scorings, in the sheets **Areas** (per campaign and scoring: the points, the tests, #1, the GAP to #1 and both weighted GAPs), **GAP Totals** (the weighted GAPs summed per Region and for all the chosen Regions, per campaign), **Sites** (every capacity, scenario and financial year), **Scenarios** and **About**. It is not part of the PowerPoint and Word documents, so it has no Scoring Export Panels.
 - **Cost:** it reads the CDRs of its campaigns (about as long as a scoring of them); the same CDRs, methodology, options and Master Grid are taken from the cache of the workspace.
 
 ### Methodology Impact

@@ -19,6 +19,14 @@ or Small Cities) and on a **connecting road** otherwise (``G_Level_3``: Roads or
 the kind of site of the cell that served it (``Serving_eMOCN_Scenario`` of the Network Inventory): an NNS site with the
 capacity the Master Grid gives it (its High/Med/Low config), or its eMOCN scenario (S0, S1, S1_CWP…).
 
+Each **city** belongs to one Region: the one that holds most of its tests over the campaigns of the break-down (the
+Region of a test is where it was measured, and the tests of a city near a Region border, or with a wrong position, would
+otherwise split it). The connecting roads keep the Region of each test.
+
+In each area and campaign, the **GAP to #1** of an operator is its points minus those of the operator with the most
+points there, and its **weighted GAPs** are that GAP times its tests in the area over its tests in all the areas of the
+Region, or of every chosen Region: summed, they give the GAP of the whole Region or of all the chosen Regions.
+
 The scoring engine splits by Region, Cluster and City only: the calculation gives those columns of a copy of the rows
 the area, the size and the scenario of each test, and names them back in the result.
 """
@@ -37,7 +45,7 @@ DEFAULT_CAMPAIGNS = ('@latest-4-campaigns',)
 ROAD_GROUPINGS = ('region', 'each')
 WARNING_PREFIX = 'NNS Break-down:'
 # Raise when the calculation changes, so the results saved before are calculated again.
-VERSION = 2
+VERSION = 3
 CITY_KIND = 'City'
 ROAD_KIND = 'Road'
 NO_SCENARIO = 'No eMOCN scenario'
@@ -99,19 +107,48 @@ def _site_number(series: pd.Series) -> pd.Series:
     return _text(series).str.replace(r'\.0+$', '', regex=True)
 
 
-def classify(frame: pd.DataFrame, lookup: dict[tuple[str, str], dict[str, str]], request: dict[str, Any]) -> pd.DataFrame:
-    """The tests of a CDR type in the Regions of the request, each with its Region, area, area kind and size, scenario
-    and serving site (``__nns_*`` columns)."""
-    from src.modules.network.master_grid import host_operator
-
-    region = _text(_column(frame, 'Region'))
-    wanted = {value.casefold() for value in request.get('regions') or []}
-    keep = region.ne('') & (region.str.casefold().isin(wanted) if wanted else True)
-    frame, region = frame[keep.to_numpy(dtype=bool)].copy(), region[keep]
+def _cities(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Whether each test is in a city, its size (``G_Level_3``) and its area name (``G_Level_4``)."""
     level_2 = _text(_column(frame, 'G_Level_2'))
     size = _text(_column(frame, 'G_Level_3'))
     name = _text(_column(frame, 'G_Level_4'))
     city = level_2.str.casefold().eq('city') | (level_2.eq('') & size.str.contains(r'cit(?:y|ies)', case=False, regex=True))
+    return city, size, name
+
+
+def city_regions(frames: Iterable[pd.DataFrame]) -> dict[str, str]:
+    """The Region of each city: the one that holds most of its tests (of every CDR type), the first by name on a tie."""
+    counts: dict[tuple[str, str], int] = {}
+    for frame in frames:
+        region = _text(_column(frame, 'Region'))
+        city, _size, name = _cities(frame)
+        mask = (city & name.ne('') & region.ne('')).to_numpy(dtype=bool)
+        if not mask.any():
+            continue
+        for (area, owner), count in pd.DataFrame({'area': name[mask], 'region': region[mask]}).value_counts().items():
+            counts[(area, owner)] = counts.get((area, owner), 0) + int(count)
+    owners: dict[str, tuple[int, str]] = {}
+    for (area, owner), count in counts.items():
+        best = owners.get(area)
+        if best is None or count > best[0] or (count == best[0] and owner.casefold() < best[1].casefold()):
+            owners[area] = (count, owner)
+    return {area: owner for area, (_count, owner) in owners.items()}
+
+
+def classify(frame: pd.DataFrame, lookup: dict[tuple[str, str], dict[str, str]], request: dict[str, Any],
+             owners: dict[str, str] | None = None) -> pd.DataFrame:
+    """The tests of a CDR type in the Regions of the request, each with its Region (a city's is that of ``owners``,
+    see city_regions), area, area kind and size, scenario and serving site (``__nns_*`` columns)."""
+    from src.modules.network.master_grid import host_operator
+
+    region = _text(_column(frame, 'Region'))
+    city, size, name = _cities(frame)
+    if owners:
+        region = name.map(owners).where(city & name.ne(''), region).fillna(region).astype(str)
+    wanted = {value.casefold() for value in request.get('regions') or []}
+    keep = region.ne('') & (region.str.casefold().isin(wanted) if wanted else True)
+    mask = keep.to_numpy(dtype=bool)
+    frame, region, city, size, name = frame[mask].copy(), region[mask], city[mask], size[mask], name[mask]
     road_type = size.where(size.ne(''), 'Roads')
     if request.get('roads') == 'each':
         road_area = name.where(name.ne(''), road_type)
@@ -226,6 +263,54 @@ def scores(result: dict, reliable: dict | None, keys: tuple[str, ...]) -> dict[t
             for key in dict.fromkeys([*best, *most])}
 
 
+def add_gaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The GAP to #1 of each area row (in place, in each campaign and scoring: ``leader``, ``gap``, ``gap_region`` and
+    ``gap_all``), and the weighted GAPs summed per Region and for all the Regions (``region`` empty), per operator."""
+    scorings = ('best', 'reliable')
+    leaders: dict[tuple, tuple[float, str]] = {}
+    tests_region: dict[tuple, int] = {}
+    tests_all: dict[tuple, int] = {}
+    for row in rows:
+        for campaign, values in (row.get('campaigns') or {}).items():
+            tests = int(values.get('tests') or 0)
+            tests_region[(row['region'], row['operator'], campaign)] = tests_region.get((row['region'], row['operator'], campaign), 0) + tests
+            tests_all[(row['operator'], campaign)] = tests_all.get((row['operator'], campaign), 0) + tests
+            for scoring in scorings:
+                scored = values.get(scoring)
+                if not scored or scored.get('points') is None:
+                    continue
+                key = (row['region'], row['area'], campaign, scoring)
+                best = leaders.get(key)
+                points = float(scored['points'])
+                if best is None or points > best[0] or (points == best[0] and row['operator'].casefold() < best[1].casefold()):
+                    leaders[key] = (points, row['operator'])
+    totals: dict[tuple, dict[str, Any]] = {}
+    for row in rows:
+        for campaign, values in (row.get('campaigns') or {}).items():
+            tests = int(values.get('tests') or 0)
+            for region in (row['region'], ''):
+                total = totals.setdefault((region, row['operator']), {
+                    'nr_mode': row.get('nr_mode'), 'region': region, 'operator': row['operator'], 'campaigns': {}})
+                entry = total['campaigns'].setdefault(campaign, {'tests': 0})
+                entry['tests'] += tests
+            for scoring in scorings:
+                scored = values.get(scoring)
+                leader = leaders.get((row['region'], row['area'], campaign, scoring))
+                if not scored or scored.get('points') is None or leader is None:
+                    continue
+                gap = float(scored['points']) - leader[0]
+                in_region = tests_region.get((row['region'], row['operator'], campaign)) or 0
+                in_all = tests_all.get((row['operator'], campaign)) or 0
+                scored.update({'leader': leader[1], 'gap': round(gap, 2),
+                               'gap_region': round(gap * tests / in_region, 4) if in_region else None,
+                               'gap_all': round(gap * tests / in_all, 4) if in_all else None})
+                for region, share in ((row['region'], scored['gap_region']), ('', scored['gap_all'])):
+                    entry = totals[(region, row['operator'])]['campaigns'][campaign]
+                    if share is not None:
+                        entry[scoring] = round(entry.get(scoring, 0.0) + share, 4)
+    return list(totals.values())
+
+
 def scenario_order(labels: Iterable[str]) -> list[str]:
     """The scenarios in their order: NNS by capacity, the eMOCN scenarios, then the tests without one."""
     labels = list(dict.fromkeys(labels))
@@ -252,8 +337,9 @@ def _value(points: Any) -> float | None:
 
 
 def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
-    """The NNS Break-down as an Excel workbook: Areas (each campaign's Best Network and Most Reliable points and tests),
-    Sites (the serving sites of each area), Scenarios (the latest campaign by city size and scenario) and About."""
+    """The NNS Break-down as an Excel workbook: Areas (each campaign's Best Network and Most Reliable points, tests and
+    GAPs to #1), GAP Totals (per Region and for all the Regions), Sites (the serving sites of each area), Scenarios (the
+    latest campaign by city size and scenario) and About."""
     from io import BytesIO
 
     from openpyxl import Workbook
@@ -285,8 +371,13 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
     campaigns = sort_campaigns(campaign for mode in modes for campaign in mode.get('campaigns') or [])
     label = lambda value: format_campaign(value) or value
     header = ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator']
+    scorings = (('best', 'Best Network'), ('reliable', 'Most Reliable'))
     for campaign in campaigns:
         header += [f'{label(campaign)} Best Network', f'{label(campaign)} Most Reliable', f'{label(campaign)} Tests']
+        for _key, name in scorings:
+            header += [f'{label(campaign)} {name} #1', f'{label(campaign)} {name} GAP to #1',
+                       f'{label(campaign)} {name} weighted GAP in its Region',
+                       f'{label(campaign)} {name} weighted GAP in all the Regions']
     rows = []
     for row in sorted(breakdown.get('areas') or [], key=lambda item: (item['nr_mode'], item['region'], item['kind'] != CITY_KIND,
                                                                      item['size'], item['area'], item['operator'])):
@@ -294,8 +385,24 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
         for campaign in campaigns:
             scored = (row.get('campaigns') or {}).get(campaign) or {}
             values += [_value(scored.get('best')), _value(scored.get('reliable')), scored.get('tests') if scored else None]
+            for key, _name in scorings:
+                points = scored.get(key) or {}
+                values += [points.get('leader'), points.get('gap'), points.get('gap_region'), points.get('gap_all')]
         rows.append(values)
     sheet('Areas', header, rows, first=True)
+    header = ['NR Mode', 'Region', 'Operator']
+    for campaign in campaigns:
+        header += [f'{label(campaign)} Best Network weighted GAP to #1', f'{label(campaign)} Most Reliable weighted GAP to #1',
+                   f'{label(campaign)} Tests']
+    rows = []
+    for row in sorted(breakdown.get('gap_totals') or [], key=lambda item: (item['nr_mode'], item['region'] == '', item['region'],
+                                                                           item['operator'])):
+        values = [row['nr_mode'], row['region'] or 'All the chosen Regions', row['operator']]
+        for campaign in campaigns:
+            entry = (row.get('campaigns') or {}).get(campaign) or {}
+            values += [entry.get('best'), entry.get('reliable'), entry.get('tests')]
+        rows.append(values)
+    sheet('GAP Totals', header, rows)
     sites = breakdown.get('sites') or []
     capacities = [*CAPACITIES, *sorted({name for row in sites for name in row.get('nns') or {} if name not in CAPACITIES})]
     scenarios = scenario_order(name for row in sites for name in row.get('scenarios') or {})
@@ -322,6 +429,13 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
              ['Master Grid', f"{grid.get('file_name', '')} ({grid.get('week', '')})" if grid else 'None'],
              ['Points', 'Best Network and Most Reliable points of each area, scaled to the full points when an area has '
                         'tests of one environment only (as every area of the Country Areas).'],
+             ['Cities', 'Each city belongs to the Region that holds most of its tests over the campaigns, with all its '
+                        'tests; the connecting roads keep the Region of each test.'],
+             ['GAP to #1', 'The points of the operator minus those of the operator with the most points in the area and '
+                           'campaign (#1).'],
+             ['Weighted GAP', 'The GAP to #1 times the tests of the operator in the area, over its tests in all the areas '
+                              'of the Region (in its Region) or of every chosen Region (in all the Regions). Summed '
+                              '(GAP Totals), they give the GAP of the whole Region or of all the chosen Regions.'],
              ['Sites', 'The serving sites of the tests of the latest campaign: NNS sites by the High/Med/Low config of the '
                        'Master Grid, the other sites by eMOCN scenario, and the Keep sites the Master Grid plans for NNS '
                        '(Target Deployment FY) among those not NNS yet.'],

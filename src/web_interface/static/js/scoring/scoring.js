@@ -1369,13 +1369,43 @@
     const areas = (nns.areas || []).filter(row => row.nr_mode === nnsMode);
     const sites = new Map((nns.sites || []).filter(row => row.nr_mode === nnsMode).map(row => [`${row.region}|${row.area}`, row]));
     const areasBox = section('Cities and connecting roads',
-      `${nnsScoring === 'best' ? 'Best Network' : 'Most Reliable'} points of each campaign; the sites serve the tests of ${campaignLabel(mode.latest_campaign) || 'the latest campaign'}.`);
+      `${nnsScoring === 'best' ? 'Best Network' : 'Most Reliable'} points of each campaign; the GAP to #1 (the operator with the most points in the area), its weight in the Region and in all the chosen Regions, and the sites serve the tests of ${campaignLabel(mode.latest_campaign) || 'the latest campaign'}.`);
     const wrap = el('div', 'table-wrap scoring-nns-table-wrap');
     const table = el('table', 'scoring-nns-table');
     const thead = el('thead');
     const headRow = el('tr');
-    ['Area', 'Size', 'Operator', ...campaigns.map(campaignLabel), 'NNS sites (High · Med · Low)', 'eMOCN / other sites', 'Planned NNS']
-      .forEach(text => headRow.append(el('th', '', text)));
+    const latest = mode.latest_campaign || campaigns[campaigns.length - 1] || '';
+    const gapText = value => (Number.isFinite(Number(value)) ? `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(Math.abs(Number(value)) < 10 ? 2 : 1)}` : '–');
+    const headTitles = {'GAP to #1': `Points to the operator with the most points in the area (#1), ${campaignLabel(latest)}`,
+      'Weighted GAP': 'The GAP to #1 times the tests of the operator in the area, over its tests in the whole Region (below: in all the chosen Regions)',
+      'NNS H · M · L': 'NNS sites by the capacity of the Master Grid: High · Medium · Low'};
+    ['Area', 'Size', 'Operator', ...campaigns.map(campaignLabel), 'GAP to #1', 'Weighted GAP', 'NNS H · M · L', 'eMOCN / other', 'Planned NNS']
+      .forEach(text => { const th = el('th', '', text); if (headTitles[text]) th.title = headTitles[text]; headRow.append(th); });
+    // The GAP of an operator to #1 in the area, and weighted by its tests in its Region and in all the chosen Regions.
+    const gapCells = values => {
+      const scored = values?.[nnsScoring] || {};
+      const gap = el('td', 'scoring-nns-gap');
+      if (scored.leader === undefined || scored.gap === undefined || scored.gap === null) {
+        gap.textContent = '–';
+        gap.classList.add('is-empty');
+      } else if (Number(scored.gap) === 0) {
+        gap.append(el('span', 'scoring-nns-leader', '#1'));
+        gap.title = 'The operator with the most points in this area';
+      } else {
+        gap.append(el('strong', '', gapText(scored.gap)), el('small', '', `vs ${scored.leader}`));
+        gap.classList.add('is-behind');
+        gap.title = `${Number(scored.gap).toFixed(2)} points to ${scored.leader}, #1 in this area`;
+      }
+      const weighted = el('td', 'scoring-nns-gap');
+      if (scored.gap_region === undefined || scored.gap_region === null) {
+        weighted.textContent = '–';
+        weighted.classList.add('is-empty');
+      } else {
+        weighted.append(el('strong', '', gapText(scored.gap_region)), el('small', '', `all ${gapText(scored.gap_all)}`));
+        weighted.title = 'The GAP to #1 times the tests of the operator in this area, over its tests in all the areas of the Region (all: of every chosen Region). Summed, they give the GAP of the whole Region.';
+      }
+      return [gap, weighted];
+    };
     thead.append(headRow);
     const tbody = el('tbody');
     const kindOrder = {City: 0, Road: 1};
@@ -1396,7 +1426,7 @@
         region = rows[0].region;
         const regionRow = el('tr', 'scoring-nns-region');
         const regionCell = el('td', '', region);
-        regionCell.colSpan = 6 + campaigns.length;
+        regionCell.colSpan = 8 + campaigns.length;
         regionRow.append(regionCell);
         tbody.append(regionRow);
       }
@@ -1417,6 +1447,7 @@
           const values = (row.campaigns || {})[campaign] || {};
           tr.append(cell(values[nnsScoring], values.tests));
         }
+        tr.append(...gapCells((row.campaigns || {})[latest]));
         if (index === 0) {
           const nnsCounts = siteRow.nns || {};
           const nnsCell = el('td', 'scoring-nns-sites',
@@ -1440,13 +1471,46 @@
     if (!ordered.length) {
       const empty = el('tr');
       const td = el('td', 'scoring-empty', 'No tests in the chosen Regions.');
-      td.colSpan = 6 + campaigns.length;
+      td.colSpan = 8 + campaigns.length;
       empty.append(td);
       tbody.append(empty);
     }
     table.append(thead, tbody);
     wrap.append(table);
     areasBox.append(wrap);
+    // The GAP of each Region (and of all the chosen ones) to #1: the weighted GAPs of its areas summed, per operator.
+    const totals = (nns.gap_totals || []).filter(row => row.nr_mode === nnsMode);
+    const gapBox = section(`GAP to #1 of each Region, ${campaignLabel(latest) || 'latest campaign'}`,
+      'The weighted GAPs of the areas of each Region summed: how many points each operator is behind #1 over the whole Region.');
+    const gapOperators = [...new Set(totals.map(row => row.operator))].sort((left, right) => String(left).localeCompare(String(right)));
+    const gapRegions = [...new Set(totals.map(row => row.region))].sort((left, right) => (left === '') - (right === '') || String(left).localeCompare(String(right)));
+    const gapWrap = el('div', 'table-wrap scoring-nns-table-wrap');
+    const gapTable = el('table', 'scoring-nns-table scoring-nns-gap-table');
+    const gapHead = el('tr');
+    ['Region', ...gapOperators].forEach(text => gapHead.append(el('th', '', text)));
+    const gapHeadSection = el('thead');
+    gapHeadSection.append(gapHead);
+    const gapBody = el('tbody');
+    const totalOf = new Map(totals.map(row => [`${row.region}|${row.operator}`, row]));
+    for (const regionName of gapRegions) {
+      const tr = el('tr', regionName === '' ? 'scoring-nns-gap-all' : '');
+      tr.append(el('td', 'scoring-nns-area', regionName || 'All the chosen Regions'));
+      for (const operator of gapOperators) {
+        const entry = (totalOf.get(`${regionName}|${operator}`)?.campaigns || {})[latest] || {};
+        const value = entry[nnsScoring];
+        const td = el('td', 'scoring-nns-gap');
+        if (value === undefined || value === null) { td.textContent = '–'; td.classList.add('is-empty'); }
+        else {
+          td.append(el('strong', '', gapText(value)), el('small', '', `${Number(entry.tests || 0).toLocaleString()} tests`));
+          if (Number(value) < 0) td.classList.add('is-behind');
+        }
+        tr.append(td);
+      }
+      gapBody.append(tr);
+    }
+    gapTable.append(gapHeadSection, gapBody);
+    gapWrap.append(gapTable);
+    gapBox.append(gapWrap);
     // The latest campaign by city size and scenario: the operators side by side.
     const scenarioRows = (nns.scenarios || []).filter(row => row.nr_mode === nnsMode);
     const scenarioBox = section(`${campaignLabel(mode.latest_campaign) || 'Latest campaign'} by city size and scenario`,
@@ -1487,7 +1551,9 @@
     const warnings = (nns.warnings || []).filter(Boolean);
     const nodes = [head];
     if (warnings.length) nodes.push(el('p', 'scoring-note scoring-nns-warning', warnings.join(' ')));
-    nodes.push(areasBox, scenarioBox);
+    nodes.push(areasBox);
+    if (totals.length) nodes.push(gapBox);
+    nodes.push(scenarioBox);
     pane.replaceChildren(...nodes);
   }
 

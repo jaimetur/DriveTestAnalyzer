@@ -516,8 +516,8 @@
   .scoring-nns-warning { color: #8a5a00; }
   .scoring-nns-table-wrap { max-width: 100%; overflow-x: auto; }
   table.scoring-nns-table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #dde5eb; border-radius: 12px; overflow: hidden; font-size: .86rem; }
-  table.scoring-nns-table th { padding: .5rem .6rem; background: linear-gradient(180deg, #f0f4f7, #e2e9ee); color: #2b3f4c; font-size: .7rem; letter-spacing: .04em; text-align: center; text-transform: uppercase; white-space: nowrap; }
-  table.scoring-nns-table td { padding: .35rem .6rem; border-top: 1px solid #edf1f4; background: #fff; vertical-align: middle; }
+  table.scoring-nns-table th { padding: .5rem .45rem; background: linear-gradient(180deg, #f0f4f7, #e2e9ee); color: #2b3f4c; font-size: .7rem; letter-spacing: .04em; text-align: center; text-transform: uppercase; white-space: nowrap; }
+  table.scoring-nns-table td { padding: .35rem .45rem; border-top: 1px solid #edf1f4; background: #fff; vertical-align: middle; }
   table.scoring-nns-table tr.is-shaded td { background: #f7fafb; }
   table.scoring-nns-table tr.scoring-nns-region td { padding: .45rem .7rem; background: #0f766e; color: #fff; font-size: .78rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
   table.scoring-nns-table td.scoring-nns-area { box-shadow: inset 4px 0 0 #1450a8; color: #17232d; font-weight: 800; }
@@ -530,8 +530,14 @@
   table.scoring-nns-table td.scoring-nns-score strong { display: block; font-size: .98rem; }
   table.scoring-nns-table td :is(small) { display: block; color: #5b6b78; font-size: .7rem; font-weight: 600; white-space: nowrap; }
   table.scoring-nns-table td.scoring-nns-score.is-empty { color: #9aa7b2; }
-  table.scoring-nns-table td.scoring-nns-sites { min-width: 6.5rem; max-width: 13rem; text-align: center; font-weight: 800; }
+  table.scoring-nns-table td.scoring-nns-sites { min-width: 6rem; max-width: 10.5rem; text-align: center; font-weight: 800; }
   table.scoring-nns-table td.scoring-nns-sites small { white-space: normal; line-height: 1.3; }
+  table.scoring-nns-table td.scoring-nns-gap { min-width: 4.4rem; text-align: center; font-variant-numeric: tabular-nums; }
+  table.scoring-nns-table td.scoring-nns-gap strong { display: block; font-size: .95rem; }
+  table.scoring-nns-table td.scoring-nns-gap.is-behind strong { color: #b42318; }
+  table.scoring-nns-table td.scoring-nns-gap.is-empty { color: #9aa7b2; }
+  table.scoring-nns-table .scoring-nns-leader { display: inline-block; padding: .1rem .55rem; border-radius: 999px; background: #0f766e; color: #fff; font-size: .78rem; font-weight: 800; }
+  table.scoring-nns-gap-table tr.scoring-nns-gap-all td { background: #eef6f5; font-weight: 800; }
   /* With the NNS Break-down tab the results tabs stay on one row: a little less padding each. */
   .scoring-result-tabs:has(> [data-result-tab="nns"]:not([hidden])) > .scoring-result-tab { padding-left: .62rem; padding-right: .62rem; }
   [data-result-pane="points"] { --pane-accent: #be123c; }

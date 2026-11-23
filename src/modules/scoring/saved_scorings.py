@@ -2614,7 +2614,7 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
             return cached
     lookup = master_grid.site_lookup(master_grid.load_sites(repository, grid['id'])) if grid else {}
     breakdown: dict[str, Any] = {'version': NNS_VERSION, 'request': request, 'master_grid': grid, 'modes': [],
-                                 'areas': [], 'sites': [], 'scenarios': [], 'warnings': []}
+                                 'areas': [], 'sites': [], 'scenarios': [], 'gap_totals': [], 'warnings': []}
     if not grid:
         breakdown['warnings'].append(f'{nb.WARNING_PREFIX} no Master Grid in the workspace: the NNS sites have no capacity '
                                      'and no NNS site is planned.')
@@ -2637,7 +2637,9 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
             source['levels'] = ['Operator', 'Campaign', 'Region', *nb.FIELDS]
         frames = _load_source_frames(repository, sources, progress, required_columns,
                                      {**filters, 'Campaign': list(entry['campaigns'])})
-        classified = {kind: nb.classify(frame, lookup, request) for kind, frame in frames.items()}
+        # Each city in one Region: the one with most of its tests (of every CDR type and campaign).
+        owners = nb.city_regions(frames.values())
+        classified = {kind: nb.classify(frame, lookup, request, owners) for kind, frame in frames.items()}
         classified = {kind: frame for kind, frame in classified.items() if len(frame)}
         if not classified:
             breakdown['warnings'].append(f'{nb.WARNING_PREFIX} the {mode} CDRs have no tests in the chosen Regions.')
@@ -2699,6 +2701,8 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
                                                                  'scenario': scenario, 'operator': operator, **values}
         counts = nb.site_counts(of_campaigns([latest]), lookup) if latest else {}
         breakdown['modes'].append({'nr_mode': mode, 'campaigns': found, 'latest_campaign': latest})
+        # The GAP to #1 of each area, and weighted by its tests in its Region and in all the chosen Regions.
+        breakdown['gap_totals'].extend(nb.add_gaps(list(areas.values())))
         breakdown['areas'].extend(areas.values())
         breakdown['scenarios'].extend(scenarios.values())
         breakdown['sites'].extend({'nr_mode': mode, 'region': region, 'area': area, **counts_of}
