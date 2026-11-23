@@ -15837,9 +15837,23 @@ def healthz() -> dict[str, str]:
 
 @app.get('/', response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
-    if session_user(request.cookies.get(SESSION_COOKIE)):
+    # Visitors see the landing page; a signed-in user opens the application (or the landing page with ?landing).
+    user = session_user(request.cookies.get(SESSION_COOKIE))
+    if user and 'landing' not in request.query_params:
         return RedirectResponse('/documents/view/help', status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse('/login', status_code=status.HTTP_303_SEE_OTHER)
+    from src.modules.core import landing
+    changelog = resolve_doc_path('changelog').read_text(encoding='utf-8', errors='replace')
+    return render_template(request, 'landing.html', {
+        'user': user, 'modules': landing.module_cards(load_module_labels(repository)),
+        'help_topics': landing.HELP_TOPICS, 'news': landing.latest_news(changelog),
+    })
+
+
+@app.get('/landing', include_in_schema=False)
+@app.get('/landing/', include_in_schema=False)
+def landing_link() -> RedirectResponse:
+    # The landing page lives at the root of the site.
+    return RedirectResponse('/', status_code=status.HTTP_301_MOVED_PERMANENTLY)
 
 
 def safe_next_url(value: object) -> str:

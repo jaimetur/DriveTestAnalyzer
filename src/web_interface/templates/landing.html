@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DriveTest Analyzer · From drive test CDRs to decisions</title>
+<meta name="description" content="DriveTest Analyzer turns drive test CDRs into scorings, GAPs, root causes and ready-made PowerPoint reports, for every operator and every campaign.">
+<meta name="theme-color" content="#060d1f">
+<meta property="og:title" content="DriveTest Analyzer">
+<meta property="og:description" content="From drive test CDRs to decisions: scoring, GAP analysis, network insights, root causes and reports in one platform.">
+<meta property="og:image" content="/presentations/preview/overview/1.jpg">
+<link rel="icon" href="{{ static_path('img/favicon.ico') }}"><link rel="apple-touch-icon" href="{{ static_path('img/apple-touch-icon.png') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* The public landing page of DriveTest Analyzer: dark, with the brand colours (navy, teal, orange) and the tool itself
+   (the slides of its presentations and the pages of its guide, read live from the server). */
+:root{--bg:#060d1f;--bg2:#0a1530;--card:#0e1b3a;--line:#1d2c52;--ink:#eef3ff;--muted:#9fb0d0;--faint:#6a7ba0;
+  --navy:#173a7a;--teal:#14b8b0;--orange:#f7881f;--blue:#2f7df6;--violet:#8b5cf6;--pink:#ec4899;--good:#22c55e;
+  --display:"Sora",system-ui,sans-serif;--body:"Inter",system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box}[hidden]{display:none !important}html{scroll-behavior:smooth;overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 var(--body);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:inherit}img{display:block;max-width:100%}
+.wrap{width:min(1200px,100% - 32px);margin:0 auto}
+h1,h2,h3{font-family:var(--display);font-weight:800;line-height:1.05;letter-spacing:-.02em;margin:0}
+.grad{background:linear-gradient(90deg,var(--teal),var(--blue) 50%,var(--orange));-webkit-background-clip:text;background-clip:text;color:transparent}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 22px;border-radius:999px;text-decoration:none;border:0;cursor:pointer;font:700 16px var(--body);transition:transform .2s,box-shadow .2s,background .2s;white-space:nowrap}
+.btn.pri{background:linear-gradient(135deg,var(--teal),var(--blue));color:#fff;box-shadow:0 10px 30px -8px color-mix(in srgb,var(--teal) 70%,transparent)}
+.btn.pri:hover{transform:translateY(-2px);box-shadow:0 16px 40px -10px var(--teal)}
+.btn.hot{background:linear-gradient(135deg,var(--orange),#f43f5e);color:#fff;box-shadow:0 10px 30px -8px color-mix(in srgb,var(--orange) 70%,transparent)}
+.btn.hot:hover{transform:translateY(-2px)}
+.btn.sec{background:rgba(255,255,255,.06);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}.btn.sec:hover{background:rgba(255,255,255,.11)}
+.btn.sm{padding:9px 15px;font-size:14px}
+.btn svg{width:18px;height:18px;flex:none}
+/* top bar */
+.top{position:sticky;top:0;z-index:30;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:color-mix(in srgb,var(--bg) 74%,transparent);border-bottom:1px solid transparent;transition:border-color .3s}
+.top.sc{border-color:var(--line)}
+.top .wrap{display:flex;align-items:center;gap:18px;height:68px}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;font:800 19px var(--display);letter-spacing:-.01em}
+.logo img{width:38px;height:38px;border-radius:10px;background:#fff;padding:3px}
+.top nav{display:flex;gap:22px;margin-left:auto;font-weight:600;font-size:15px}.top nav a{text-decoration:none;color:var(--muted)}.top nav a:hover{color:var(--ink)}
+@media (max-width:980px){.top nav{display:none}.top .btn{margin-left:auto}}
+/* hero */
+.hero{position:relative;padding:72px 0 56px;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.5;pointer-events:none;animation:drift 18s ease-in-out infinite alternate}
+.blob.b1{width:560px;height:560px;background:var(--blue);top:-200px;left:-160px}
+.blob.b2{width:460px;height:460px;background:var(--teal);top:120px;right:-160px;animation-delay:-6s}
+.blob.b3{width:380px;height:380px;background:var(--orange);bottom:-240px;left:35%;opacity:.3;animation-delay:-12s}
+@keyframes drift{to{transform:translate(60px,40px) scale(1.15)}}
+.gridbg{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(70% 60% at 50% 30%,#000,transparent);pointer-events:none}
+.hero .wrap{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:48px;align-items:center}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px var(--line);font-size:14px;font-weight:600;color:var(--muted);text-decoration:none}
+.eyebrow i{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 4px color-mix(in srgb,var(--good) 25%,transparent);animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 8px transparent}}
+.hero h1{font-size:clamp(42px,6.2vw,80px);margin:20px 0}
+.hero p.lead{font-size:20px;color:var(--muted);max-width:36ch;margin:0 0 30px}
+.cta{display:flex;flex-wrap:wrap;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
+.chip{padding:7px 13px;border-radius:999px;font-size:14px;font-weight:600;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line);color:var(--muted)}
+@media (max-width:960px){.hero .wrap{grid-template-columns:minmax(0,1fr)}.hero{padding-top:44px}.hero p.lead{max-width:none}}
+/* screens: a laptop with the slides of a presentation */
+.laptop{position:relative;border-radius:18px;padding:12px 12px 0;background:linear-gradient(#26345e,#0f1830);box-shadow:0 40px 90px -30px #000,0 0 0 1px rgba(255,255,255,.08)}
+.laptop .scr{position:relative;border-radius:9px 9px 0 0;overflow:hidden;aspect-ratio:16/9;background:#0b1430}
+.laptop .scr img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .9s ease}
+.laptop .scr img.on{opacity:1}
+.laptop+.base{height:16px;margin:0 -4%;border-radius:0 0 20px 20px;background:linear-gradient(#3a4a78,#16203d);box-shadow:0 20px 40px -20px #000}
+.ph-empty{position:absolute;inset:0;background:linear-gradient(120deg,#0e1a3a 30%,#16264f 50%,#0e1a3a 70%);background-size:300% 100%;animation:shimmer 2.4s linear infinite}
+@keyframes shimmer{to{background-position:-300% 0}}
+.hero .device{position:relative}
+.hero .device .float{animation:float 8s ease-in-out infinite}@keyframes float{50%{transform:translateY(-12px)}}
+.stat{position:absolute;z-index:2;display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:16px;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(10px);box-shadow:0 20px 40px -20px #000,inset 0 0 0 1px var(--line)}
+.stat b{display:block;font:800 22px/1 var(--display)}.stat small{color:var(--muted);font-size:13px;font-weight:600}
+.stat .ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--k),color-mix(in srgb,var(--k) 45%,#000))}
+.stat .ic svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.stat.s1{left:-28px;bottom:40px;--k:var(--orange);animation:float 7s ease-in-out infinite -2s}
+.stat.s2{right:-20px;top:-22px;--k:var(--teal);animation:float 9s ease-in-out infinite -4s}
+@media (max-width:640px){.stat.s1{left:6px;bottom:-20px}.stat.s2{right:6px;top:-30px}.stat{padding:9px 12px}.stat b{font-size:18px}}
+/* figures */
+.figs{border-block:1px solid var(--line);background:linear-gradient(90deg,color-mix(in srgb,var(--blue) 10%,var(--bg2)),var(--bg2),color-mix(in srgb,var(--teal) 10%,var(--bg2)))}
+.figs .wrap{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;padding:30px 0}
+.fig{text-align:center}.fig b{display:block;font:800 clamp(26px,3.2vw,40px)/1.1 var(--display);font-variant-numeric:tabular-nums}
+.fig b.c1{color:var(--teal)}.fig b.c2{color:var(--blue)}.fig b.c3{color:var(--orange)}.fig b.c4{color:var(--violet)}.fig b.c5{color:var(--pink)}.fig b.c6{color:var(--good)}
+.fig span{color:var(--muted);font-size:14px;font-weight:600}
+.figs .note{grid-column:1/-1;text-align:center;color:var(--faint);font-size:13px;margin-top:-6px}
+@media (max-width:900px){.figs .wrap{grid-template-columns:repeat(3,minmax(0,1fr))}}@media (max-width:520px){.figs .wrap{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* sections */
+section.sec{padding:100px 0;position:relative}
+.sh{text-align:center;max-width:800px;margin:0 auto 56px}.sh h2{font-size:clamp(34px,4.6vw,58px)}.sh p{color:var(--muted);font-size:19px;margin:16px 0 0}
+.kick{display:inline-block;font:700 13px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--teal);margin-bottom:14px}
+/* flow */
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;counter-reset:step}
+.step{position:relative;padding:28px 24px;border-radius:22px;background:linear-gradient(160deg,color-mix(in srgb,var(--k) 18%,var(--card)),var(--card) 65%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--k) 30%,var(--line))}
+.step::before{counter-increment:step;content:"0" counter(step);font:800 46px/1 var(--display);color:color-mix(in srgb,var(--k) 70%,#fff);opacity:.9}
+.step h3{font-size:22px;margin:14px 0 8px}.step p{margin:0;color:var(--muted);font-size:15.5px}
+.step:not(:last-child)::after{content:"";position:absolute;top:50%;right:-14px;width:10px;height:10px;border-top:2px solid var(--line);border-right:2px solid var(--line);transform:rotate(45deg)}
+@media (max-width:900px){.flow{grid-template-columns:repeat(2,minmax(0,1fr))}.step::after{display:none}}@media (max-width:520px){.flow{grid-template-columns:minmax(0,1fr)}}
+/* module index */
+.mindex{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:-20px auto 70px;max-width:980px}
+.mindex a{display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;text-decoration:none;font-weight:600;font-size:15px;color:var(--ink);background:color-mix(in srgb,var(--k) 12%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--k) 45%,var(--line));transition:transform .2s,background .2s}
+.mindex a:hover{transform:translateY(-2px);background:color-mix(in srgb,var(--k) 25%,transparent)}
+.mindex a i{width:9px;height:9px;border-radius:50%;background:var(--k)}
+/* module features */
+.feat{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:56px;align-items:center;margin:0 0 110px;scroll-margin-top:90px}
+.feat.rev .media{order:2}
+.feat .tag{display:inline-flex;align-items:center;gap:8px;font:700 13px var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--k);margin-bottom:12px}
+.feat .tag i{width:22px;height:3px;border-radius:3px;background:var(--k)}
+.feat h3{font-size:clamp(30px,3.4vw,44px);margin-bottom:16px}
+.feat p{color:var(--muted);margin:0 0 20px;font-size:18px}
+.feat ul{list-style:none;padding:0;margin:0 0 26px;display:grid;gap:10px}
+.feat li{display:flex;gap:12px;align-items:flex-start}
+.feat li::before{content:"";flex:none;width:22px;height:22px;margin-top:2px;border-radius:50%;
+  background:color-mix(in srgb,var(--k) 24%,transparent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat;box-shadow:inset 0 0 0 1.5px var(--k)}
+.feat .acts{display:flex;flex-wrap:wrap;gap:10px}
+.feat .acts .btn.pri{background:linear-gradient(135deg,var(--k),color-mix(in srgb,var(--k) 55%,#1e3a8a));box-shadow:0 10px 28px -10px var(--k)}
+.feat>*,.media{min-width:0}
+.media{position:relative}
+.media .glow{position:absolute;inset:12% 12%;background:var(--k);filter:blur(90px);opacity:.33;border-radius:50%;pointer-events:none}
+@media (max-width:960px){.feat{grid-template-columns:minmax(0,1fr);gap:30px;margin-bottom:84px}.feat.rev .media{order:0}}
+/* slide carousel */
+.car{position:relative}
+.car .scr{cursor:zoom-in}
+.car .bar{display:flex;align-items:center;gap:10px;margin-top:22px}
+.car .bar .ttl{flex:1;min-width:0;color:var(--muted);font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.car .bar .ttl b{color:var(--ink)}
+.car .arr{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.08);color:var(--ink);font-size:20px;cursor:pointer;box-shadow:inset 0 0 0 1px var(--line);transition:background .2s}
+.car .arr:hover{background:rgba(255,255,255,.16)}
+.car .prog{height:3px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:12px}
+.car .prog i{display:block;height:100%;width:0;background:var(--k);transition:width .5s}
+/* presentations gallery */
+.pfeat{position:relative;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:40px;align-items:center;padding:36px;border-radius:30px;margin-bottom:28px;isolation:isolate;overflow:hidden;
+  background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--blue) 30%,transparent),transparent 55%),radial-gradient(120% 140% at 100% 100%,color-mix(in srgb,var(--orange) 28%,transparent),transparent 60%),var(--card)}
+.pfeat::before{content:"";position:absolute;inset:0;padding:2px;border-radius:inherit;background:conic-gradient(from var(--ang),var(--teal),var(--blue),var(--violet),var(--orange),var(--teal));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:spin 7s linear infinite;z-index:-1}
+@property --ang{syntax:"<angle>";inherits:false;initial-value:0deg}@keyframes spin{to{--ang:360deg}}
+.pfeat h3{font-size:clamp(30px,3.6vw,46px);margin:12px 0}.pfeat p{color:var(--muted);margin:0 0 22px}
+.pbadge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:linear-gradient(135deg,var(--orange),#f43f5e);color:#fff;font-weight:800;font-size:13px;letter-spacing:.04em}
+.mosaic{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;transform:perspective(900px) rotateY(-12deg) rotateX(6deg);transition:transform .6s}
+.pfeat:hover .mosaic{transform:none}
+.mosaic img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;box-shadow:0 8px 20px -8px #000;background:#0b1430}
+@media (max-width:900px){.pfeat{grid-template-columns:minmax(0,1fr);padding:26px 20px}.mosaic{transform:none}}
+.pgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.pcard{display:flex;flex-direction:column;border-radius:22px;overflow:hidden;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none;transition:transform .3s,box-shadow .3s}
+.pcard:hover{transform:translateY(-6px);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--k) 60%,var(--line)),0 30px 60px -30px var(--k)}
+.pcard .cv{position:relative;aspect-ratio:16/9;background:#0b1430;overflow:hidden}
+.pcard .cv img{width:100%;height:100%;object-fit:cover;transition:transform .6s}.pcard:hover .cv img{transform:scale(1.05)}
+.pcard .cv span{position:absolute;right:10px;bottom:10px;padding:4px 10px;border-radius:999px;background:rgba(6,13,31,.8);font-size:12.5px;font-weight:700}
+.pcard .cv .play{position:absolute;inset:0;display:grid;place-items:center;opacity:0;transition:opacity .3s;background:rgba(6,13,31,.35)}
+.pcard:hover .cv .play{opacity:1}
+.pcard .cv .play b{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:var(--k);box-shadow:0 10px 30px -8px var(--k)}
+.pcard .cv .play svg{width:22px;height:22px;fill:#fff;margin-left:3px}
+.pcard .tx{padding:18px 20px 20px;display:flex;flex-direction:column;gap:6px;flex:1}
+.pcard .tx b{font:700 18px/1.25 var(--display)}.pcard .tx small{color:var(--muted);font-size:14px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.pcard .tx .dl{margin-top:auto;padding-top:8px;font-size:13.5px;font-weight:700;color:var(--k)}
+@media (max-width:960px){.pgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:600px){.pgrid{grid-template-columns:minmax(0,1fr)}}
+/* the guide */
+.guide{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:56px;align-items:center}
+.guide h3{font-size:clamp(30px,3.6vw,46px);margin-bottom:16px}.guide p{color:var(--muted);font-size:18px;margin:0 0 22px}
+.gstats{display:flex;flex-wrap:wrap;gap:26px;margin:0 0 26px}.gstats b{display:block;font:800 34px/1 var(--display);color:var(--teal)}.gstats span{color:var(--muted);font-size:14px;font-weight:600}
+.pages{position:relative;height:440px}
+.pages a{position:absolute;top:50%;left:50%;width:min(230px,40vw);aspect-ratio:397/562;border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 30px 60px -20px #000;transition:transform .5s cubic-bezier(.2,.7,.2,1),z-index 0s}
+.pages a img{width:100%;height:100%;object-fit:cover}
+.pages a:hover{z-index:10 !important}
+.guide-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.guide-list a{padding:6px 12px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--muted);text-decoration:none;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line)}
+.guide-list a:hover{color:var(--ink);background:rgba(255,255,255,.1)}
+@media (max-width:960px){.guide{grid-template-columns:minmax(0,1fr)}.pages{height:360px}}
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.tile{display:block;padding:26px;border-radius:22px;text-decoration:none;background:linear-gradient(160deg,color-mix(in srgb,var(--k) 16%,var(--card)),var(--card) 62%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--k) 30%,var(--line));transition:transform .3s}
+.tile:hover{transform:translateY(-4px)}
+.tile .ic{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,var(--k),color-mix(in srgb,var(--k) 40%,#000))}
+.tile .ic svg{width:24px;height:24px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tile h3{font-size:22px;margin:16px 0 8px}.tile p{margin:0;color:var(--muted);font-size:15.5px}
+.tile .go{display:inline-block;margin-top:12px;color:var(--k);font-weight:700;font-size:14px}
+@media (max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:560px){.tiles{grid-template-columns:minmax(0,1fr)}}
+/* what's new */
+.rels{display:grid;gap:26px}
+.rel{border-radius:26px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);padding:28px}
+.rel header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 16px;margin-bottom:20px}
+.rel header b{font:800 30px/1 var(--display)}.rel header span{color:var(--muted);font-weight:600}
+.rel header a{margin-left:auto;color:var(--teal);font-weight:700;font-size:14px;text-decoration:none}
+.news{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.nw{padding:18px;border-radius:18px;background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px var(--line);transition:background .25s}
+.nw:hover{background:rgba(255,255,255,.06)}
+.nw .k{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;background:color-mix(in srgb,var(--k) 22%,transparent);color:color-mix(in srgb,var(--k) 70%,#fff)}
+.nw .m{display:block;color:var(--faint);font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.nw b{display:block;font:700 16.5px/1.3 var(--display);margin:4px 0 6px}.nw p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+@media (max-width:900px){.news{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:560px){.news{grid-template-columns:minmax(0,1fr)}.rel{padding:20px}}
+/* final call */
+.final{text-align:center;padding:100px 0;background:radial-gradient(60% 80% at 50% 0%,color-mix(in srgb,var(--teal) 30%,transparent),transparent)}
+.final img{width:96px;height:96px;margin:0 auto 22px;border-radius:24px;background:#fff;padding:8px;box-shadow:0 20px 50px -20px var(--teal)}
+.final h2{font-size:clamp(36px,5.4vw,68px);margin-bottom:18px}.final p{color:var(--muted);font-size:19px;margin:0 0 28px}
+.final .cta{justify-content:center}
+footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--faint);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--ink)}
+/* full-screen slide */
+.zoom{position:fixed;inset:0;z-index:60;display:none;place-items:center;padding:24px;background:rgba(3,7,18,.92);backdrop-filter:blur(6px);cursor:zoom-out}
+.zoom.on{display:grid}.zoom img{max-width:min(1400px,100%);max-height:88vh;border-radius:10px;box-shadow:0 40px 90px -30px #000}
+.zoom small{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:var(--muted)}
+/* reveal on scroll */
+.rvjs .rv{opacity:0;transform:translateY(36px);transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1)}
+.rvjs .rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.rvjs .rv{opacity:1;transform:none;transition:none}.blob,.float,.stat,.pfeat::before,.ph-empty{animation:none}}
+</style>
+</head>
+<body>
+<header class="top" id="top"><div class="wrap">
+  <a class="logo" href="/"><img src="{{ static_path('img/brand-mark-192.png') }}" alt="">DriveTest Analyzer</a>
+  <nav aria-label="Sections"><a href="#modules">Modules</a><a href="#presentations">Presentations</a><a href="#guide">Guide</a><a href="#news">What's new</a><a href="#help">Help</a></nav>
+  {% if user %}<a class="btn pri sm" href="/documents/view/help">Open the app</a>{% else %}<a class="btn pri sm" href="/login">Sign in</a>{% endif %}
+</div></header>
+
+<main>
+  <section class="hero">
+    <div class="gridbg"></div><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+    <div class="wrap">
+      <div>
+        <a class="eyebrow" href="#news"><i></i>v{{ app_version }} is live · see what's new</a>
+        <h1>From drive test CDRs<br>to <span class="grad">decisions</span></h1>
+        <p class="lead">Score every operator, find the GAP to the leader, explain every failed call and deliver the report, in one platform built for drive test teams.</p>
+        <div class="cta">
+          {% if user %}<a class="btn pri" href="/documents/view/help">Open the app</a>{% else %}<a class="btn pri" href="/login">Sign in</a>{% endif %}
+          <a class="btn hot" href="/presentations/overview"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch the overview</a>
+          <a class="btn sec" href="#modules">Explore the modules</a>
+        </div>
+        <div class="chips"><span class="chip">NetCheck methodology</span><span class="chip">NSA &amp; SA</span><span class="chip">Root cause of every call</span><span class="chip">PowerPoint in one click</span><span class="chip">AI Assistant</span></div>
+      </div>
+      <div class="device">
+        <div class="stat s2"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/></svg></span><div><b data-fig="cdr_rows">—</b><small>CDR rows analysed</small></div></div>
+        <div class="float"><div class="laptop"><div class="scr" data-slides="overview" data-autoplay="4200"><div class="ph-empty"></div></div></div><div class="base"></div></div>
+        <div class="stat s1"><span class="ic"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span><div><b data-fig="campaigns">—</b><small>campaigns scored</small></div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="figs" id="figures"><div class="wrap">
+    <div class="fig"><b class="c1" data-fig="cdr_calls">—</b><span>tests and calls</span></div>
+    <div class="fig"><b class="c2" data-fig="cdrs">—</b><span>CDRs processed</span></div>
+    <div class="fig"><b class="c3" data-fig="nq_calls">—</b><span>NQ calls explained</span></div>
+    <div class="fig"><b class="c4" data-fig="inventory_rows">—</b><span>network cells known</span></div>
+    <div class="fig"><b class="c5" data-fig="users">—</b><span>users</span></div>
+    <div class="fig"><b class="c6" data-fig="releases">—</b><span>releases</span></div>
+    <p class="note" id="figNote">Live figures of the workspaces of this server.</p>
+  </div></div>
+
+  <section class="sec"><div class="wrap">
+    <div class="sh rv"><span class="kick">How it works</span><h2>One flow, <span class="grad">four steps</span></h2><p>Everything a drive test campaign needs, from the raw files to the slides in front of the customer.</p></div>
+    <div class="flow">
+      <div class="step rv" style="--k:var(--blue)"><h3>Load</h3><p>Upload the CDRs, logs and network inventories of each campaign. They are processed and ready in minutes.</p></div>
+      <div class="step rv" style="--k:var(--teal)"><h3>Score</h3><p>Score every operator with your methodology and see who wins, by KPI, Region, city and campaign.</p></div>
+      <div class="step rv" style="--k:var(--violet)"><h3>Explain</h3><p>Find where the points are lost, what the radio says and the root cause of every failed call.</p></div>
+      <div class="step rv" style="--k:var(--orange)"><h3>Deliver</h3><p>Generate the PowerPoint and Word reports, on demand or on a schedule, with live charts and comments.</p></div>
+    </div>
+  </div></section>
+
+  <section class="sec" id="modules" style="padding-top:20px"><div class="wrap">
+    <div class="sh rv"><span class="kick">Modules</span><h2>Everything a campaign needs,<br><span class="grad">in one workspace</span></h2><p>Each module comes with its own presentation and its chapter of the guide. Swipe through its slides below.</p></div>
+    <div class="mindex rv">{% for module in modules %}<a href="#m-{{ module.key }}" style="--k:{{ module.accent }}"><i></i>{{ module.title }}</a>{% endfor %}</div>
+    {% for module in modules %}
+    <div class="feat rv{% if loop.index is even %} rev{% endif %}" id="m-{{ module.key }}" style="--k:{{ module.accent }}">
+      <div class="media"><div class="glow"></div>
+        <div class="car" data-car="{{ module.presentation }}">
+          <div class="laptop"><div class="scr" data-slides="{{ module.presentation }}"><div class="ph-empty"></div></div></div><div class="base"></div>
+          <div class="bar"><button class="arr" type="button" data-step="-1" aria-label="Previous slide">‹</button><span class="ttl"></span><button class="arr" type="button" data-step="1" aria-label="Next slide">›</button></div>
+          <div class="prog"><i></i></div>
+        </div>
+      </div>
+      <div><span class="tag"><i></i>{{ module.title }}</span><h3>{{ module.headline }}</h3><p>{{ module.text }}</p>
+        <ul>{% for point in module.points %}<li>{{ point }}</li>{% endfor %}</ul>
+        <div class="acts"><a class="btn pri sm" href="/presentations/{{ module.presentation }}">Watch the presentation</a><a class="btn sec sm" href="/documents/view/help/{{ module.chapter }}">Read the guide</a></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div></section>
+
+  <section class="sec" id="presentations" style="padding-top:0"><div class="wrap">
+    <div class="sh rv"><span class="kick">Presentations</span><h2>Ready to <span class="grad">present</span></h2><p>Every presentation of the tool, always up to date with the latest release and the figures of this server. Open it in the slide viewer, play it full screen or download the PowerPoint.</p></div>
+    <div class="pfeat rv">
+      <div><span class="pbadge">Full presentation</span><h3>The whole tool, <span class="grad">in one deck</span></h3><p id="fullText">Every presentation in one deck, each in a section of its own.</p>
+        <div class="cta"><a class="btn hot" href="/presentations/full-presentation"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play it</a><a class="btn sec" id="fullDownload" href="#">Download PowerPoint</a></div></div>
+      <div class="mosaic" id="mosaic"></div>
+    </div>
+    <div class="pgrid" id="pgrid"></div>
+  </div></section>
+
+  <section class="sec" id="guide" style="padding-top:20px"><div class="wrap">
+    <div class="guide">
+      <div class="rv"><span class="kick">Technical guide</span><h3>Every workflow, <span class="grad">documented</span></h3>
+        <p>The complete documentation of DriveTest Analyzer in one guide: the modules, the scoring methodology, the architecture and the deployment. Read it page by page or take it with you.</p>
+        <div class="gstats"><div><b data-guide="pages">—</b><span>pages</span></div><div><b data-guide="chapters">—</b><span>chapters</span></div><div><b data-fig="help_chapters">—</b><span>Help chapters</span></div></div>
+        <div class="cta"><a class="btn pri" href="/documents/view/help?guide=1">Read the guide</a><a class="btn sec" id="guidePdf" href="/api/help/export?scope=all&amp;format=pdf">Download PDF</a><a class="btn sec" id="guideWord" href="/api/help/export?scope=all&amp;format=docx">Word</a></div>
+        <div class="guide-list" id="guideList"></div>
+      </div>
+      <div class="pages rv" id="pages"></div>
+    </div>
+  </div></section>
+
+  <section class="sec" id="news" style="padding-top:20px"><div class="wrap">
+    <div class="sh rv"><span class="kick">What's new</span><h2>Better <span class="grad">every week</span></h2><p>The latest releases of DriveTest Analyzer. The changelog keeps every one of them.</p></div>
+    <div class="rels">
+      {% for release in news %}
+      <article class="rel rv">
+        <header><b>v{{ release.version }}</b><span>{{ release.date }}</span><a href="/documents/view/changelog#{{ release.anchor }}">Full release notes →</a></header>
+        <div class="news">{% for item in release['items'] %}
+          <div class="nw" style="--k:{% if item.kind == 'New' %}var(--teal){% elif item.kind == 'Breaking' %}var(--orange){% else %}var(--blue){% endif %}"><span class="k">{{ item.kind }}</span>{% if item.module %}<span class="m">{{ item.module }}</span>{% endif %}<b>{{ item.title }}</b><p>{{ item.summary }}</p></div>
+        {% endfor %}</div>
+      </article>
+      {% endfor %}
+    </div>
+    <p style="text-align:center;margin-top:30px"><a class="btn sec" href="/documents/view/changelog">See the whole changelog</a></p>
+  </div></section>
+
+  <section class="sec" id="help" style="padding-top:20px"><div class="wrap">
+    <div class="sh rv"><span class="kick">Help</span><h2>Answers, <span class="grad">without signing in</span></h2><p>The Help is open to everyone: start with the overview, or go straight to the topic you need.</p></div>
+    <div class="tiles">
+      {% for topic in help_topics %}
+      <a class="tile rv" href="/documents/view/help/{{ topic.chapter }}" style="--k:{{ topic.accent }}"><span class="ic"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span><h3>{{ topic.title }}</h3><p>{{ topic.text }}</p><span class="go">Open →</span></a>
+      {% endfor %}
+    </div>
+  </div></section>
+
+  <section class="final"><div class="wrap rv">
+    <img src="{{ static_path('img/brand-mark-192.png') }}" alt="">
+    <h2>Win the <span class="grad">next campaign</span></h2>
+    <p>Everything your team needs, from the first CDR to the last slide.</p>
+    <div class="cta">{% if user %}<a class="btn pri" href="/documents/view/help">Open the app</a>{% else %}<a class="btn pri" href="/login">Sign in</a>{% endif %}<a class="btn sec" href="/presentations/one-slider">The tool in one slide</a></div>
+  </div></section>
+</main>
+
+<footer><div class="wrap">
+  <a class="logo" href="/" style="font-size:16px"><img src="{{ static_path('img/brand-mark-192.png') }}" alt="" style="width:28px;height:28px;border-radius:7px">DriveTest Analyzer</a>
+  <a href="/login">Sign in</a><a href="/documents/view/help">Help</a><a href="/documents/view/help/presentations.md">Presentations</a><a href="/documents/view/changelog">Changelog</a><a href="/documents/view/readme">Readme</a><a href="/tickets">Ticket Center</a>
+  <span style="margin-left:auto">v{{ app_version }} · {{ app_release_date }}</span>
+</div></footer>
+
+<div class="zoom" id="zoom" role="dialog" aria-label="Slide"><img alt=""><small></small></div>
+
+<script>
+(() => {
+  // Reveal on scroll: the sections are hidden only once this runs.
+  const els = [...document.querySelectorAll('.rv')];
+  document.documentElement.classList.add('rvjs');
+  const show = () => els.forEach(el => { if (!el.classList.contains('in') && el.getBoundingClientRect().top < innerHeight * 0.92) el.classList.add('in'); });
+  try { const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .05 }); els.forEach(el => io.observe(el)); } catch (e) {}
+  addEventListener('scroll', show, { passive: true }); addEventListener('resize', show); show(); setTimeout(show, 600);
+  const top = document.getElementById('top');
+  addEventListener('scroll', () => top.classList.toggle('sc', scrollY > 10), { passive: true });
+})();
+
+(() => {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const short = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'K' : n.toLocaleString('en');
+  const preview = (id, n, key) => `/presentations/preview/${encodeURIComponent(id)}/${n}.jpg?k=${encodeURIComponent(key || '')}`;
+  // A count that runs up to its value when it comes into view.
+  const count = (el, value) => {
+    if (!Number.isFinite(value)) return;
+    const run = () => { const t0 = performance.now(), d = 1400; const tick = t => { const p = Math.min(1, (t - t0) / d), e = 1 - Math.pow(1 - p, 3); el.textContent = short(Math.round(value * e)); if (p < 1) requestAnimationFrame(tick); }; requestAnimationFrame(tick); };
+    try { const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); run(); } }); io.observe(el); } catch (e) { el.textContent = short(value); }
+  };
+  const zoom = document.getElementById('zoom');
+  zoom.addEventListener('click', () => zoom.classList.remove('on'));
+  addEventListener('keydown', e => { if (e.key === 'Escape') zoom.classList.remove('on'); });
+
+  // The slides of a presentation in a screen: they fade one into the other (on their own, or with the arrows).
+  function slideshow(screen, deck, key, car) {
+    const titles = deck.sections.flatMap(s => s.slides);
+    if (!titles.length) return;
+    screen.innerHTML = '<div class="ph-empty"></div>';
+    const imgs = titles.map((title, i) => { const im = new Image(); im.alt = title; im.decoding = 'async'; if (i) im.loading = 'lazy'; im.src = preview(deck.id, i + 1, key); screen.appendChild(im); return im; });
+    imgs[0].addEventListener('load', () => imgs[0].classList.add('on'), { once: true });
+    if (imgs[0].complete) imgs[0].classList.add('on');
+    let index = 0;
+    const ttl = car && car.querySelector('.ttl'), bar = car && car.querySelector('.prog i');
+    const paint = () => {
+      imgs.forEach((im, i) => im.classList.toggle('on', i === index));
+      if (ttl) ttl.innerHTML = `<b>${index + 1}/${titles.length}</b> · ${esc(titles[index])}`;
+      if (bar) bar.style.width = `${(index + 1) / titles.length * 100}%`;
+    };
+    const go = step => { index = (index + step + titles.length) % titles.length; paint(); };
+    paint();
+    car && car.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => { go(Number(b.dataset.step)); stop(); }));
+    screen.addEventListener('click', () => { const im = zoom.querySelector('img'); im.src = imgs[index].src; zoom.querySelector('small').textContent = `${deck.title} · ${titles[index]}`; zoom.classList.add('on'); });
+    // Swipe on touch screens.
+    let x0 = null;
+    screen.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+    screen.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 40) { go(dx < 0 ? 1 : -1); stop(); } x0 = null; });
+    // Play on its own while it is on screen.
+    let timer = null;
+    const every = Number(screen.dataset.autoplay) || 3600;
+    const start = () => { if (!timer) timer = setInterval(() => go(1), every); };
+    const stop = () => { clearInterval(timer); timer = null; };
+    try { new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? start() : stop()), { threshold: .4 }).observe(screen); } catch (e) { start(); }
+  }
+
+  fetch('/api/presentations', { headers: { Accept: 'application/json' } }).then(r => r.ok ? r.json() : Promise.reject()).then(data => {
+    const decks = Object.fromEntries((data.presentations || []).map(p => [p.id, p]));
+    const key = data.key || '';
+    // Live figures of the server.
+    const figures = data.figures || {};
+    // A figure the server does not have yet (a new deployment) is left out.
+    document.querySelectorAll('[data-fig]').forEach(el => {
+      const value = Number(figures[el.dataset.fig]);
+      if (value > 0) count(el, value); else (el.closest('.fig, .stat, .gstats > div') || el).hidden = true;
+    });
+    if (figures.month) document.getElementById('figNote').textContent = `Live figures of the workspaces of this server, ${figures.month}.`;
+    // The slides of each presentation in its screen.
+    document.querySelectorAll('[data-slides]').forEach(screen => {
+      const deck = decks[screen.dataset.slides];
+      if (deck) slideshow(screen, deck, key, screen.closest('.car'));
+      else screen.closest('.feat .media')?.remove();
+    });
+    // The Full Presentation and the gallery of every other one.
+    const full = decks['full-presentation'];
+    const fileUrl = p => `${data.base || '/presentations/files'}/${encodeURIComponent(p.file)}`;
+    if (full) {
+      const total = full.sections.reduce((n, s) => n + s.slides.length, 0);
+      document.getElementById('fullText').textContent = `${total} slides in ${full.sections.length} sections: ${full.description || ''}`;
+      const dl = document.getElementById('fullDownload'); dl.href = fileUrl(full); dl.setAttribute('download', full.download || '');
+      const step = Math.max(1, Math.floor(total / 12));
+      document.getElementById('mosaic').innerHTML = Array.from({ length: 12 }, (_, i) => `<img loading="lazy" alt="" src="${preview(full.id, Math.min(total, 1 + i * step), key)}">`).join('');
+    }
+    const accents = ['#14b8b0', '#2f7df6', '#f7881f', '#8b5cf6', '#ec4899', '#22c55e', '#06b6d4', '#ef4444', '#f59e0b'];
+    document.getElementById('pgrid').innerHTML = (data.presentations || []).filter(p => p.id !== 'full-presentation').map((p, i) => {
+      const n = p.sections.reduce((t, s) => t + s.slides.length, 0);
+      const title = String(p.title || '').replace(/^DriveTest Analyzer\s+—\s+/, '');
+      return `<a class="pcard rv in" href="/presentations/${encodeURIComponent(p.id)}" style="--k:${accents[i % accents.length]}">
+        <div class="cv"><img loading="lazy" alt="" src="${preview(p.id, 1, key)}"><div class="play"><b><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></b></div><span>${n} slide${n === 1 ? '' : 's'}</span></div>
+        <div class="tx"><b>${esc(title)}</b><small>${esc(p.description || '')}</small><span class="dl">Open in the slide viewer →</span></div></a>`;
+    }).join('');
+  }).catch(() => {
+    document.querySelectorAll('[data-slides]').forEach(s => s.closest('.feat .media')?.remove());
+    document.getElementById('presentations').hidden = true;
+    document.getElementById('figures').hidden = true;
+  });
+
+  // The guide: its size, its chapters and a fan of its pages.
+  fetch('/api/help/guide', { headers: { Accept: 'application/json' } }).then(r => r.ok ? r.json() : Promise.reject()).then(guide => {
+    const parts = (guide.sections || []).filter(s => !/^cover/i.test(s.title));
+    count(document.querySelector('[data-guide="pages"]'), Number(guide.pages));
+    count(document.querySelector('[data-guide="chapters"]'), parts.length);
+    if (guide.downloads) { document.getElementById('guidePdf').href = guide.downloads.pdf; document.getElementById('guideWord').href = guide.downloads.docx; }
+    document.getElementById('guideList').innerHTML = parts.slice(0, 14).map(s => `<a href="/documents/view/help?guide=1&slide=${s.pages[0].index + 1}">${esc(s.title.replace(/^\d+\s+/, ''))}</a>`).join('');
+    const chosen = [{ index: 0 }, ...parts.map(s => s.pages[0])].filter((p, i, all) => all.findIndex(q => q.index === p.index) === i).slice(0, 7);
+    const fan = document.getElementById('pages');
+    fan.innerHTML = chosen.map((p, i) => `<a href="/documents/view/help?guide=1&slide=${p.index + 1}" aria-label="Page ${p.index + 1}"><img loading="lazy" alt="" src="/api/help/guide/pages/${p.index}?thumb=1&k=${encodeURIComponent(guide.key || '')}"></a>`).join('');
+    const pages = [...fan.children], mid = (pages.length - 1) / 2;
+    const lay = open => pages.forEach((a, i) => { const d = i - mid; a.style.zIndex = String(100 - Math.abs(Math.round(d))); a.style.transform = `translate(-50%,-50%) translateX(${d * (open ? 62 : 34)}px) rotate(${d * (open ? 7 : 4)}deg) translateY(${Math.abs(d) * (open ? 14 : 8)}px)`; });
+    lay(false); fan.addEventListener('mouseenter', () => lay(true)); fan.addEventListener('mouseleave', () => lay(false));
+  }).catch(() => { document.getElementById('pages').remove(); });
+})();
+</script>
+</body></html>

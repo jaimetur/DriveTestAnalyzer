@@ -12,6 +12,7 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 
 | Task or topic | Go to |
 | --- | --- |
+| Present the tool to visitors | [Landing page](#landing-page) |
 | Move between modules and workspaces | [Navigation](#navigation) · [Header controls](#header-controls) |
 | Pick values and operators quickly (`VF*`, `NOT Lebara`) | [Searchable selectors](#searchable-selectors) · [Operator patterns](#operator-patterns) |
 | Build a filter | [Filter Builder](#filter-builder) |
@@ -20,6 +21,18 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 | Save a chart or table as an image | [Images of charts and tables](#images-of-charts-and-tables) |
 | Use the tool on a laptop or a phone | [Laptop screens](#laptop-screens) · [Small screens](#small-screens) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
+
+## Landing page
+
+The address of the server (`/`) opens the landing page of DriveTest Analyzer to anyone without signing in; a signed-in user opens the application instead (or the landing page with `/?landing`). The old `/landing` address redirects to `/`.
+
+- **Hero:** the slides of the Overview presentation in a laptop screen, with **Sign in** (**Open the app** when signed in) and **Watch the overview**.
+- **Figures:** live counts of the workspaces of the server (CDR rows, tests and calls, CDRs, campaigns, NQ calls, network cells, users and releases), the same ones as the presentations; a figure the server does not have yet is left out.
+- **Modules:** each one with the slides of its presentation (they play while in view; arrows, a swipe or a click to enlarge), what it does, **Watch the presentation** and **Read the guide** (its Help chapter). The main modules show their titles of [Interface Settings](super-admin.md#interface-settings).
+- **Presentations:** the Full Presentation (play it or download it) and a card per presentation, opening it in the slide viewer of [Product Presentations](presentations.md).
+- **Technical guide:** the size and chapters of the whole documentation, a fan of its pages and its PDF and Word downloads; each chapter opens the guide at its page.
+- **What's new:** the new features and enhancements of the two latest releases of the Changelog, with a link to their release notes.
+- **Help:** cards to the main chapters of the Help, open to everyone.
 
 ## Navigation
 
