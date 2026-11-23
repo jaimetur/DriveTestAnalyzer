@@ -403,7 +403,7 @@
     let fromLanding = false;
     try { fromLanding = Boolean(sessionStorage.getItem('dta-from-landing')); } catch (error) { /* no storage */ }
     const signedIn = Boolean(document.querySelector('[data-user-menu-trigger]'));
-    if (!signedIn || fromLanding) {
+    if ((!signedIn || fromLanding) && window.location.pathname !== '/') {
       home.hidden = false;
       if (signedIn) home.href = '/?landing';
     }
@@ -868,5 +868,13 @@
     window.addEventListener('resize', () => { if (dialog.open) fitView(); });
   }
 
-  window.PresentationViewer = {enhance, open: openViewer};
+  // A presentation (by its id) or a guide (the whole documentation, or a chapter: ``doc``) opened in the viewer from any
+  // page, such as the landing page, without going through the Help.
+  const openPresentation = (id, index = 0) => load().then((data) => {
+    const presentation = (data.presentations || []).find((item) => item.id === id);
+    if (!presentation) throw new Error('This presentation is not available yet.');
+    openViewer(presentation, index);
+  });
+  const openGuide = (doc = '', index = 0) => loadGuide(doc, true).then((data) => openViewer(guidePresentation(data), index));
+  window.PresentationViewer = {enhance, open: openViewer, openPresentation, openGuide};
 }());

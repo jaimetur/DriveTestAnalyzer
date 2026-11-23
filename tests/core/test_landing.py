@@ -14,6 +14,10 @@ def test_visitors_see_the_landing_page_at_the_root(client):
         assert f'id="m-{module["key"]}"' in page.text
         assert f'href="/presentations/{module["presentation"]}?back=%2F"' in page.text
         assert f'href="/documents/view/help/{module["chapter"]}?guide=1&amp;back=%2F"' in page.text
+    # They open in the slide viewer of the Help on the page itself.
+    assert 'js/help/presentation_viewer.js' in page.text and 'css/help/presentation_viewer.css' in page.text
+    assert f'data-presentation="{landing.MODULES[0]["presentation"]}"' in page.text
+    assert f'data-guide="{landing.MODULES[0]["chapter"]}"' in page.text
     # The latest release of the Changelog.
     assert f'v{core.__version__}' in page.text
 
