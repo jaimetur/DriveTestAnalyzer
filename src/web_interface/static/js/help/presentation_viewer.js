@@ -387,11 +387,21 @@
         </div>
         <div class="presentation-dialog-buttons">
           <button type="button" class="presentation-secondary" data-presentation-link title="Copy the direct link of this slide: it opens the presentation in the slide viewer" aria-label="Copy link"><span class="presentation-word">Copy </span>link</button>
+          <a class="presentation-secondary presentation-home" href="/" data-presentation-home hidden title="Back to the home page of DriveTest Analyzer">Home page</a>
           <button type="button" class="presentation-secondary" data-presentation-close>Close</button>
           <a class="presentation-download" href="#" download title="Download PowerPoint" aria-label="Download PowerPoint">Download<span class="presentation-download-format">PowerPoint</span></a>
         </div>
       </footer>`;
     document.body.append(dialog);
+    // Back to the landing page: for a visitor, and for a user who came from it.
+    const home = dialog.querySelector('[data-presentation-home]');
+    let fromLanding = false;
+    try { fromLanding = Boolean(sessionStorage.getItem('dta-from-landing')); } catch (error) { /* no storage */ }
+    const signedIn = Boolean(document.querySelector('[data-user-menu-trigger]'));
+    if (!signedIn || fromLanding) {
+      home.hidden = false;
+      if (signedIn) home.href = '/?landing';
+    }
     elements = {
       title: dialog.querySelector('#presentation-dialog-title'), count: dialog.querySelector('[data-presentation-count]'),
       nav: dialog.querySelector('.presentation-nav'), label: dialog.querySelector('.presentation-page-label'),

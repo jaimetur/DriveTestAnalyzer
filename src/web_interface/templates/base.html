@@ -198,13 +198,17 @@
           {% if user_api_key_writers %}<button type="button" data-api-keys-open title="Your API keys for {{ user_api_key_writers | join(' and ') }}">{{ menu_icon(section_icons['key']) }}<span>API keys</span></button>{% endif %}
           {% if demo_mode_info.can_start %}<button type="button" class="topnav-demo-start" data-demo-mode-start{% if demo_mode_info.active %} hidden{% endif %} title="Keep the platform for the users of a demo and sign out everybody else until it is over"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M10 8l4 2-4 2z"/></svg><span>Start Demo Mode…</span></button>{% endif %}
         </nav>
+        {# Back to the landing page, for a user who came from it (landing.html marks it for the browser tab). #}
+        <a class="topnav-link topnav-link-home" href="/?landing" title="Back to the home page of DriveTest Analyzer" data-landing-return hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 11 9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg><span>Home page</span></a>
         <a class="topnav-link topnav-link-logout" href="/logout" title="Log out of DriveTest Analyzer">Logout</a>
       </nav>
-      {% elif request.url.path.startswith(('/documents/view/', '/tickets')) %}
-      {# The documents and the tickets are readable without signing in; the way in stands out so nobody misses it. #}
-      <nav class="topnav"><a class="topnav-link topnav-link-signin" href="/login{% if request.url.path != '/' %}?next={{ request.url.path | urlencode }}{% endif %}" title="Sign in to DriveTest Analyzer"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l4-4-4-4"/><path d="M14 12H4"/></svg><span>Sign in</span></a></nav>
+      {% elif request.url.path.startswith(('/documents/view/', '/tickets')) or request.url.path == '/login' %}
+      {# The documents and the tickets are readable without signing in; the way in stands out so nobody misses it. The
+         home page (the landing page) is one click away from them and from the sign-in page. #}
+      <nav class="topnav"><a class="topnav-link topnav-link-home" href="/" title="Open the home page of DriveTest Analyzer"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 11 9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg><span>Home page</span></a>{% if request.url.path != '/login' %}<a class="topnav-link topnav-link-signin" href="/login{% if request.url.path != '/' %}?next={{ request.url.path | urlencode }}{% endif %}" title="Sign in to DriveTest Analyzer"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l4-4-4-4"/><path d="M14 12H4"/></svg><span>Sign in</span></a>{% endif %}</nav>
       {% endif %}
     </header>
+    <script>try { if (sessionStorage.getItem('dta-from-landing')) document.querySelectorAll('[data-landing-return]').forEach((link) => { link.hidden = false; }); } catch (error) {}</script>
     {% endif %}
     <main>
       {% if user and not embedded_template_editor and not embedded_preview %}

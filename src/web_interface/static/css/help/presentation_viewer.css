@@ -75,6 +75,8 @@
 .presentation-dialog-buttons { grid-column: 3; display: flex; justify-content: flex-end; gap: .6rem; }
 .presentation-secondary { padding: .55rem 1rem; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 999px; background: #fff; color: var(--brand-3); font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .presentation-secondary:hover, .presentation-secondary:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
+.presentation-home { display: inline-flex; align-items: center; text-decoration: none; }
+.presentation-home[hidden] { display: none; }
 .presentation-download { display: inline-flex; align-items: center; gap: .28em; padding: .6rem 1.2rem; border-radius: 999px; background: var(--brand); color: #fff; font-weight: 800; white-space: nowrap; text-decoration: none; }
 .presentation-download:hover, .presentation-download:focus-visible { background: #075d59; }
 /* The slideshow: its settings above its button, and the slides full screen on black, each entering over the one it

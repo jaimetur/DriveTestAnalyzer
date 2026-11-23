@@ -334,6 +334,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}footer
 
 <script>
 (() => {
+  // The pages opened from here (the Help, the presentations) offer a way back to this page.
+  try { sessionStorage.setItem('dta-from-landing', '1'); } catch (e) {}
   // Reveal on scroll: the sections are hidden only once this runs.
   const els = [...document.querySelectorAll('.rv')];
   document.documentElement.classList.add('rvjs');

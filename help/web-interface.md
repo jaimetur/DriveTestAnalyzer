@@ -33,6 +33,7 @@ The address of the server (`/`) opens the landing page of DriveTest Analyzer to 
 - **Technical guide:** the size and chapters of the whole documentation, a fan of its pages and its PDF and Word downloads; each chapter opens the guide at its page.
 - **What's new:** the new features and enhancements of the two latest releases of the Changelog, with a link to their release notes.
 - **Help:** cards to the main chapters of the Help, open to everyone.
+- **Way back:** **Home page** in the header of the sign-in page, the Help and the tickets (for a signed-in user, once the landing page was opened in the browser tab) and in the slide viewer opens the landing page again.
 
 ## Navigation
 

@@ -77,3 +77,11 @@ def test_whats_new_takes_the_headlines_of_the_latest_releases():
         {'kind': 'Improved', 'module': '', 'title': 'Reporting', 'summary': 'Faster reports.'},
     ]
     assert len(landing.latest_news(changelog, limit=1)[0]['items']) == 1
+
+
+def test_the_sign_in_page_and_the_help_lead_back_to_the_landing_page(client):
+    client.cookies.clear()
+    for path in ('/login', '/documents/view/help'):
+        page = client.get(path).text
+        assert 'class="topnav-link topnav-link-home" href="/"' in page, path
+    assert 'topnav-link-signin' not in client.get('/login').text
