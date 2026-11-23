@@ -434,6 +434,8 @@
   const nnsEnabled = root.querySelector('[data-scoring-nns-enabled]');
   const nnsCampaigns = root.querySelector('[data-scoring-nns-campaigns]');
   const nnsRegions = root.querySelector('[data-scoring-nns-regions]');
+  // The Regions of the CDRs of each NR Mode and campaigns of the NNS Break-down (see nnsCampaignRegions).
+  const nnsRegionsByCampaigns = new Map();
   const nnsRoads = root.querySelector('[data-scoring-nns-roads]');
   const NNS_DEFAULT_CAMPAIGNS = ['@latest-4-campaigns'];
   // The areas of the National & Country Areas Trends: those of Country Areas (Same as Country Areas), or their own.
@@ -858,17 +860,34 @@
     trendCampaigns.dispatchEvent(new Event('multiselect:options-updated'));
   }
 
-  // The Regions of the NNS Break-down: those of every CDR of the workspace (it scores campaigns of its own, whatever the
-  // CDRs of the selection), plus those chosen before.
+  // The Regions of the CDRs of the campaigns of the NNS Break-down (its own, whatever the CDRs of the selection), as the
+  // server chooses them for the NR Mode (asked once per NR Mode and campaigns), plus those chosen before.
+  function nnsCampaignRegions() {
+    const preset = nnsCampaigns ? chosenCampaignPreset(nnsCampaigns) : '';
+    const chosenCampaigns = preset ? [preset] : [...(nnsCampaigns?.selectedOptions || [])].map(option => option.value).filter(Boolean);
+    const campaigns = chosenCampaigns.length ? chosenCampaigns : NNS_DEFAULT_CAMPAIGNS;
+    const nrMode = String(nrFilter?.value || 'NSA');
+    const key = JSON.stringify([nrMode, campaigns]);
+    if (!nnsRegionsByCampaigns.has(key)) {
+      nnsRegionsByCampaigns.set(key, null);
+      requestAutoCdrs(nrMode, {Campaign: campaigns}).then(body => {
+        nnsRegionsByCampaigns.set(key, uniqueCatalogueValues(body?.options?.Region));
+      }).catch(() => {
+        // Without an answer, the Regions of every CDR of the workspace.
+        const regionKey = filterCatalogueKeys.get('Region');
+        nnsRegionsByCampaigns.set(key, [...datasetCatalogues.values()].flatMap(catalogue => uniqueCatalogueValues(catalogue?.[regionKey])));
+      }).finally(refreshNnsOptions);
+    }
+    return nnsRegionsByCampaigns.get(key);
+  }
   function refreshNnsOptions() {
     refreshCampaignChoices(nnsCampaigns);
-    const regionSelect = contextFilterSelects.get('Region');
     if (!nnsRegions) return;
     const chosen = [...nnsRegions.selectedOptions].map(option => option.value).filter(Boolean);
-    const regionKey = filterCatalogueKeys.get('Region');
-    const found = [...datasetCatalogues.values()].flatMap(catalogue => uniqueCatalogueValues(catalogue?.[regionKey]));
+    const found = nnsCampaignRegions();
+    if (found === null) return;   // (Asked: the list follows the answer.)
     // (Without the G_Level_2 values the Region filter also lists: City and Connecting Roads are the kinds of area.)
-    const values = [...new Set([...found, ...[...(regionSelect?.options || [])].map(option => option.value)])]
+    const values = [...new Set(found)]
       .filter(value => value && !value.startsWith('@') && !['city', 'connecting roads'].includes(value.toLocaleLowerCase()))
       .sort((left, right) => left.localeCompare(right));
     const known = new Set(values.map(value => value.toLocaleLowerCase()));
@@ -13086,6 +13105,31 @@
   const favouritesCount = root.querySelector('[data-scoring-favourites-count]');
   const messageHome = message?.parentElement || null;
   const editFoot = configHost?.querySelector('[data-scoring-config-edit-foot]') || null;
+  // Other campaigns of the NNS Break-down: the Regions of their CDRs.
+  nnsCampaigns?.addEventListener('change', () => refreshNnsOptions());
+
+  // The "i" of Country Areas, Scoring Trends and the NNS Break-down: what each part shows and its settings.
+  const partInfoDialog = root.querySelector('[data-scoring-part-info-dialog]');
+  root.querySelectorAll('[data-scoring-part-info]').forEach(button => button.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!partInfoDialog) return;
+    const key = button.dataset.scoringPartInfo;
+    let shown = null;
+    partInfoDialog.querySelectorAll('[data-scoring-part-info-section]').forEach(section => {
+      section.hidden = section.dataset.scoringPartInfoSection !== key;
+      if (!section.hidden) shown = section;
+    });
+    if (!shown) return;
+    partInfoDialog.dataset.part = key;
+    partInfoDialog.querySelector('[data-scoring-part-info-title]').textContent = shown.dataset.title;
+    partInfoDialog.querySelector('[data-scoring-part-info-step]').textContent = shown.dataset.step;
+    partInfoDialog.querySelector('.scoring-part-info-body').scrollTop = 0;
+    if (!partInfoDialog.open) partInfoDialog.showModal();
+  }));
+  partInfoDialog?.querySelectorAll('[data-scoring-part-info-close]').forEach(button => button.addEventListener('click', () => partInfoDialog.close()));
+  partInfoDialog?.addEventListener('click', event => { if (event.target === partInfoDialog) partInfoDialog.close(); });
+
   const CONFIG_BLOCKS = {
     setup: {step: 1, title: 'Scoring Setup', eyebrow: 'Applies to the whole panel', color: 'setup'},
     context: {step: 2, title: 'Context Filters', eyebrow: 'What is scored', color: 'context'},

@@ -85,6 +85,7 @@ Everything happens in the **Scoring & GAP Analysis** panel, with the results bel
 - **Environment** is not a block: it is a view option beside **Scoring** above the results, applied without calculating.
 - **Switching Country Areas or Trends off:** each card has a switch in its top right corner (on by default). Off, it is not calculated (with both off, the rows of the whole country are not read either), its card says *Off* and its tab hides from that scoring. When the same scoring with them on is already calculated and up to date, its result is used at once (without the tabs switched off), nothing is calculated again; switched on again, a part already calculated for the same scoring (the Favourite Scoring with the other part off, up to date) is taken from it and only the other part is calculated. See [Country Areas & Scoring Trends](#country-areas-scoring-trends).
 - **NNS Break-down:** off by default; switched on with the switch of its card, it is calculated with the scoring and its tab shows (see [NNS Break-down](#nns-break-down)).
+- **What each optional part shows:** the **i** beside the switch of the Country Areas, Trends and NNS Break-down cards opens a panel with what its tab shows, its settings and what to know.
 - **Layout:** cards in three rows on large screens (the NNS Break-down on a row of its own); one-line pills on phones and narrow windows.
 - **View:** Best Network or Most Reliable, NSA vs SA, NSA & SA charts and the KPI and GAP values, then **Report (PPT/Word)** with **Export this scoring** and **Custom report…** (see [Results exports](#results-exports)).
 
@@ -663,7 +664,7 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 | Setting | Choices |
 | --- | --- |
 | **Campaigns** | **Latest 4 campaigns** (the default), another automatic choice or chosen campaigns, whatever the Campaign filter (the complete campaigns of each NR Mode: Weekly, Daily and Flex CDRs are left out) |
-| **Regions** | The Regions it covers, such as Vendor A, VMO2 North and VMO2 South (it lists the Regions of every CDR of the workspace, whatever the CDRs of the selection); none: every Region |
+| **Regions** | The Regions it covers, such as Vendor A, VMO2 North and VMO2 South (it lists the Regions of the CDRs of its own campaigns, whatever the CDRs of the selection); none: every Region |
 | **Connecting roads** | **Grouped by Region** (a row for the Roads and one for the Highway of each Region, the default) or **Each road on its own** |
 
 - **Scored like the trends:** the CDRs of its campaigns with the filters of the scoring but Region, Cluster, City and Campaign, its methodology (By campaign: each campaign with its own) and GAP reference. **NSA vs SA** scores each NR Mode apart (an **NR Mode** selector in the tab).

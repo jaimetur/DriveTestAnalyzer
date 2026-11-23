@@ -2055,6 +2055,32 @@
   .scoring-config-pill-wrap.is-trends .scoring-config-pill-switch input:checked + span { background: #1d8a5b; }
   .scoring-config-pill-wrap.is-nns .scoring-config-pill-switch input:checked + span { background: #0f766e; }
   .scoring-config-pill-switch input:checked + span::after { transform: translateX(.9rem); }
+  /* The "i" of each optional part, beside its switch: what it shows and its settings. */
+  .scoring-config-pill-wrap > button.scoring-config-pill { padding-right: 5.1rem; }
+  button.scoring-config-pill-info { position: absolute; top: 50%; right: 3.05rem; transform: translateY(-50%); display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; min-width: 0; padding: 0; border: 1.5px solid currentColor; border-radius: 50%; background: #fff; box-shadow: none; color: #4b5d6b; font: italic 800 .78rem/1 Georgia, 'Times New Roman', serif; cursor: pointer; }
+  button.scoring-config-pill-info:hover, button.scoring-config-pill-info:focus-visible { background: #eef4f7; color: #10314a; }
+  .scoring-config-pill-wrap.is-areas button.scoring-config-pill-info { color: #6b3fb8; }
+  .scoring-config-pill-wrap.is-trends button.scoring-config-pill-info { color: #1d8a5b; }
+  .scoring-config-pill-wrap.is-nns button.scoring-config-pill-info { color: #0f766e; }
+  .scoring-part-info-dialog { width: min(46rem, calc(100vw - 2rem)); max-height: min(88vh, 52rem); padding: 0; border: 0; border-radius: 16px; box-shadow: 0 30px 80px rgba(16, 49, 74, .35); }
+  .scoring-part-info-dialog[open] { display: flex; flex-direction: column; }
+  .scoring-part-info-dialog::backdrop { background: rgba(10, 22, 34, .45); }
+  .scoring-part-info-dialog > header { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 1rem 1.3rem .9rem; background: linear-gradient(135deg, #10314a, var(--part-color, #0f766e)); color: #fff; }
+  .scoring-part-info-dialog > header p { margin: 0; color: rgba(255, 255, 255, .82); font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; }
+  .scoring-part-info-dialog > header h2 { margin: .15rem 0 0; color: #fff; font-size: 1.35rem; }
+  button.scoring-part-info-close { min-width: 0; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .18); box-shadow: none; color: #fff; font-size: 1.25rem; line-height: 1; }
+  .scoring-part-info-body { overflow: auto; padding: 1rem 1.4rem .6rem; color: #17232d; font-size: .9rem; line-height: 1.5; }
+  .scoring-part-info-lead { margin: 0 0 .6rem; padding: .6rem .8rem; border-left: 4px solid var(--part-color, #0f766e); border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--part-color, #0f766e) 8%, #fff); font-weight: 600; }
+  .scoring-part-info-body h3 { margin: 1rem 0 .4rem; color: var(--part-color, #0f766e); font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; }
+  .scoring-part-info-body ul { margin: 0; padding-left: 1.1rem; display: grid; gap: .35rem; }
+  .scoring-part-info-body dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .4rem 1rem; margin: 0; }
+  .scoring-part-info-body dt { font-weight: 800; color: #10314a; }
+  .scoring-part-info-body dd { margin: 0; }
+  @media(max-width:560px) { .scoring-part-info-body dl { grid-template-columns: minmax(0, 1fr); } .scoring-part-info-body dd { margin-bottom: .3rem; } }
+  .scoring-part-info-dialog > footer { display: flex; justify-content: flex-end; padding: .7rem 1.3rem; border-top: 1px solid var(--line); }
+  .scoring-part-info-dialog[data-part="areas"] { --part-color: #6b3fb8; }
+  .scoring-part-info-dialog[data-part="trends"] { --part-color: #1d8a5b; }
+  .scoring-part-info-dialog[data-part="nns"] { --part-color: #0f766e; }
   .scoring-config-pill-switch input:focus-visible + span { outline: 2px solid var(--brand-3); outline-offset: 2px; }
   @media(max-width:640px) { .scoring-config-pill-wrap { width: 100%; } }
   @media(min-width:1200px) {
@@ -2062,6 +2088,7 @@
     /* (The NNS Break-down, a row of its own.) */
     .scoring-config-pills > .scoring-config-pill-wrap.is-nns { grid-column: span 6; }
     .scoring-config-pill-switch { top: .5rem; transform: none; }
+    button.scoring-config-pill-info { top: .45rem; transform: none; }
   }
   /* The blocks are numbered: the steps to configure a scoring. */
   .scoring-config-step { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; margin-right: .4rem; border-radius: 50%; background: var(--pill); color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: 0; vertical-align: middle; }
@@ -2488,17 +2515,92 @@
             <button type="button" class="scoring-config-pill is-split" data-scoring-config-open="split"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 3">3</span>Break down by</span><span class="scoring-config-pill-value" data-scoring-config-summary="split"></span><span class="scoring-config-card-lines" data-scoring-config-details="split"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
             <div class="scoring-config-pill-wrap is-areas">
               <button type="button" class="scoring-config-pill is-areas" data-scoring-config-open="areas" title="Always the whole country: the Region, Cluster and City of the Context Filters do not apply"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 4">4</span>Country Areas</span><span class="scoring-config-pill-scope">whole country</span><span class="scoring-config-pill-value" data-scoring-config-summary="areas"></span><span class="scoring-config-card-lines" data-scoring-config-details="areas"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+              <button type="button" class="scoring-config-pill-info" data-scoring-part-info="areas" title="What Country Areas shows and its settings" aria-label="What Country Areas shows and its settings">i</button>
               <label class="scoring-config-pill-switch" title="Include Country Areas: switched off, it is not calculated and its tab hides"><input type="checkbox" role="switch" data-scoring-part-switch="country_areas" checked aria-label="Include Country Areas"><span aria-hidden="true"></span></label>
             </div>
             <div class="scoring-config-pill-wrap is-trends">
               <button type="button" class="scoring-config-pill is-trends" data-scoring-config-open="trends"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 5">5</span>Trends</span><span class="scoring-config-pill-value" data-scoring-config-summary="trends"></span><span class="scoring-config-card-lines" data-scoring-config-details="trends"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+              <button type="button" class="scoring-config-pill-info" data-scoring-part-info="trends" title="What Scoring Trends shows and its settings" aria-label="What Scoring Trends shows and its settings">i</button>
               <label class="scoring-config-pill-switch" title="Include Scoring Trends: switched off, it is not calculated and its tab hides"><input type="checkbox" role="switch" data-scoring-part-switch="trends" checked aria-label="Include Scoring Trends"><span aria-hidden="true"></span></label>
             </div>
             <div class="scoring-config-pill-wrap is-nns">
               <button type="button" class="scoring-config-pill is-nns" data-scoring-config-open="nns"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 6">6</span>NNS Break-down</span><span class="scoring-config-pill-value" data-scoring-config-summary="nns"></span><span class="scoring-config-card-lines" data-scoring-config-details="nns"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+              <button type="button" class="scoring-config-pill-info" data-scoring-part-info="nns" title="What the NNS Break-down shows and its settings" aria-label="What the NNS Break-down shows and its settings">i</button>
               <label class="scoring-config-pill-switch" title="Include the NNS Break-down: switched on, it is calculated with the scoring and shown in its own tab"><input type="checkbox" role="switch" data-scoring-part-switch="nns_breakdown" aria-label="Include the NNS Break-down"><span aria-hidden="true"></span></label>
             </div>
           </div>
+          {# What each optional part (Country Areas, Scoring Trends, NNS Break-down) shows and its settings (its "i"). #}
+          <dialog class="scoring-part-info-dialog" data-scoring-part-info-dialog aria-labelledby="scoring-part-info-title">
+            <header><div><p data-scoring-part-info-step>Optional part</p><h2 id="scoring-part-info-title" data-scoring-part-info-title></h2></div><button type="button" class="scoring-part-info-close" data-scoring-part-info-close aria-label="Close">×</button></header>
+            <div class="scoring-part-info-body">
+              <section data-scoring-part-info-section="areas" data-title="Country Areas" data-step="Step 4 · Country Areas tab" hidden>
+                <p class="scoring-part-info-lead">The scoring of the whole country and of each of its areas, side by side.</p>
+                <h3>What the tab shows</h3>
+                <ul>
+                  <li><b>Scoring Nationwide:</b> the scoring of the whole country, first, on a large card.</li>
+                  <li><b>Scoring per Region, Cluster or City:</b> a card per area, the operators from the highest score, each with its Data and Voice points, its rank and its distance to the first.</li>
+                  <li><b>Cities ranked:</b> per operator, every location of the latest campaign from its highest Points %, with its change since the previous campaign, its points lost and the Vendors that served it.</li>
+                  <li><b>Each operator against the reference:</b> its GAP in each location (overall, Voice and Data), the furthest behind first.</li>
+                </ul>
+                <h3>Settings</h3>
+                <dl>
+                  <dt>Breakdown</dt><dd><b>Region</b> (the default), Cluster, City, or None (only the cities on their own).</dd>
+                  <dt>Cities on their own</dt><dd>Cities scored apart, whatever the breakdown: <b>London</b> by default, or <b>Main Cities</b> (those of the workspace at each calculation).</dd>
+                </dl>
+                <h3>Good to know</h3>
+                <ul>
+                  <li><b>Always the whole country:</b> the Region, Cluster and City filters of the Context do not apply; the others (Operator, Vendor…) do.</li>
+                  <li><b>Each area on its own tests:</b> scored as a country of its own and scaled to the full points when measured in one environment only, so a city compares with the others.</li>
+                  <li><b>Switched off:</b> it is not calculated and its tab hides.</li>
+                </ul>
+              </section>
+              <section data-scoring-part-info-section="trends" data-title="Scoring Trends" data-step="Step 5 · Scoring Trends tab" hidden>
+                <p class="scoring-part-info-lead">How each operator's score moves from campaign to campaign, or period to period.</p>
+                <h3>What the tab shows</h3>
+                <ul>
+                  <li><b>Scoring Trend:</b> one line per operator over the campaigns or periods, with its score at every point (Best Network and Most Reliable).</li>
+                  <li><b>Trends — National &amp; Country Areas:</b> a table with the latest score of each operator in each area, its change from the previous one and its distance to the best (<b>Δ vs best</b>), and a chart per area on the same scale.</li>
+                </ul>
+                <h3>Settings</h3>
+                <dl>
+                  <dt>Campaigns</dt><dd><b>All available campaigns</b> (the default), Latest campaign, Latest 2–4 campaigns, Previous campaign, or chosen campaigns.</dd>
+                  <dt>Time split</dt><dd>One point per <b>Campaign</b>, or per day, week, month, quarter or year of the tests, or all the CDRs as one.</dd>
+                  <dt>Areas</dt><dd><b>Same as Country Areas</b>, or areas of its own (for example only London and Manchester).</dd>
+                </dl>
+                <h3>Good to know</h3>
+                <ul>
+                  <li><b>Campaigns of its own:</b> whatever the Campaign filter, with the same filters, methodology (By campaign: each campaign with its own) and GAP reference.</li>
+                  <li><b>Always the whole country,</b> as Country Areas.</li>
+                  <li><b>Two points at least:</b> with fewer campaigns or periods, the tab says how to get them.</li>
+                  <li><b>Switched off:</b> it is not calculated and its tab hides.</li>
+                </ul>
+              </section>
+              <section data-scoring-part-info-section="nns" data-title="NNS Break-down" data-step="Step 6 · NNS Break-down tab" hidden>
+                <p class="scoring-part-info-lead">The scoring of each city and of the connecting roads with the sites that serve them: the table to project the improvement of the NNS sites.</p>
+                <h3>What the tab shows</h3>
+                <ul>
+                  <li><b>Cities and connecting roads:</b> the points of each campaign per operator, the <b>GAP to #1</b> of the area and its <b>weighted GAP</b> in the Region, and the sites serving the latest campaign: NNS by capacity (High · Medium · Low), the others by eMOCN scenario, and the NNS sites planned by financial year.</li>
+                  <li><b>GAP to #1 of each Region:</b> the weighted GAPs of the areas summed: how many points each operator is behind #1 over the whole Region, and over all the chosen Regions.</li>
+                  <li><b>Latest campaign by city size and scenario:</b> each test scored by the kind of site that served it (NNS by capacity, or its eMOCN scenario).</li>
+                  <li><b>Export to Excel:</b> every table of every NR Mode, with both scorings and every GAP, ready for the projection.</li>
+                </ul>
+                <h3>Settings</h3>
+                <dl>
+                  <dt>Campaigns</dt><dd><b>Latest 4 campaigns</b> (the default), another automatic choice or chosen campaigns, whatever the Campaign filter.</dd>
+                  <dt>Regions</dt><dd>The Regions it covers, among those of the CDRs of its campaigns (for example Vendor A, VMO2 North and VMO2 South); none: every Region.</dd>
+                  <dt>Connecting roads</dt><dd><b>Grouped by Region</b> (one row for the Roads and one for the Highway of each Region) or each road on its own.</dd>
+                </dl>
+                <h3>Good to know</h3>
+                <ul>
+                  <li><b>Off by default:</b> switched on, it is calculated with the scoring (about a minute per NR Mode) and shown in its own tab.</li>
+                  <li><b>One Region per city:</b> each city belongs to the Region with most of its tests; the roads keep the Region of each test.</li>
+                  <li><b>Master Grid:</b> the capacity and the planned NNS sites come from the latest Master Grid uploaded in Workspace; without it those columns stay empty.</li>
+                  <li><b>NSA vs SA:</b> each NR Mode is scored apart.</li>
+                </ul>
+              </section>
+            </div>
+            <footer><button type="button" data-scoring-part-info-close>Close</button></footer>
+          </dialog>
           <div class="scoring-config-pending" data-scoring-config-pending role="status" hidden>
             <strong>⚠ <span data-scoring-config-pending-text>Changes not calculated yet.</span></strong>
             <span>The results below still show the previous selection: Calculate Scoring, or Discard the changes.</span>
