@@ -1454,7 +1454,13 @@
         tbody.append(regionRow);
       }
       shaded = !shaded;
-      rows.sort((left, right) => String(left.operator).localeCompare(String(right.operator)));
+      // The operators of the area from the highest points of the latest campaign (#1 first, then the smallest GAP);
+      // without points there, after the others, by name.
+      const latestPoints = row => {
+        const value = Number(((row.campaigns || {})[latest] || {})[nnsScoring]?.points);
+        return Number.isFinite(value) ? value : -Infinity;
+      };
+      rows.sort((left, right) => latestPoints(right) - latestPoints(left) || String(left.operator).localeCompare(String(right.operator)));
       const siteRow = sites.get(key) || {};
       rows.forEach((row, index) => {
         const tr = el('tr', shaded ? 'is-shaded' : '');

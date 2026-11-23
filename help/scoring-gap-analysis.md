@@ -675,7 +675,7 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 
 **Cities and connecting roads** (one table per NR Mode):
 
-- **Rows:** each Region, then its cities (big to small) and roads, each with a row per operator.
+- **Rows:** each Region, then its cities (big to small) and roads, each with a row per operator, from the highest points of the latest campaign (#1 first, then the smallest GAP).
 - **Points:** Best Network or Most Reliable (the **Scoring** selector) of each campaign, with its tests, tinted by their share of the maximum points.
 - **GAP to #1** (latest campaign): the points of the operator minus those of the operator with the most points in the area (**#1** on its row).
 - **Weighted GAP** (latest campaign): the GAP to #1 times the tests of the operator in the area over its tests in all the areas of the Region; below it, over its tests in every chosen Region (**all**). Summed, they give the GAP of the whole Region.
