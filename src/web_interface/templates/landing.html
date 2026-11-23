@@ -157,8 +157,10 @@ section.sec{padding:100px 0;position:relative}
 .gstats{display:flex;flex-wrap:wrap;gap:26px;margin:0 0 26px}.gstats b{display:block;font:800 34px/1 var(--display);color:var(--teal)}.gstats span{color:var(--muted);font-size:14px;font-weight:600}
 .pages{position:relative;height:440px}
 .pages a{position:absolute;top:50%;left:50%;width:min(230px,40vw);aspect-ratio:397/562;border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 30px 60px -20px #000;transition:transform .5s cubic-bezier(.2,.7,.2,1),z-index 0s}
-.pages a img{width:100%;height:100%;object-fit:cover}
-.pages a:hover{z-index:10 !important}
+.pages a img{width:100%;height:100%;object-fit:cover;border-radius:8px;box-shadow:0 30px 60px -20px #000;transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+.pages a{overflow:visible;background:none;box-shadow:none}
+/* The page under the pointer rises: only its picture moves, so the page keeps its place under the pointer. */
+.pages a:hover{z-index:200 !important}.pages a:hover img{transform:translateY(-18px) scale(1.06)}
 .guide-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
 .guide-list a{padding:6px 12px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--muted);text-decoration:none;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line)}
 .guide-list a:hover{color:var(--ink);background:rgba(255,255,255,.1)}
@@ -467,8 +469,8 @@ document.addEventListener('click', (event) => {
     const fan = document.getElementById('pages');
     fan.innerHTML = chosen.map((p, i) => `<a href="/documents/view/help?guide=1&slide=${p.index + 1}&back=${back}" data-guide="" data-slide="${p.index}" aria-label="Page ${p.index + 1}"><img loading="lazy" alt="" src="/api/help/guide/pages/${p.index}?thumb=1&k=${encodeURIComponent(guide.key || '')}"></a>`).join('');
     const pages = [...fan.children], mid = (pages.length - 1) / 2;
-    const lay = open => pages.forEach((a, i) => { const d = i - mid; a.style.zIndex = String(100 - Math.abs(Math.round(d))); a.style.transform = `translate(-50%,-50%) translateX(${d * (open ? 62 : 34)}px) rotate(${d * (open ? 7 : 4)}deg) translateY(${Math.abs(d) * (open ? 14 : 8)}px)`; });
-    lay(false); fan.addEventListener('mouseenter', () => lay(true)); fan.addEventListener('mouseleave', () => lay(false));
+    // The pages stay spread in a fan (spreading them on hover moved them away from the pointer, which closed it again).
+    pages.forEach((a, i) => { const d = i - mid; a.style.zIndex = String(100 - Math.abs(Math.round(d))); a.style.transform = `translate(-50%,-50%) translateX(${d * 56}px) rotate(${d * 6}deg) translateY(${Math.abs(d) * 12}px)`; });
   }).catch(() => { document.getElementById('pages').remove(); });
 })();
 </script>
