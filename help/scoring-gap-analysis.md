@@ -663,7 +663,7 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 | Setting | Choices |
 | --- | --- |
 | **Campaigns** | **Latest 4 campaigns** (the default), another automatic choice or chosen campaigns, whatever the Campaign filter (the complete campaigns of each NR Mode: Weekly, Daily and Flex CDRs are left out) |
-| **Regions** | The Regions it covers, such as Vendor A, VMO2 North and VMO2 South; none: every Region |
+| **Regions** | The Regions it covers, such as Vendor A, VMO2 North and VMO2 South (it lists the Regions of every CDR of the workspace, whatever the CDRs of the selection); none: every Region |
 | **Connecting roads** | **Grouped by Region** (a row for the Roads and one for the Highway of each Region, the default) or **Each road on its own** |
 
 - **Scored like the trends:** the CDRs of its campaigns with the filters of the scoring but Region, Cluster, City and Campaign, its methodology (By campaign: each campaign with its own) and GAP reference. **NSA vs SA** scores each NR Mode apart (an **NR Mode** selector in the tab).

@@ -858,15 +858,19 @@
     trendCampaigns.dispatchEvent(new Event('multiselect:options-updated'));
   }
 
-  // The Regions of the NNS Break-down: those of the Region filter, plus those chosen before.
+  // The Regions of the NNS Break-down: those of every CDR of the workspace (it scores campaigns of its own, whatever the
+  // CDRs of the selection), plus those chosen before.
   function refreshNnsOptions() {
     refreshCampaignChoices(nnsCampaigns);
     const regionSelect = contextFilterSelects.get('Region');
-    if (!nnsRegions || !regionSelect) return;
+    if (!nnsRegions) return;
     const chosen = [...nnsRegions.selectedOptions].map(option => option.value).filter(Boolean);
+    const regionKey = filterCatalogueKeys.get('Region');
+    const found = [...datasetCatalogues.values()].flatMap(catalogue => uniqueCatalogueValues(catalogue?.[regionKey]));
     // (Without the G_Level_2 values the Region filter also lists: City and Connecting Roads are the kinds of area.)
-    const values = [...regionSelect.options].map(option => option.value)
-      .filter(value => value && !value.startsWith('@') && !['city', 'connecting roads'].includes(value.toLocaleLowerCase()));
+    const values = [...new Set([...found, ...[...(regionSelect?.options || [])].map(option => option.value)])]
+      .filter(value => value && !value.startsWith('@') && !['city', 'connecting roads'].includes(value.toLocaleLowerCase()))
+      .sort((left, right) => left.localeCompare(right));
     const known = new Set(values.map(value => value.toLocaleLowerCase()));
     const options = [...values, ...chosen.filter(value => !known.has(value.toLocaleLowerCase()))];
     const signature = JSON.stringify({options, chosen});
