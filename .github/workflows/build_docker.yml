@@ -133,6 +133,9 @@ jobs:
 
       - name: Build and push multi-platform Docker image
         uses: docker/build-push-action@v7
+        env:
+          # The build record (a .dockerbuild artifact) is not needed and counts against the storage quota.
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           file: docker/dockerfile
@@ -163,11 +166,14 @@ jobs:
           cp -R help dist/DriveTestAnalyzer/help
           cd dist && zip -r DriveTestAnalyzer_docker_bundle.zip DriveTestAnalyzer
 
+      # (Kept one day, and a full storage quota of the account does not stop the build: the image is already pushed.)
       - name: Upload Docker package artifact
         uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: DriveTestAnalyzer_docker_bundle
           path: dist/DriveTestAnalyzer_docker_bundle.zip
+          retention-days: 1
 
   duckdb-noavx-wheel:
     permissions:
@@ -216,6 +222,9 @@ jobs:
 
       - name: Build and push the image without AVX
         uses: docker/build-push-action@v7
+        env:
+          # The build record (a .dockerbuild artifact) is not needed and counts against the storage quota.
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           file: docker/dockerfile

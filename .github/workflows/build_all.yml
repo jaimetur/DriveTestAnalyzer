@@ -71,11 +71,15 @@ jobs:
           mkdir -p dist
           zip -r "dist/DriveTestAnalyzer_${VERSION}_source.zip" src tests assets tools docker macos-launcher macos-installer help README.md CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md AGENTS.md storage-paths.conf requirements.txt pyproject.toml .github
 
+      # (Kept one day: in a private repository the artifacts count against the storage quota of the account, and a
+      # full quota must not stop the build; the release takes the archive from dist/.)
       - name: Upload source artifact
         uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: DriveTestAnalyzer_source_bundle
           path: dist/*.zip
+          retention-days: 1
 
       - name: Build release notes from changelog
         id: release_notes
