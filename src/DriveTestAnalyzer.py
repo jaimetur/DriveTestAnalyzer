@@ -22549,7 +22549,8 @@ def scoring_saved_scoring_export(
         if selected_environment not in valid_environments:
             raise HTTPException(status_code=400, detail='The selected scoring environment is not available for this Saved Scoring.')
     if export_kind == 'nns':
-        # The NNS Break-down (ticket #195) as an Excel workbook: both scorings, every NR Mode and every site count.
+        # The NNS Break-down (ticket #195) as an Excel workbook: both scorings, every NR Mode and every site count; its
+        # name ends with the scoring chosen in the tab (best_network or most_reliable).
         from src.modules.scoring.scoring_nns_breakdown import workbook as nns_workbook
         if not isinstance(result.get('nns_breakdown'), dict):
             raise HTTPException(status_code=409, detail='This Saved Scoring has no NNS Break-down: switch it on and calculate it.')
@@ -22557,7 +22558,7 @@ def scoring_saved_scoring_export(
         return logged_export(Response(
             nns_workbook(result['nns_breakdown'], title=str(saved_scoring.get('name') or '')),
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={'Content-Disposition': f'attachment; filename="{name}-nns-breakdown.xlsx"'}))
+            headers={'Content-Disposition': f'attachment; filename="{name}-nns-breakdown-{scoring}.xlsx"'}))
     if export_kind in {'scoring', 'gap'}:
         if scoring == 'most_reliable':
             # The CSV keeps its schema; it carries the Most Reliable points instead of the Best Network ones.

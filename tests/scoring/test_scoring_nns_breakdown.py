@@ -196,6 +196,9 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
 
     response = client.get(f"/scoring/saved-scorings/{saved['id']}/export/nns")
     assert response.status_code == 200, response.text
+    assert response.headers['content-disposition'].endswith('-nns-breakdown-best_network.xlsx"')
+    reliable = client.get(f"/scoring/saved-scorings/{saved['id']}/export/nns", params={'scoring': 'most_reliable'})
+    assert reliable.headers['content-disposition'].endswith('-nns-breakdown-most_reliable.xlsx"')
     book = load_workbook(BytesIO(response.content))
     assert book.sheetnames == ['Areas', 'GAP Totals', 'Sites', 'Scenarios', 'Projection', 'About']
     # Three header rows: each campaign in a band of its own colour, its Tests then its Best Network and Most Reliable.
