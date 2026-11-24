@@ -175,12 +175,18 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
     latest = [row['campaigns']['2026-Q3']['best'] for row in breakdown['areas'] if row['area'] == 'London']
     assert min(item['gap'] for item in latest) < 0 and max(item['gap'] for item in latest) == 0
     assert {item['leader'] for item in latest} == {next(item['leader'] for item in latest)}
-    south = {row['operator']: row for row in breakdown['gap_totals'] if row['region'] == 'South'}
+    # Each Region against its #1 as Country Areas scores it: the weighted GAPs of its areas plus the adjustment are its
+    # real GAP, the weights of its areas share its points, and the projection has the areas of the latest campaign.
+    south = {row['operator']: row['campaigns']['2026-Q3']['best'] for row in breakdown['gap_totals'] if row['region'] == 'South'}
+    assert {total['leader'] for total in south.values()} == {next(iter(south.values()))['leader']}
     for operator, total in south.items():
-        weighted = [row['campaigns']['2026-Q3']['best']['gap_region'] for row in breakdown['areas']
-                    if row['operator'] == operator and '2026-Q3' in row['campaigns'] and row['campaigns']['2026-Q3']['best']]
-        assert total['campaigns']['2026-Q3']['best'] == pytest.approx(sum(weighted), abs=1e-3)
-        assert 0 < total['campaigns']['2026-Q3']['best_points'] <= 1000
+        assert total['weighted_gap'] + total['adjustment'] == pytest.approx(total['gap'], abs=1e-2)
+        assert 0 < total['points'] <= 1000 and 0 < total['weighted_points'] <= 1000
+        weights = [row['campaigns']['2026-Q3']['best']['weight_region'] for row in breakdown['areas']
+                   if row['operator'] == operator and row['campaigns'].get('2026-Q3', {}).get('best')]
+        assert sum(weights) == pytest.approx(1, abs=0.02)
+    assert {row['operator'] for row in breakdown['projection']} == {row['operator'] for row in breakdown['areas']}
+    assert all(row['campaign'] == '2026-Q3' and row['tests'] >= row['nns_tests'] for row in breakdown['projection'])
 
     # The same selection without it is another Saved Scoring, whose result has none.
     plain, _ready = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA', username='admin',
@@ -191,18 +197,25 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
     response = client.get(f"/scoring/saved-scorings/{saved['id']}/export/nns")
     assert response.status_code == 200, response.text
     book = load_workbook(BytesIO(response.content))
-    assert book.sheetnames == ['Areas', 'GAP Totals', 'Sites', 'Scenarios', 'About']
+    assert book.sheetnames == ['Areas', 'GAP Totals', 'Sites', 'Scenarios', 'Projection', 'About']
     # Three header rows: each campaign in a band of its own colour, its Tests then its Best Network and Most Reliable.
     areas = book['Areas']
     bands, parts, header = ([cell.value for cell in areas[row]] for row in (1, 2, 3))
     assert header[:6] == ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator'] and [name for name in bands[6:] if name] == ['26-Q2', '26-Q3']
     assert [name for name in parts[6:] if name] == ['Tests', 'Best Network', 'Most Reliable'] * 2
-    assert header[6:12] == ['Tests', 'Points', '#1', 'GAP to #1', 'Weighted GAP to #1 in its Region', 'Weighted GAP to #1 in all the Regions']
-    assert areas.cell(row=1, column=7).fill.fgColor.rgb != areas.cell(row=1, column=18).fill.fgColor.rgb
+    assert header[6:13] == ['Tests', 'Points', '#1 of the area', 'GAP to #1 of the area', 'Weight in its Region',
+                            'Weighted GAP to #1 of the Region', 'Weighted GAP to #1 of all the Regions']
+    # Each Region first (its own scoring), then its areas, then its adjustment.
+    kinds = [row[3] for row in areas.iter_rows(min_row=4, values_only=True)]
+    assert kinds[0] == 'Region' and 'Adjustment' in kinds and kinds.index('Adjustment') > kinds.index('City')
+    assert areas.cell(row=1, column=7).fill.fgColor.rgb != areas.cell(row=1, column=20).fill.fgColor.rgb
     assert areas.freeze_panes == 'G4' and areas.cell(row=4, column=7).value is not None
     totals = book['GAP Totals']
-    assert [cell.value for cell in totals[3]][:8] == ['NR Mode', 'Region', 'Operator', 'Tests', 'Weighted points',
-                                                     'Weighted GAP to #1', 'Weighted points', 'Weighted GAP to #1']
+    assert [cell.value for cell in totals[3]][:10] == ['NR Mode', 'Region', 'Operator', 'Tests', 'Points', '#1', 'GAP to #1',
+                                                      'Weighted GAP of its areas', 'Adjustment', 'Weighted points of its areas']
+    assert [cell.value for cell in book['Projection'][3]][:13] == [
+        'NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator', 'Scoring', 'Serving sites', 'NNS sites', 'Tests', 'NNS tests',
+        'Points', 'NNS points']
     assert 'NNS High' in [cell.value for cell in book['Sites'][1]]
     assert client.get(f"/scoring/saved-scorings/{plain['id']}/export/nns").status_code in {404, 409}
 
@@ -229,25 +242,47 @@ def test_each_city_belongs_to_the_region_with_most_of_its_tests():
     assert set(south['__nns_kind']) == {nb.ROAD_KIND}
 
 
-def test_the_gap_to_number_one_is_weighted_by_the_tests_of_each_area():
-    def row(region, area, operator, points, tests):
-        return {'nr_mode': 'NSA', 'region': region, 'area': area, 'operator': operator,
-                'campaigns': {'Q3': {'best': {'points': points}, 'reliable': None, 'tests': tests}}}
-    rows = [row('Vendor A', 'Reading', 'EE', 960.0, 100), row('Vendor A', 'Reading', 'VF', 980.0, 100),
-            row('Vendor A', 'Luton', 'EE', 900.0, 300), row('Vendor A', 'Luton', 'VF', 850.0, 300),
-            row('VMO2 South', 'Oxford', 'VF', 800.0, 400), row('VMO2 South', 'Oxford', 'EE', 820.0, 400)]
-    totals = {(item['region'], item['operator']): item['campaigns']['Q3'] for item in nb.add_gaps(rows)}
-    reading_ee = rows[0]['campaigns']['Q3']['best']
-    assert reading_ee['leader'] == 'VF' and reading_ee['gap'] == -20.0
-    assert reading_ee['gap_region'] == pytest.approx(-20 * 100 / 400) and reading_ee['gap_all'] == pytest.approx(-20 * 100 / 800)
-    assert rows[1]['campaigns']['Q3']['best']['gap'] == 0 and rows[1]['campaigns']['Q3']['best']['leader'] == 'VF'
-    # Vendor A: EE loses 5 in Reading, VF 37.5 in Luton; all Regions: VF also loses 10 in Oxford.
-    assert totals[('Vendor A', 'EE')]['best'] == pytest.approx(-5.0) and totals[('Vendor A', 'VF')]['best'] == pytest.approx(-37.5)
-    assert totals[('', 'VF')]['best'] == pytest.approx(-50 * 300 / 800 - 20 * 400 / 800)
-    assert totals[('', 'EE')]['tests'] == 800 and 'reliable' not in totals[('', 'EE')]
-    # The points weighted the same way: EE in Vendor A, 960 over 100 tests and 900 over 300.
-    assert totals[('Vendor A', 'EE')]['best_points'] == pytest.approx((960 * 100 + 900 * 300) / 400)
+def test_each_area_weighs_in_its_region_as_the_methodology_and_the_adjustment_closes_the_gap():
+    """Each area adds its points in its environment and category times its share of the tests of the Region there: the
+    weighted GAPs to the #1 of the Region plus the adjustment are the real GAP of the Region."""
+    def row(area, operator):
+        return {'nr_mode': 'NSA', 'region': 'Vendor A', 'area': area, 'operator': operator,
+                'campaigns': {'Q3': {'best': {'points': 900.0}, 'reliable': None, 'tests': 100}}}
+    rows = [row('Reading', 'EE'), row('Reading', 'VF'), row('Roads', 'EE'), row('Roads', 'VF')]
+    city, road = 'Drive - City', 'Drive - Connecting Roads'
+    # Points in each environment and category (Data 650 x 0.65 of City...), unscaled.
+    area_points = {'best': {
+        ('Q3', 'EE', 'Vendor A', 'Reading', city, 'Data'): (400.0, 422.5), ('Q3', 'EE', 'Vendor A', 'Reading', city, 'Voice'): (200.0, 227.5),
+        ('Q3', 'VF', 'Vendor A', 'Reading', city, 'Data'): (410.0, 422.5), ('Q3', 'VF', 'Vendor A', 'Reading', city, 'Voice'): (210.0, 227.5),
+        ('Q3', 'EE', 'Vendor A', 'Roads', road, 'Data'): (200.0, 227.5), ('Q3', 'EE', 'Vendor A', 'Roads', road, 'Voice'): (100.0, 122.5),
+        ('Q3', 'VF', 'Vendor A', 'Roads', road, 'Data'): (150.0, 227.5), ('Q3', 'VF', 'Vendor A', 'Roads', road, 'Voice'): (90.0, 122.5)}}
+    area_tests = {(campaign, operator, region, area, environment, kind): 10
+                  for (campaign, operator, region, area, environment, _category) in area_points['best']
+                  for kind in ('data', 'voice')}
+    region_points = {'best': {('Q3', 'EE', 'Vendor A'): (905.0, 1000.0), ('Q3', 'VF', 'Vendor A'): (857.0, 1000.0)}}
+    all_points = {'best': {('Q3', 'EE'): (905.0, 1000.0), ('Q3', 'VF'): (857.0, 1000.0)}}
+    totals = nb.reconcile(rows, area_points, area_tests, region_points, all_points, {'Data': {'data'}, 'Voice': {'voice'}}, 'NSA')
+    reading_vf = rows[1]['campaigns']['Q3']['best']
+    # Reading is the whole City environment of the Region: it adds all its City points; EE (#1 of the Region) adds 600.
+    assert reading_vf['points_region'] == pytest.approx(620) and reading_vf['gap_region'] == pytest.approx(20)
+    assert reading_vf['weight_region'] == pytest.approx(0.65) and reading_vf['leader_region'] == 'EE'
+    region = {(item['region'], item['operator']): item['campaigns']['Q3']['best'] for item in totals}
+    vf = region[('Vendor A', 'VF')]
+    assert vf['leader'] == 'EE' and vf['gap'] == pytest.approx(-48)
+    assert vf['weighted_gap'] == pytest.approx(20 - 60) and vf['weighted_points'] == pytest.approx(860)
+    assert vf['weighted_gap'] + vf['adjustment'] == pytest.approx(vf['gap'])
+    assert region[('', 'VF')]['gap'] == pytest.approx(-48) and region[('Vendor A', 'EE')]['gap'] == 0
 
+
+def test_the_projection_adds_each_year_the_rise_of_the_nns_share_times_the_nns_advantage():
+    row = {'sites': 10, 'nns_sites': 2, 'tests': 100, 'nns_tests': 30, 'planned_sites': {'FY27': 1, 'FY28': 2},
+           'planned_tests': {'FY27': 10, 'FY28': 20}, 'best': {'points': 950.0, 'max_points': 1000.0, 'nns_points': 970.0}}
+    lines = nb.projection(row, ['FY26', 'FY27', 'FY28'], 0.5, reference=False)['best']
+    assert lines['sites_share'] == [0.2, 0.3, 0.5] and lines['sites'] == [950.0, 952.0, 956.0]
+    assert lines['tests_share'] == [0.3, 0.4, 0.6] and lines['tests'] == [950.0, 952.0, 956.0]
+    # The reference grows 0.5 % a year from the first year on, as in the projection of the ticket.
+    assert lines['reference'] == [950.0, 954.75, 959.52]
+    assert nb.projection(row, ['FY26', 'FY27'], 0.5, reference=True)['best']['sites'] == [950.0, 950.0]
 
 def test_the_master_grid_matches_the_sites_named_by_the_number_of_the_site_they_pair_with():
     """VodafoneThree and shared sites are often named in the CDRs by the number of the site they pair with."""

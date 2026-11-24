@@ -45,13 +45,17 @@ DEFAULT_CAMPAIGNS = ('@latest-4-campaigns',)
 ROAD_GROUPINGS = ('region', 'each')
 WARNING_PREFIX = 'NNS Break-down:'
 # Raise when the calculation changes, so the results saved before are calculated again.
-VERSION = 4
+VERSION = 5
 CITY_KIND = 'City'
 ROAD_KIND = 'Road'
 NO_SCENARIO = 'No eMOCN scenario'
 NNS_SCENARIO = 'NNS'
 CAPACITIES = ('High', 'Medium', 'Low')
 UNKNOWN_CAPACITY = 'Not in the Master Grid'
+# The yearly growth (%) of the reference operator in the projection, unless the request gives another one.
+DEFAULT_REFERENCE_GROWTH = 0.5
+# The fewest tests served by NNS sites whose points the projection trusts (fewer leave the projection of the area empty).
+MIN_NNS_TESTS = 30
 FIELDS = ('G_Level_2', 'G_Level_3', 'G_Level_4', 'Serving_eMOCN_Scenario', 'Serving_Host_Network', 'Serving_Site_ID')
 _REGION, _AREA, _SCENARIO = 'Region', 'City', 'Cluster'
 
@@ -76,8 +80,17 @@ def normalize_request(value: Any) -> dict[str, Any] | None:
         if text:
             regions.setdefault(text.casefold(), text)
     roads = str(value.get('roads') or '').strip().casefold()
-    return {'campaigns': campaigns, 'regions': sorted(regions.values(), key=str.casefold),
-            'roads': roads if roads in ROAD_GROUPINGS else ROAD_GROUPINGS[0]}
+    try:
+        growth = float(value.get('reference_growth', DEFAULT_REFERENCE_GROWTH))
+    except (TypeError, ValueError):
+        growth = DEFAULT_REFERENCE_GROWTH
+    growth = growth if growth == growth and -50 <= growth <= 50 else DEFAULT_REFERENCE_GROWTH
+    request = {'campaigns': campaigns, 'regions': sorted(regions.values(), key=str.casefold),
+               'roads': roads if roads in ROAD_GROUPINGS else ROAD_GROUPINGS[0]}
+    # (Only when it differs from the default, so the selections saved before keep their identity.)
+    if round(growth, 3) != DEFAULT_REFERENCE_GROWTH:
+        request['reference_growth'] = round(growth, 3)
+    return request
 
 
 def requested(area_summary: Any) -> dict[str, Any] | None:
@@ -135,13 +148,34 @@ def city_regions(frames: Iterable[pd.DataFrame]) -> dict[str, str]:
     return {area: owner for area, (_count, owner) in owners.items()}
 
 
+def scenario_lookup(cells: Iterable[tuple[Any, Any, Any, int]]) -> dict[tuple[str, str], str]:
+    """The eMOCN scenario of each (host operator, site number) of an inventory such as the Multivendor Mapping of the
+    workspace (rows of network, site, scenario and cells): NNS when any cell of the site is NNS, else the scenario of
+    most of its cells."""
+    from src.modules.network.master_grid import host_operator
+
+    best: dict[tuple[str, str], tuple[tuple[int, int], str]] = {}
+    for network, site, scenario, cells in cells:
+        operator = host_operator(network)
+        number = re.sub(r'\.0+$', '', str(site or '').strip())
+        if not operator or not number:
+            continue
+        name = str(scenario or '').strip().upper()
+        rank = (1 if name == NNS_SCENARIO else 0, int(cells or 0))
+        key = (operator, number)
+        if key not in best or rank > best[key][0]:
+            best[key] = (rank, name)
+    return {key: name for key, (_rank, name) in best.items()}
+
+
 def classify(frame: pd.DataFrame, lookup: dict[tuple[str, str], dict[str, str]], request: dict[str, Any],
-             owners: dict[str, str] | None = None) -> pd.DataFrame:
+             owners: dict[str, str] | None = None, scenarios: dict[tuple[str, str], str] | None = None) -> pd.DataFrame:
     """The tests of a CDR type in the Regions of the request, each with its Region (a city's is that of ``owners``,
     see city_regions), area, area kind and size, scenario and serving site (``__nns_*`` columns)."""
     from src.modules.network.master_grid import host_operator
 
     region = _text(_column(frame, 'Region'))
+    test_region = region
     city, size, name = _cities(frame)
     if owners:
         region = name.map(owners).where(city & name.ne(''), region).fillna(region).astype(str)
@@ -149,6 +183,7 @@ def classify(frame: pd.DataFrame, lookup: dict[tuple[str, str], dict[str, str]],
     keep = region.ne('') & (region.str.casefold().isin(wanted) if wanted else True)
     mask = keep.to_numpy(dtype=bool)
     frame, region, city, size, name = frame[mask].copy(), region[mask], city[mask], size[mask], name[mask]
+    frame['__nns_test_region'] = test_region[mask].to_numpy()
     road_type = size.where(size.ne(''), 'Roads')
     if request.get('roads') == 'each':
         road_area = name.where(name.ne(''), road_type)
@@ -158,9 +193,14 @@ def classify(frame: pd.DataFrame, lookup: dict[tuple[str, str], dict[str, str]],
     frame['__nns_kind'] = city.map({True: CITY_KIND, False: ROAD_KIND}).to_numpy()
     frame['__nns_area'] = name.where(city & name.ne(''), road_area).to_numpy()
     frame['__nns_size'] = size.where(city, road_type).where(lambda values: values.ne(''), 'Unknown').to_numpy()
-    scenario = _text(_column(frame, 'Serving_eMOCN_Scenario'))
     host = _text(_column(frame, 'Serving_Host_Network')).map(host_operator)
     site = _site_number(_column(frame, 'Serving_Site_ID'))
+    # The scenario of the serving site in the inventory (the Multivendor Mapping), else the one the CDR row has.
+    scenario = _text(_column(frame, 'Serving_eMOCN_Scenario'))
+    if scenarios:
+        found = pd.Series([scenarios.get((operator, number)) if operator and number else None
+                           for operator, number in zip(host, site)], index=frame.index, dtype=object)
+        scenario = found.where(found.notna(), scenario).astype(str)
     details = [lookup.get((operator, number)) if operator and number else None for operator, number in zip(host, site)]
     capacity = pd.Series([item['config'] if item else '' for item in details], index=frame.index, dtype=object)
     nns = scenario.str.upper().eq(NNS_SCENARIO)
@@ -170,16 +210,17 @@ def classify(frame: pd.DataFrame, lookup: dict[tuple[str, str], dict[str, str]],
     frame['__nns_host'] = host.to_numpy()
     frame['__nns_site'] = site.to_numpy()
     frame['__nns_raw_scenario'] = scenario.str.upper().to_numpy()
+    frame['__nns_is_nns'] = nns.map({True: NNS_SCENARIO, False: 'Other'}).to_numpy()
     return frame
 
 
-def scoring_frames(frames: dict[str, pd.DataFrame], area: str, region: str | None = None) -> dict[str, pd.DataFrame]:
-    """The classified rows with the Region, City and Cluster columns the engine splits by holding ``region`` (its
-    Region), ``area`` (its area or its size) and the scenario."""
+def scoring_frames(frames: dict[str, pd.DataFrame], area: str, scenario: str = '__nns_scenario') -> dict[str, pd.DataFrame]:
+    """The classified rows with the Region, City and Cluster columns the engine splits by holding their Region,
+    ``area`` (its area or its size) and ``scenario`` (the scenario, or NNS or not)."""
     prepared = {}
     for kind, frame in frames.items():
         frame = frame.copy()
-        for level, source in ((_REGION, '__nns_region'), (_AREA, area), (_SCENARIO, '__nns_scenario')):
+        for level, source in ((_REGION, '__nns_region'), (_AREA, area), (_SCENARIO, scenario)):
             column = resolve_column_name(frame.columns, level) or level
             frame[column] = frame[source].astype(object)
         prepared[kind] = frame
@@ -263,57 +304,238 @@ def scores(result: dict, reliable: dict | None, keys: tuple[str, ...]) -> dict[t
             for key in dict.fromkeys([*best, *most])}
 
 
-def add_gaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The GAP to #1 of each area row (in place, in each campaign and scoring: ``leader``, ``gap``, ``gap_region`` and
-    ``gap_all``), and the weighted GAPs (``best``, ``reliable``) and points (``best_points``, ``reliable_points``) summed
-    per Region and for all the Regions (``region`` empty), per operator."""
-    scorings = ('best', 'reliable')
+def add_gaps(rows: list[dict[str, Any]]) -> None:
+    """The GAP to the #1 of each area (in place, in each campaign and scoring of each row: ``leader`` and ``gap``)."""
     leaders: dict[tuple, tuple[float, str]] = {}
-    tests_region: dict[tuple, int] = {}
-    tests_all: dict[tuple, int] = {}
     for row in rows:
         for campaign, values in (row.get('campaigns') or {}).items():
-            tests = int(values.get('tests') or 0)
-            tests_region[(row['region'], row['operator'], campaign)] = tests_region.get((row['region'], row['operator'], campaign), 0) + tests
-            tests_all[(row['operator'], campaign)] = tests_all.get((row['operator'], campaign), 0) + tests
-            for scoring in scorings:
+            for scoring in SCORINGS:
                 scored = values.get(scoring)
                 if not scored or scored.get('points') is None:
                     continue
                 key = (row['region'], row['area'], campaign, scoring)
-                best = leaders.get(key)
-                points = float(scored['points'])
+                best, points = leaders.get(key), float(scored['points'])
                 if best is None or points > best[0] or (points == best[0] and row['operator'].casefold() < best[1].casefold()):
                     leaders[key] = (points, row['operator'])
-    totals: dict[tuple, dict[str, Any]] = {}
     for row in rows:
         for campaign, values in (row.get('campaigns') or {}).items():
-            tests = int(values.get('tests') or 0)
-            for region in (row['region'], ''):
-                total = totals.setdefault((region, row['operator']), {
-                    'nr_mode': row.get('nr_mode'), 'region': region, 'operator': row['operator'], 'campaigns': {}})
-                entry = total['campaigns'].setdefault(campaign, {'tests': 0})
-                entry['tests'] += tests
-            for scoring in scorings:
+            for scoring in SCORINGS:
+                scored, leader = values.get(scoring), leaders.get((row['region'], row['area'], campaign, scoring))
+                if scored and scored.get('points') is not None and leader is not None:
+                    scored.update({'leader': leader[1], 'gap': round(float(scored['points']) - leader[0], 2)})
+
+
+SCORINGS = ('best', 'reliable')
+
+
+def category_kinds(configuration: dict[str, Any]) -> dict[str, set[str]]:
+    """The kinds of CDR (data, voice, speech) whose KPIs make each category of a methodology (Data, Voice)."""
+    kinds: dict[str, set[str]] = {}
+    for metric in configuration.get('metrics') or []:
+        kinds.setdefault(str(metric.get('category')), set()).add(str(metric.get('source_kind') or '').lower())
+    return kinds
+
+
+def environment_points(result: dict | None, keys: tuple[str, ...]) -> dict[tuple, tuple[float, float]]:
+    """The points and maximum of each group of a calculation in each environment and category (Data, Voice), before
+    any scaling: what the group adds to a score of several groups."""
+    found = {}
+    for row in (result or {}).get('totals') or []:
+        if row.get('environment') in (None, 'Combined') or row.get('category') in (None, 'Overall'):
+            continue
+        found[(*(str(row.get(key) or '') for key in keys), str(row['environment']), str(row['category']))] = (
+            float(row.get('total_points') or 0), float(row.get('max_points') or 0))
+    return found
+
+
+def environment_tests(result: dict | None, keys: tuple[str, ...]) -> dict[tuple, int]:
+    """The tests of each group of a calculation in each environment, per kind of CDR."""
+    tests: dict[tuple, int] = {}
+    for row in (result or {}).get('test_counts') or []:
+        key = (*(str(row.get(name) or '') for name in keys), str(row.get('environment') or ''), str(row.get('kind') or '').lower())
+        tests[key] = tests.get(key, 0) + int(row.get('tests') or 0)
+    return tests
+
+
+def overall_points(result: dict | None, keys: tuple[str, ...]) -> dict[tuple, tuple[float, float]]:
+    """The points and maximum of each group of a calculation (its Combined environment, Overall)."""
+    return {key: (float(row.get('total_points') or 0), float(row.get('max_points') or 0))
+            for key, row in _overall((result or {}).get('totals'), keys).items()}
+
+
+def reconcile(rows: list[dict[str, Any]], area_points: dict[str, dict[tuple, tuple[float, float]]],
+              area_tests: dict[tuple, int], region_points: dict[str, dict[tuple, tuple[float, float]]],
+              all_points: dict[str, dict[tuple, tuple[float, float]]], kinds: dict[str, set[str]],
+              nr_mode: str) -> list[dict[str, Any]]:
+    """The areas weighted as the methodology weighs them, against the scoring of their Region (as Country Areas).
+
+    Each area adds to its Region its points in each environment and category (Data, Voice) times its share of the tests
+    of the Region in that environment and category (the points of a City area share the City environment, those of the
+    roads the Connecting Roads one). For each area row and scoring (in place): ``points_region`` (what it adds),
+    ``weight_region`` (its share of the points of the Region) and ``gap_region`` (what it adds minus what the #1 of the
+    Region adds there), and the same over every chosen Region (``_all``).
+
+    Returns a row per Region (and one for all of them, ``region`` empty) and operator: per campaign and scoring, the
+    real points of the Region, its #1, the real GAP to it, the weighted GAPs of its areas summed and the adjustment
+    left by the scoring not being additive (rates, medians and thresholds of the Region are not those of its areas),
+    so that the weighted GAPs plus the adjustment are the GAP of Country Areas.
+    """
+    category_tests: dict[tuple, int] = {}
+    for (campaign, operator, region, area, environment, kind), count in area_tests.items():
+        for category, category_kinds_ in kinds.items():
+            if kind in category_kinds_:
+                key = (campaign, operator, region, area, environment, category)
+                category_tests[key] = category_tests.get(key, 0) + count
+    in_region: dict[tuple, int] = {}
+    in_all: dict[tuple, int] = {}
+    for (campaign, operator, region, area, environment, category), count in category_tests.items():
+        in_region[(campaign, operator, region, environment, category)] = in_region.get((campaign, operator, region, environment, category), 0) + count
+        in_all[(campaign, operator, environment, category)] = in_all.get((campaign, operator, environment, category), 0) + count
+    adds: dict[tuple, list[float]] = {}
+    for scoring, table in area_points.items():
+        for (campaign, operator, region, area, environment, category), (points, maximum) in table.items():
+            count = category_tests.get((campaign, operator, region, area, environment, category), 0)
+            for scope, total in (('region', in_region.get((campaign, operator, region, environment, category))),
+                                 ('all', in_all.get((campaign, operator, environment, category)))):
+                if total:
+                    entry = adds.setdefault((scoring, scope, campaign, operator, region, area), [0.0, 0.0])
+                    entry[0] += points * count / total
+                    entry[1] += maximum * count / total
+
+    def leaders(table: dict[tuple, tuple[float, float]], size: int) -> dict[tuple, tuple[str, float]]:
+        found: dict[tuple, tuple[str, float]] = {}
+        for key, (points, _maximum) in table.items():
+            group, operator = (key[0], *key[2:size]), key[1]
+            best = found.get(group)
+            if best is None or points > best[1] or (points == best[1] and operator.casefold() < best[0].casefold()):
+                found[group] = (operator, points)
+        return found
+    region_leaders = {scoring: leaders(table, 3) for scoring, table in region_points.items()}
+    all_leaders = {scoring: leaders(table, 2) for scoring, table in all_points.items()}
+    for row in rows:
+        operator, region, area = row['operator'], row['region'], row['area']
+        for campaign, values in (row.get('campaigns') or {}).items():
+            for scoring in SCORINGS:
                 scored = values.get(scoring)
-                leader = leaders.get((row['region'], row['area'], campaign, scoring))
-                if not scored or scored.get('points') is None or leader is None:
+                if not scored:
                     continue
-                gap = float(scored['points']) - leader[0]
-                in_region = tests_region.get((row['region'], row['operator'], campaign)) or 0
-                in_all = tests_all.get((row['operator'], campaign)) or 0
-                scored.update({'leader': leader[1], 'gap': round(gap, 2),
-                               'gap_region': round(gap * tests / in_region, 4) if in_region else None,
-                               'gap_all': round(gap * tests / in_all, 4) if in_all else None})
-                # The points of the area weighted the same way: summed, the points of the Region or of all the Regions.
-                for region, share, weight in ((row['region'], scored['gap_region'], tests / in_region if in_region else None),
-                                              ('', scored['gap_all'], tests / in_all if in_all else None)):
-                    entry = totals[(region, row['operator'])]['campaigns'][campaign]
-                    if share is not None:
-                        entry[scoring] = round(entry.get(scoring, 0.0) + share, 4)
-                    if weight is not None:
-                        entry[f'{scoring}_points'] = round(entry.get(f'{scoring}_points', 0.0) + float(scored['points']) * weight, 4)
+                for scope, leader in (('region', region_leaders.get(scoring, {}).get((campaign, region))),
+                                      ('all', all_leaders.get(scoring, {}).get((campaign,)))):
+                    mine = adds.get((scoring, scope, campaign, operator, region, area))
+                    maximum = (region_points if scope == 'region' else all_points).get(scoring, {}).get(
+                        (campaign, operator, region) if scope == 'region' else (campaign, operator), (0, 0))[1]
+                    if mine is None or leader is None:
+                        scored.update({f'points_{scope}': None, f'weight_{scope}': None, f'gap_{scope}': None})
+                        continue
+                    reference = adds.get((scoring, scope, campaign, leader[0], region, area), [0.0, 0.0])
+                    scored.update({f'points_{scope}': round(mine[0], 4),
+                                   f'weight_{scope}': round(mine[1] / maximum, 6) if maximum else None,
+                                   f'gap_{scope}': round(mine[0] - reference[0], 4), f'leader_{scope}': leader[0]})
+    totals: dict[tuple, dict[str, Any]] = {}
+    for scope, table_of, leaders_of, size in (('region', region_points, region_leaders, 3), ('all', all_points, all_leaders, 2)):
+        for scoring, table in table_of.items():
+            for key, (points, maximum) in table.items():
+                campaign, operator = key[0], key[1]
+                region = key[2] if size == 3 else ''
+                leader = leaders_of[scoring].get((campaign, region) if size == 3 else (campaign,))
+                entry = totals.setdefault((region, operator), {'nr_mode': nr_mode, 'region': region, 'operator': operator,
+                                                               'campaigns': {}})
+                scored = entry['campaigns'].setdefault(campaign, {'tests': 0})
+                weighted = [values.get(scoring, {}).get(f'gap_{scope}') for row in rows
+                            if row['operator'] == operator and (not region or row['region'] == region)
+                            for values in [(row.get('campaigns') or {}).get(campaign) or {}]]
+                weighted = [value for value in weighted if value is not None]
+                added = [values.get(scoring, {}).get(f'points_{scope}') for row in rows
+                         if row['operator'] == operator and (not region or row['region'] == region)
+                         for values in [(row.get('campaigns') or {}).get(campaign) or {}]]
+                added = [value for value in added if value is not None]
+                gap = points - leader[1] if leader else None
+                scored[scoring] = {'points': round(points, 2), 'max_points': round(maximum, 2), 'leader': leader[0] if leader else None,
+                                   'gap': round(gap, 2) if gap is not None else None,
+                                   'weighted_gap': round(sum(weighted), 4) if weighted else None,
+                                   'weighted_points': round(sum(added), 4) if added else None,
+                                   'adjustment': round(gap - sum(weighted), 4) if gap is not None and weighted else None}
+    for row in rows:
+        for campaign, values in (row.get('campaigns') or {}).items():
+            for region in (row['region'], ''):
+                entry = totals.get((region, row['operator']))
+                if entry and campaign in entry['campaigns']:
+                    entry['campaigns'][campaign]['tests'] += int(values.get('tests') or 0)
     return list(totals.values())
+
+
+def projection_inputs(frames: dict[str, pd.DataFrame], lookup: dict[tuple[str, str], dict[str, str]],
+                      operator_mappings: dict[str, str] | None = None) -> dict[tuple, dict]:
+    """What the projection needs of each (Region, area, operator) in the latest campaign: its serving sites and those
+    already NNS, its tests and those served by NNS sites, and the sites (and their tests) the Master Grid plans for NNS
+    by financial year (Keep sites not NNS yet). The operators are named as the scoring names them (``operator_mappings``,
+    alias to name)."""
+    names = {str(alias).strip().casefold(): str(name).strip() for alias, name in (operator_mappings or {}).items()}
+    rows = []
+    for frame in frames.values():
+        operator = resolve_column_name(frame.columns, 'Operator')
+        if not len(frame) or operator is None:
+            continue
+        operators = frame[operator].astype(object).astype(str).str.strip()
+        rows.append(pd.DataFrame({'region': frame['__nns_region'].to_numpy(), 'area': frame['__nns_area'].to_numpy(),
+                                  'operator': operators.map(lambda value: names.get(value.casefold(), value)).to_numpy(),
+                                  'host': frame['__nns_host'].to_numpy(), 'site': frame['__nns_site'].to_numpy(),
+                                  'nns': frame['__nns_raw_scenario'].eq(NNS_SCENARIO).to_numpy()}))
+    if not rows:
+        return {}
+    tests = pd.concat(rows, ignore_index=True)
+    inputs: dict[tuple, dict] = {}
+    for (region, area, operator), group in tests.groupby(['region', 'area', 'operator'], sort=False):
+        entry = {'tests': int(len(group)), 'nns_tests': int(group['nns'].sum()), 'sites': 0, 'nns_sites': 0,
+                 'planned_sites': {}, 'planned_tests': {}}
+        served = group[group['site'].ne('')]
+        for (host, site), site_tests in served.groupby(['host', 'site'], sort=False):
+            entry['sites'] += 1
+            if bool(site_tests['nns'].any()):
+                entry['nns_sites'] += 1
+                continue
+            details = lookup.get((host, site))
+            if details and details['keep_remove'].casefold() == 'keep' and details['target_fy']:
+                year = details['target_fy']
+                entry['planned_sites'][year] = entry['planned_sites'].get(year, 0) + 1
+                entry['planned_tests'][year] = entry['planned_tests'].get(year, 0) + int(len(site_tests))
+        inputs[(region, area, operator)] = entry
+    return inputs
+
+
+def projection(row: dict[str, Any], years: list[str], growth: float, reference: bool) -> dict[str, dict[str, Any]]:
+    """The points of an area and operator projected over the financial years ``years``, by the share of NNS sites and by
+    the share of tests served by NNS sites: each year adds to the year before its rise of the share times the points
+    the NNS tests score above the area (the NNS points minus the area points); with fewer than MIN_NNS_TESTS NNS tests
+    the points are not projected. The reference operator grows by ``growth`` % a year instead (from the first year on),
+    at most to the maximum."""
+    projected: dict[str, dict[str, Any]] = {}
+    for scoring in SCORINGS:
+        values = row.get(scoring) or {}
+        area, nns, maximum = values.get('points'), values.get('nns_points'), values.get('max_points') or 1000
+        if area is None:
+            continue
+        if int(row.get('nns_tests') or 0) < MIN_NNS_TESTS:
+            nns = None   # (Too few NNS tests to project from.)
+        lines: dict[str, list] = {'sites_share': [], 'sites': [], 'tests_share': [], 'tests': [], 'reference': []}
+        for basis, total, now, planned in (('sites', row['sites'], row['nns_sites'], row['planned_sites']),
+                                           ('tests', row['tests'], row['nns_tests'], row['planned_tests'])):
+            share_before, points, added = (now / total if total else 0.0), float(area), 0
+            for year in years:
+                added += int(planned.get(year, 0))
+                share = (now + added) / total if total else 0.0
+                if nns is not None and not reference:
+                    points = min(maximum, points + (share - share_before) * (float(nns) - float(area)))
+                share_before = share
+                lines[f'{basis}_share'].append(round(share, 4))
+                lines[basis].append(round(points, 2) if nns is not None or reference else None)
+        points = float(area)
+        for index, _year in enumerate(years):
+            if index:
+                points = min(maximum, points * (1 + growth / 100))
+            lines['reference'].append(round(points, 2))
+        projected[scoring] = lines
+    return projected
 
 
 def scenario_order(labels: Iterable[str]) -> list[str]:
@@ -434,34 +656,102 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
             worksheet.column_dimensions[get_column_letter(index)].width = min(40, max(9, width + 2))
         return worksheet
 
-    area_parts = lambda: [('Tests', ['Tests']), *[(name, ['Points', '#1', 'GAP to #1', 'Weighted GAP to #1 in its Region',
-                                                       'Weighted GAP to #1 in all the Regions']) for _key, name in scorings]]
+    area_columns = ['Points', '#1 of the area', 'GAP to #1 of the area', 'Weight in its Region',
+                    'Weighted GAP to #1 of the Region', 'Weighted GAP to #1 of all the Regions']
+    area_parts = lambda: [('Tests', ['Tests']), *[(name, list(area_columns)) for _key, name in scorings]]
+    totals = [row for row in breakdown.get('gap_totals') or [] if isinstance(row, dict)]
     rows = []
-    for row in sorted(breakdown.get('areas') or [], key=lambda item: (item['nr_mode'], item['region'], item['kind'] != CITY_KIND,
-                                                                     item['size'], item['area'], item['operator'])):
-        values = [row['nr_mode'], row['region'], row['area'], row['kind'], row['size'], row['operator']]
+    # Each Region first with its own scoring (as Country Areas), then its areas, then the adjustment that closes the sum
+    # of their weighted GAPs to its GAP; all the chosen Regions at the end.
+    area_rows = sorted(breakdown.get('areas') or [], key=lambda item: (item['nr_mode'], item['region'], item['kind'] != CITY_KIND,
+                                                                     item['size'], item['area'], item['operator']))
+    regions = sorted({(row['nr_mode'], row['region']) for row in [*area_rows, *totals]}, key=lambda item: (item[0], item[1] == '', item[1]))
+
+    def total_values(total: dict[str, Any], adjustment: bool) -> list[Any]:
+        values = []
         for campaign in campaigns:
-            scored = (row.get('campaigns') or {}).get(campaign) or {}
-            values.append(scored.get('tests') if scored else None)
+            entry = (total.get('campaigns') or {}).get(campaign) or {}
+            values.append(None if adjustment else entry.get('tests'))
             for key, _name in scorings:
-                points = scored.get(key) or {}
-                values += [_value(points), points.get('leader'), points.get('gap'), points.get('gap_region'), points.get('gap_all')]
-        rows.append(values)
+                scored = entry.get(key) or {}
+                if adjustment:
+                    column = scored.get('adjustment')
+                    values += [None, None, None, None, column if total['region'] else None, None if total['region'] else column]
+                else:
+                    values += [scored.get('points'), scored.get('leader'), scored.get('gap'), 1 if total['region'] else None, None, None]
+        return values
+    for nr_mode, region in regions:
+        name = region or 'All the chosen Regions'
+        of_region = [total for total in totals if total['nr_mode'] == nr_mode and total['region'] == region]
+        for total in sorted(of_region, key=lambda item: item['operator']):
+            rows.append([nr_mode, region or name, f'{name} (whole Region)' if region else name, 'Region', '', total['operator'],
+                         *total_values(total, False)])
+        for row in (item for item in area_rows if item['nr_mode'] == nr_mode and item['region'] == region):
+            values = [row['nr_mode'], row['region'], row['area'], row['kind'], row['size'], row['operator']]
+            for campaign in campaigns:
+                scored = (row.get('campaigns') or {}).get(campaign) or {}
+                values.append(scored.get('tests') if scored else None)
+                for key, _name in scorings:
+                    points = scored.get(key) or {}
+                    values += [_value(points), points.get('leader'), points.get('gap'), points.get('weight_region'),
+                               points.get('gap_region'), points.get('gap_all')]
+            rows.append(values)
+        for total in sorted(of_region, key=lambda item: item['operator']):
+            rows.append([nr_mode, region or name, 'Adjustment (the scoring is not additive)', 'Adjustment', '', total['operator'],
+                         *total_values(total, True)])
     grouped_sheet('Areas', ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator'],
                   [(label(campaign), area_parts()) for campaign in campaigns], rows, first=True)
     rows = []
-    for row in sorted(breakdown.get('gap_totals') or [], key=lambda item: (item['nr_mode'], item['region'] == '', item['region'],
-                                                                           item['operator'])):
-        values = [row['nr_mode'], row['region'] or 'All the chosen Regions', row['operator']]
+    for total in sorted(totals, key=lambda item: (item['nr_mode'], item['region'] == '', item['region'], item['operator'])):
+        values = [total['nr_mode'], total['region'] or 'All the chosen Regions', total['operator']]
         for campaign in campaigns:
-            entry = (row.get('campaigns') or {}).get(campaign) or {}
+            entry = (total.get('campaigns') or {}).get(campaign) or {}
             values.append(entry.get('tests'))
             for key, _name in scorings:
-                values += [entry.get(f'{key}_points'), entry.get(key)]
+                scored = entry.get(key) or {}
+                values += [scored.get('points'), scored.get('leader'), scored.get('gap'), scored.get('weighted_gap'),
+                           scored.get('adjustment'), scored.get('weighted_points')]
         rows.append(values)
     grouped_sheet('GAP Totals', ['NR Mode', 'Region', 'Operator'],
-                  [(label(campaign), [('Tests', ['Tests']), *[(name, ['Weighted points', 'Weighted GAP to #1'])
+                  [(label(campaign), [('Tests', ['Tests']), *[(name, ['Points', '#1', 'GAP to #1', 'Weighted GAP of its areas',
+                                                                       'Adjustment', 'Weighted points of its areas'])
                                                               for _key, name in scorings]]) for campaign in campaigns], rows)
+    # The projection: each area and operator of the latest campaign over the financial years the Master Grid plans.
+    projected_rows = [row for row in breakdown.get('projection') or [] if isinstance(row, dict)]
+    planned_years = fy_order(year for row in projected_rows for year in (row.get('planned_sites') or {}))
+    numbers = [int(match.group(1)) for year in planned_years if (match := re.search(r'(\d+)', year))]
+    years = [f'FY{number:02d}' for number in range(min(numbers), max(numbers) + 1)] if numbers else []
+    reference = str(breakdown.get('reference_operator') or '').strip().casefold()
+    growth = float(breakdown.get('reference_growth', DEFAULT_REFERENCE_GROWTH))
+    rows = []
+    for row in sorted(projected_rows, key=lambda item: (item['nr_mode'], item['region'], item['kind'] != CITY_KIND, item['size'],
+                                                        item['area'], item['operator'])):
+        is_reference = row['operator'].strip().casefold() == reference
+        own = projection(row, years, growth, is_reference)
+        reference_row = next((item for item in projected_rows if item['nr_mode'] == row['nr_mode'] and item['region'] == row['region']
+                              and item['area'] == row['area'] and item['operator'].strip().casefold() == reference), None)
+        reference_lines = projection(reference_row, years, growth, True) if reference_row else {}
+        for key, name in scorings:
+            lines, base = own.get(key), row.get(key) or {}
+            if not lines:
+                continue
+            ahead = (reference_lines.get(key) or {}).get('reference') or [None] * len(years)
+            if is_reference:
+                lines = {**lines, 'sites': lines['reference'], 'tests': lines['reference']}
+            values = [row['nr_mode'], row['region'], row['area'], row['kind'], row['size'], row['operator'], name,
+                      row['sites'], row['nns_sites'], row['tests'], row['nns_tests'], base.get('points'), base.get('nns_points')]
+            for index, _year in enumerate(years):
+                reference_points = ahead[index]
+                gap = lambda points: round(points - reference_points, 2) if points is not None and reference_points is not None else None
+                values += [lines['sites_share'][index], lines['sites'][index], lines['tests_share'][index], lines['tests'][index],
+                           reference_points, gap(lines['sites'][index]), gap(lines['tests'][index])]
+            rows.append(values)
+    reference_label = breakdown.get('reference_operator') or 'reference'
+    grouped_sheet('Projection', ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator', 'Scoring', 'Serving sites', 'NNS sites',
+                                 'Tests', 'NNS tests', 'Points', 'NNS points'],
+                  [(year, [('By sites', ['NNS % of sites', 'Points']), ('By tests', ['NNS % of tests', 'Points']),
+                           (f'{reference_label} (+{growth:g} %/year)', [f'{reference_label} points', 'GAP by sites', 'GAP by tests'])])
+                   for year in years], rows)
     sites = breakdown.get('sites') or []
     capacities = [*CAPACITIES, *sorted({name for row in sites for name in row.get('nns') or {} if name not in CAPACITIES})]
     scenarios = scenario_order(name for row in sites for name in row.get('scenarios') or {})
@@ -482,26 +772,79 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
                 item['nr_mode'], item['size'], order.get(item['scenario'], 999), item['operator']))]
     sheet('Scenarios', ['NR Mode', 'Campaign', 'Size', 'Scenario', 'Operator', 'Best Network', 'Most Reliable', 'Tests'], rows)
     request, grid = breakdown.get('request') or {}, breakdown.get('master_grid') or {}
-    about = [['Saved Scoring', title], ['Regions', ', '.join(request.get('regions') or []) or 'Every Region'],
-             ['Connecting roads', 'Each road on its own' if request.get('roads') == 'each' else 'Grouped by Region (Roads, Highway)'],
-             *[[f'{mode["nr_mode"]} campaigns', ', '.join(label(value) for value in mode.get('campaigns') or [])] for mode in modes],
-             ['Master Grid', f"{grid.get('file_name', '')} ({grid.get('week', '')})" if grid else 'None'],
-             ['Points', 'Best Network and Most Reliable points of each area, scaled to the full points when an area has '
-                        'tests of one environment only (as every area of the Country Areas).'],
-             ['Cities', 'Each city belongs to the Region that holds most of its tests over the campaigns, with all its '
-                        'tests; the connecting roads keep the Region of each test.'],
-             ['GAP to #1', 'The points of the operator minus those of the operator with the most points in the area and '
-                           'campaign (#1).'],
-             ['Weighted GAP to #1', 'The GAP to #1 times the tests of the operator in the area, over its tests in all the '
-                                    'areas of the Region (in its Region) or of every chosen Region (in all the Regions). '
-                                    'Summed (GAP Totals), they give the GAP of the whole Region or of all the chosen Regions.'],
-             ['Weighted points', 'GAP Totals: the points of the areas weighted the same way (by the tests of the operator), '
-                                 'summed per Region and for all the chosen Regions.'],
-             ['Sites', 'The serving sites of the tests of the latest campaign: NNS sites by the High/Med/Low config of the '
-                       'Master Grid, the other sites by eMOCN scenario, and the Keep sites the Master Grid plans for NNS '
-                       '(Target Deployment FY) among those not NNS yet.'],
-             *[['Warning', warning] for warning in breakdown.get('warnings') or []]]
-    sheet('About', ['Item', 'Value'], about).column_dimensions['B'].width = 110
+    inventory = breakdown.get('inventory') or {}
+    reference_label = breakdown.get('reference_operator') or 'the reference operator'
+    # What the workbook holds: its settings, then each sheet, its columns by group, and where their values come from.
+    about = [
+        ['Settings', '', 'Saved Scoring', title],
+        ['Settings', '', 'Regions', ', '.join(request.get('regions') or []) or 'Every Region'],
+        ['Settings', '', 'Connecting roads', 'Each road on its own' if request.get('roads') == 'each' else 'Grouped by Region (Roads, Highway)'],
+        *[['Settings', '', f'{mode["nr_mode"]} campaigns', ', '.join(label(value) for value in mode.get('campaigns') or [])] for mode in modes],
+        ['Settings', '', 'Inventory (scenarios)', inventory.get('file_name') or 'None: the eMOCN scenario of the CDR rows'],
+        ['Settings', '', 'Master Grid', f"{grid.get('file_name', '')} ({grid.get('week', '')})" if grid else 'None'],
+        ['Settings', '', 'Reference operator', f'{reference_label}, growing {breakdown.get("reference_growth", DEFAULT_REFERENCE_GROWTH):g} % a year in the projection'],
+        ['Areas', 'Rows', 'Region, then its areas, then Adjustment',
+         'Each Region first with its own scoring (as Country Areas scores it: every test of the Region with its own Region), '
+         'then each city (G_Level_4, its size from G_Level_3) and its connecting roads (Roads and Highway, G_Level_3), then '
+         'the adjustment of the Region. Each city belongs to the Region with most of its tests over the campaigns; the roads '
+         'keep the Region of each test.'],
+        ['Areas', 'Each campaign', 'Tests', 'The Data tests, Voice calls and Speech samples of the operator in the area (CDRs).'],
+        ['Areas', 'Best Network / Most Reliable', 'Points',
+         'The points of the area with the methodology of the campaign, scaled to the full points when the area is measured '
+         'in one environment only (as each area of Country Areas). Region rows: the points of the whole Region.'],
+        ['Areas', 'Best Network / Most Reliable', '#1 of the area, GAP to #1 of the area',
+         'The operator with the most points in the area, and the points of the operator minus those of that #1.'],
+        ['Areas', 'Best Network / Most Reliable', 'Weight in its Region',
+         'The share of the points of the Region the area weighs, as the methodology weighs it: the maximum points of its '
+         'environment and category (Data, Voice) times its share of the tests of the Region there.'],
+        ['Areas', 'Best Network / Most Reliable', 'Weighted GAP to #1 of the Region',
+         'What the area adds to the GAP of its Region to the #1 of the Region: its points in its environment and category '
+         'times its share of the tests of the Region there, minus those of the #1 of the Region. The weighted GAPs of the '
+         'areas of a Region plus its Adjustment row are the GAP of its Region row (and of Country Areas).'],
+        ['Areas', 'Best Network / Most Reliable', 'Weighted GAP to #1 of all the Regions',
+         'The same over every chosen Region, against the #1 of all of them; summed with the Adjustment row of All the '
+         'chosen Regions, the GAP of All the chosen Regions.'],
+        ['Areas', 'Adjustment rows', 'Weighted GAP',
+         'The scoring is not additive (the rates, medians and thresholds of a Region are not those of its areas, and a few '
+         'tests of a city lie in another Region): the adjustment is the GAP of the Region minus the weighted GAPs of its areas.'],
+        ['GAP Totals', 'Each campaign and scoring', 'Points, #1, GAP to #1',
+         'Each Region (and all the chosen Regions) scored as Country Areas scores it.'],
+        ['GAP Totals', 'Each campaign and scoring', 'Weighted GAP of its areas, Adjustment, Weighted points of its areas',
+         'The weighted GAPs of its areas summed, the adjustment that closes them to its GAP, and the points of its areas '
+         'weighted the same way.'],
+        ['Sites', 'Serving sites (latest campaign)', 'Serving sites, NNS High · Medium · Low · Not in the Master Grid, NNS total, '
+         'S0 … S123, No eMOCN scenario',
+         'The sites serving the tests of each area. Their eMOCN scenario (NNS or S0, S1…) comes from the inventory '
+         '(Multivendor Mapping; without it, from the CDR rows); the capacity of the NNS sites from the High/Med/Low config '
+         'of the Master Grid.'],
+        ['Sites', 'Master Grid', 'Planned NNS FYxx, Planned NNS total, VF/3UK sites not in the Master Grid',
+         'The Keep sites among them, not NNS yet, that the Master Grid plans for NNS, by Target Deployment FY; the sites '
+         'serving Vodafone or 3 that the Master Grid does not list. A site is found by its own number or by that of the '
+         'site it pairs with (SITE ID + Pairing, SiteRef2).'],
+        ['Scenarios', 'Latest campaign', 'Size, Scenario, Best Network, Most Reliable, Tests',
+         'Each test scored with the kind of site that served it: an NNS site by its capacity, or its eMOCN scenario '
+         '(inventory), per city size and road type.'],
+        ['Projection', 'Today (latest campaign)', 'Serving sites, NNS sites, Tests, NNS tests, Points, NNS points',
+         'The sites and tests of the operator in the area, those of NNS sites, its points and the points of its tests '
+         f'served by NNS sites (not projected with fewer than {MIN_NNS_TESTS} NNS tests).'],
+        ['Projection', 'Each financial year', 'NNS % of sites, Points (by sites)',
+         'The share of NNS sites once the sites the Master Grid plans up to that year are NNS; the points of the year '
+         'before plus the rise of that share times the NNS points minus the points of the area (cumulative).'],
+        ['Projection', 'Each financial year', 'NNS % of tests, Points (by tests)',
+         'The same with the share of the tests served by those sites.'],
+        ['Projection', 'Each financial year', f'{reference_label} points, GAP by sites, GAP by tests',
+         f'{reference_label} growing its points {breakdown.get("reference_growth", DEFAULT_REFERENCE_GROWTH):g} % a year '
+         'from the first year on (at most to the maximum), and the GAP of the projected points to it.'],
+        *[['Warning', '', '', warning] for warning in breakdown.get('warnings') or []],
+    ]
+    about_sheet = sheet('About', ['Sheet', 'Group', 'Columns', 'What they hold and where they come from'], about)
+    for column, width in (('A', 14), ('B', 28), ('C', 46), ('D', 110)):
+        about_sheet.column_dimensions[column].width = width
+    for row in about_sheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical='top')
+    # (The Projection after the Scenarios, before About.)
+    book.move_sheet('Projection', offset=book.sheetnames.index('About') - book.sheetnames.index('Projection') - 1)
     output = BytesIO()
     book.save(output)
     return output.getvalue()

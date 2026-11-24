@@ -923,13 +923,15 @@ def _prepare_saved_scoring_once(
     # Results calculated before the Geographical Areas followed the Breakdown and Separate cities on the whole country
     # are calculated again; with Main Cities, the result changes with the Main Cities of the workspace.
     key_area_summary = {**key_area_summary, 'geographical_version': GEOGRAPHICAL_AREAS_VERSION}
-    # The NNS Break-down (when switched on) changes with the CDRs and methodologies of its campaigns and the Master Grid.
+    # The NNS Break-down (when switched on) changes with the CDRs and methodologies of its campaigns, the Master Grid and
+    # the Multivendor Mapping (the scenario of each serving site).
     nns_request = requested_nns_breakdown(normalized_area_summary)
     nns_sources = None if nns_request is None else _shared(
         cache, ('nns', selected_mode, json.dumps(nns_request, sort_keys=True), scoring_profile_id),
         lambda: _nns_sources(repository, selected_mode, nns_request, scoring_profile_id))
     if nns_sources is not None:
         key_area_summary[NNS_KEY] = {**nns_request, 'version': NNS_VERSION, 'master_grid': nns_sources['master_grid'],
+                                     'inventory': nns_sources.get('inventory'),
                                      'modes': [[entry['nr_mode'], entry['campaigns'], entry['source_fingerprint'],
                                                 entry.get('configuration_hash', '')] for entry in nns_sources['modes']]}
     if normalized_area_summary.get('main_cities'):
@@ -2576,7 +2578,36 @@ def _nns_sources(repository: Repository, nr_mode: str, request: dict[str, Any],
         modes.append(entry)
     if not any(entry['dataset_ids'] for entry in modes):
         raise ValueError(f'NNS Break-down: the chosen campaigns have no Data, Voice and Speech CDRs of {nr_mode_label(nr_mode)} now.')
-    return {'modes': modes, 'master_grid': master_grid.latest_dataset(repository), 'version': NNS_VERSION}
+    return {'modes': modes, 'master_grid': master_grid.latest_dataset(repository), 'inventory': _nns_inventory(repository),
+            'version': NNS_VERSION}
+
+
+def _nns_inventory(repository: Repository) -> dict[str, Any] | None:
+    """The inventory the NNS Break-down takes the eMOCN scenario of each serving site from: the newest ready Multivendor
+    Mapping of the workspace (such as the VF3 QGIS All Vendor table), or None (the scenario of the CDR rows)."""
+    from src.modules.network.network_inventory import mapping_datasets
+
+    datasets = mapping_datasets(repository)
+    if not datasets:
+        return None
+    dataset = datasets[0]
+    return {'id': int(dataset['id']), 'file_name': str(dataset['file_name']),
+            'processed_at': str(dataset['processed_at'] or '') if 'processed_at' in dataset.keys() else ''}
+
+
+def _nns_scenarios(repository: Repository, inventory: dict[str, Any] | None) -> dict[tuple[str, str], str]:
+    """The eMOCN scenario of each serving site in the inventory of the NNS Break-down."""
+    from src.modules.network.network_inventory import MAPPING_CELLS_TABLE, ensure_mapping_cells
+    from src.modules.scoring import scoring_nns_breakdown as nb
+
+    if not inventory:
+        return {}
+    ensure_mapping_cells(repository)
+    with repository.connection() as connection:
+        rows = connection.execute(
+            f'SELECT network, site_id, emocn, COUNT(*) FROM {MAPPING_CELLS_TABLE} WHERE dataset_id = ? '
+            'GROUP BY network, site_id, emocn', (inventory['id'],)).fetchall()
+    return nb.scenario_lookup(tuple(row) for row in rows)
 
 
 def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], request: dict[str, Any], nns: dict[str, Any],
@@ -2595,6 +2626,9 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
     current = master_grid.latest_dataset(repository)
     if (current or {}).get('id') != (grid or {}).get('id') or (current or {}).get('processed_at') != (grid or {}).get('processed_at'):
         raise ValueError('The Master Grid changed after this calculation was queued. Calculate it again.')
+    inventory = nns.get('inventory')
+    if (_nns_inventory(repository) or {}) != (inventory or {}):
+        raise ValueError('The Multivendor Mapping changed after this calculation was queued. Calculate it again.')
     filters = whole_country_filters(context_filters)
     filters.pop('Campaign', None)
     key = None
@@ -2603,7 +2637,8 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
             'kind': 'nns', 'version': NNS_VERSION, 'method_version': scoring_engine.METHOD_VERSION, 'request': request,
             'sources': [[entry['nr_mode'], entry['source_fingerprint'], entry.get('configuration_hash', '')]
                         for entry in nns['modes']],
-            'methodology': configuration_hash(configuration), 'master_grid': grid, 'filters': _filters_key(filters),
+            'methodology': configuration_hash(configuration), 'master_grid': grid, 'inventory': inventory,
+            'filters': _filters_key(filters),
             'baseline_operator': saved_scoring['baseline_operator'], 'baseline_aliases': saved_scoring.get('baseline_aliases', []),
             'operator_mappings': saved_scoring.get('operator_mappings', {}),
             'operator_groups': repository.list_operator_mapping_groups(),
@@ -2613,8 +2648,15 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
             update_progress(96, 'NNS Break-down: reused from a calculation of the same CDRs, methodology and Master Grid')
             return cached
     lookup = master_grid.site_lookup(master_grid.load_sites(repository, grid['id'])) if grid else {}
-    breakdown: dict[str, Any] = {'version': NNS_VERSION, 'request': request, 'master_grid': grid, 'modes': [],
-                                 'areas': [], 'sites': [], 'scenarios': [], 'gap_totals': [], 'warnings': []}
+    scenario_of = _nns_scenarios(repository, inventory)
+    breakdown: dict[str, Any] = {'version': NNS_VERSION, 'request': request, 'master_grid': grid, 'inventory': inventory,
+                                 'reference_operator': saved_scoring['baseline_operator'],
+                                 'reference_growth': request.get('reference_growth', nb.DEFAULT_REFERENCE_GROWTH),
+                                 'modes': [], 'areas': [], 'sites': [], 'scenarios': [], 'gap_totals': [],
+                                 'projection': [], 'warnings': []}
+    if not inventory:
+        breakdown['warnings'].append(f'{nb.WARNING_PREFIX} no Multivendor Mapping in the workspace: the scenario of each '
+                                     'serving site is the one of the CDR rows.')
     if not grid:
         breakdown['warnings'].append(f'{nb.WARNING_PREFIX} no Master Grid in the workspace: the NNS sites have no capacity '
                                      'and no NNS site is planned.')
@@ -2639,7 +2681,7 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
                                      {**filters, 'Campaign': list(entry['campaigns'])})
         # Each city in one Region: the one with most of its tests (of every CDR type and campaign).
         owners = nb.city_regions(frames.values())
-        classified = {kind: nb.classify(frame, lookup, request, owners) for kind, frame in frames.items()}
+        classified = {kind: nb.classify(frame, lookup, request, owners, scenario_of) for kind, frame in frames.items()}
         classified = {kind: frame for kind, frame in classified.items() if len(frame)}
         if not classified:
             breakdown['warnings'].append(f'{nb.WARNING_PREFIX} the {mode} CDRs have no tests in the chosen Regions.')
@@ -2652,6 +2694,31 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
         areas: dict[tuple, dict[str, Any]] = {}
         scenarios: dict[tuple, dict[str, Any]] = {}
         details = nb.area_details(classified)
+        # What reconciles the areas with the scoring of their Region (as Country Areas): the points of each area in each
+        # environment and category, its tests, and the points of each Region (and of all of them) on the tests of the
+        # Region, each test with its own Region.
+        area_points: dict[str, dict[tuple, tuple[float, float]]] = {scoring: {} for scoring in nb.SCORINGS}
+        area_tests: dict[tuple, int] = {}
+        region_points: dict[str, dict[tuple, tuple[float, float]]] = {scoring: {} for scoring in nb.SCORINGS}
+        all_points: dict[str, dict[tuple, tuple[float, float]]] = {scoring: {} for scoring in nb.SCORINGS}
+        nns_points: dict[tuple, dict[str, Any]] = {}
+        kinds: dict[str, set[str]] = {}
+        wanted_regions = {value.casefold() for value in request.get('regions') or []}
+
+        def regions_of(campaigns: list[str]) -> dict[str, pd.DataFrame]:
+            """The CDR rows of the chosen Regions (each test with its own Region) in ``campaigns``."""
+            wanted = {str(value).strip().casefold() for value in campaigns}
+            chosen = {}
+            for kind, frame in frames.items():
+                campaign_column, region_column = resolve_column_name(frame.columns, 'Campaign'), resolve_column_name(frame.columns, 'Region')
+                if campaign_column is None or region_column is None:
+                    continue
+                mask = frame[campaign_column].astype(object).astype(str).str.strip().str.casefold().isin(wanted)
+                regions = frame[region_column].astype(object).where(frame[region_column].notna(), '').astype(str).str.strip()
+                mask &= regions.ne('') & (regions.str.casefold().isin(wanted_regions) if wanted_regions else True)
+                if bool(mask.any()):
+                    chosen[kind] = frame[mask.to_numpy(dtype=bool)]
+            return chosen
 
         def of_campaigns(campaigns: list[str]) -> dict[str, pd.DataFrame]:
             wanted = {str(value).strip().casefold() for value in campaigns}
@@ -2684,6 +2751,11 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
                          'Scoring each city' if kind == nb.CITY_KIND else 'Scoring the connecting roads')
                 result = calculate(nb.scoring_frames(kind_frames, '__nns_area'), ['Operator', 'Campaign', 'Region', 'City'], **kwargs)
                 reliable = scoring_engine.most_reliable_result(result, saved_scoring['baseline_operator'], group_configuration)
+                area_keys = ('campaign', 'operator', 'region', 'city')
+                area_points['best'].update(nb.environment_points(result, area_keys))
+                area_points['reliable'].update(nb.environment_points(reliable, area_keys))
+                for test_key, count in nb.environment_tests(result, area_keys).items():
+                    area_tests[test_key] = area_tests.get(test_key, 0) + count
                 for (campaign, operator, region, area), values in nb.scores(
                         result, reliable, ('campaign', 'operator', 'region', 'city')).items():
                     area_kind, size = details.get((region, area), ('', ''))
@@ -2699,11 +2771,45 @@ def _nns_breakdown(repository: Repository, saved_scoring: dict[str, Any], reques
                     for (operator, size, scenario), values in nb.scores(result, reliable, ('operator', 'city', 'cluster')).items():
                         scenarios[(size, scenario, operator)] = {'nr_mode': mode, 'campaign': latest, 'size': size,
                                                                  'scenario': scenario, 'operator': operator, **values}
+                    # The points of the tests of each area served by NNS sites, for the projection.
+                    progress(85, 'Scoring the tests served by NNS sites')
+                    result = calculate(nb.scoring_frames(kind_latest, '__nns_area', '__nns_is_nns'),
+                                       ['Operator', 'Region', 'City', 'Cluster'], **kwargs)
+                    reliable = scoring_engine.most_reliable_result(result, saved_scoring['baseline_operator'], group_configuration)
+                    for (operator, region, area, flag), values in nb.scores(result, reliable, ('operator', 'region', 'city', 'cluster')).items():
+                        if flag == nb.NNS_SCENARIO:
+                            nns_points[(region, area, operator)] = values
+            # The scoring of each Region and of all of them, as Country Areas scores them.
+            region_frames = regions_of(group['campaigns'])
+            if region_frames:
+                progress(90, 'Scoring each Region as Country Areas')
+                kinds = nb.category_kinds(group_configuration)
+                for levels, target, keys in ((['Operator', 'Campaign', 'Region'], region_points, ('campaign', 'operator', 'region')),
+                                             (['Operator', 'Campaign'], all_points, ('campaign', 'operator'))):
+                    result = calculate(region_frames, levels, **kwargs)
+                    reliable = scoring_engine.most_reliable_result(result, saved_scoring['baseline_operator'], group_configuration)
+                    target['best'].update(nb.overall_points(result, keys))
+                    target['reliable'].update(nb.overall_points(reliable, keys))
         counts = nb.site_counts(of_campaigns([latest]), lookup) if latest else {}
         breakdown['modes'].append({'nr_mode': mode, 'campaigns': found, 'latest_campaign': latest})
-        # The GAP to #1 of each area, and weighted by its tests in its Region and in all the chosen Regions.
-        breakdown['gap_totals'].extend(nb.add_gaps(list(areas.values())))
-        breakdown['areas'].extend(areas.values())
+        # The GAP to the #1 of each area, and to the #1 of its Region weighted as the methodology weighs the areas.
+        rows = list(areas.values())
+        nb.add_gaps(rows)
+        breakdown['gap_totals'].extend(nb.reconcile(rows, area_points, area_tests, region_points, all_points, kinds, mode))
+        breakdown['areas'].extend(rows)
+        # The projection of each area and operator of the latest campaign.
+        operator_names = saved_scoring.get('operator_mappings', {})
+        for (region, area, operator), inputs in (nb.projection_inputs(of_campaigns([latest]), lookup, operator_names)
+                                                 if latest else {}).items():
+            row = areas.get((region, area, operator))
+            if row is None or latest not in row['campaigns']:
+                continue
+            values, nns_values = row['campaigns'][latest], nns_points.get((region, area, operator)) or {}
+            breakdown['projection'].append({
+                'nr_mode': mode, 'campaign': latest, 'region': region, 'area': area, 'kind': row['kind'], 'size': row['size'],
+                'operator': operator, **inputs,
+                **{scoring: {'points': (values.get(scoring) or {}).get('points'), 'max_points': (values.get(scoring) or {}).get('max_points'),
+                             'nns_points': (nns_values.get(scoring) or {}).get('points')} for scoring in nb.SCORINGS}})
         breakdown['scenarios'].extend(scenarios.values())
         breakdown['sites'].extend({'nr_mode': mode, 'region': region, 'area': area, **counts_of}
                                   for (region, area), counts_of in counts.items())

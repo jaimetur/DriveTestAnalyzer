@@ -437,6 +437,13 @@
   // The Regions of the CDRs of each NR Mode and campaigns of the NNS Break-down (see nnsCampaignRegions).
   const nnsRegionsByCampaigns = new Map();
   const nnsRoads = root.querySelector('[data-scoring-nns-roads]');
+  const nnsGrowth = root.querySelector('[data-scoring-nns-growth]');
+  const NNS_DEFAULT_GROWTH = 0.5;
+  // The yearly growth of the reference operator in the projection, when it is a number.
+  const nnsGrowthValue = () => {
+    const value = Number.parseFloat(nnsGrowth?.value ?? '');
+    return Number.isFinite(value) && value >= -50 && value <= 50 ? Math.round(value * 1000) / 1000 : NNS_DEFAULT_GROWTH;
+  };
   const NNS_DEFAULT_CAMPAIGNS = ['@latest-4-campaigns'];
   // The areas of the National & Country Areas Trends: those of Country Areas (Same as Country Areas), or their own.
   const trendAreasSame = root.querySelector('[data-scoring-trend-areas-same]');
@@ -907,7 +914,8 @@
     const campaigns = preset ? [preset] : [...(nnsCampaigns?.selectedOptions || [])].map(option => option.value).filter(Boolean);
     return {campaigns: campaigns.length ? campaigns : NNS_DEFAULT_CAMPAIGNS,
       regions: [...(nnsRegions?.selectedOptions || [])].map(option => option.value).filter(Boolean),
-      roads: nnsRoads?.value === 'each' ? 'each' : 'region'};
+      roads: nnsRoads?.value === 'each' ? 'each' : 'region',
+      ...(nnsGrowthValue() !== NNS_DEFAULT_GROWTH ? {reference_growth: nnsGrowthValue()} : {})};
   }
 
   // The fields of the NNS Break-down as a selection has them (its defaults when it has none).
@@ -926,6 +934,7 @@
       delete select.dataset.scoringCatalogueSignature;
     }
     if (nnsRoads) nnsRoads.value = nns?.roads === 'each' ? 'each' : 'region';
+    if (nnsGrowth) nnsGrowth.value = String(Number.isFinite(Number(nns?.reference_growth)) ? Number(nns.reference_growth) : NNS_DEFAULT_GROWTH);
     refreshNnsOptions();
     nnsCampaigns?.dispatchEvent(new Event('multiselect:options-updated'));
     nnsRegions?.dispatchEvent(new Event('multiselect:options-updated'));
@@ -1400,7 +1409,7 @@
     const latest = mode.latest_campaign || campaigns[campaigns.length - 1] || '';
     const gapText = value => (Number.isFinite(Number(value)) ? `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(Math.abs(Number(value)) < 10 ? 2 : 1)}` : '–');
     const headTitles = {'GAP to #1': `Points to the operator with the most points in the area (#1), ${campaignLabel(latest)}`,
-      'Weighted GAP to #1': 'The GAP to #1 times the tests of the operator in the area, over its tests in the whole Region (below: in all the chosen Regions)',
+      'Weighted GAP to #1': 'What the area adds to the GAP of its Region to the #1 of the Region, weighted as the methodology weighs the areas (below: its weight in the Region and the same over all the chosen Regions)',
       'NNS H · M · L': 'NNS sites by the capacity of the Master Grid: High · Medium · Low'};
     ['Area', 'Size', 'Operator', ...campaigns.map(campaignLabel), 'GAP to #1', 'Weighted GAP to #1', 'NNS H · M · L', 'eMOCN / other', 'Planned NNS']
       .forEach(text => { const th = el('th', '', text); if (headTitles[text]) th.title = headTitles[text]; headRow.append(th); });
@@ -1424,8 +1433,14 @@
         weighted.textContent = '–';
         weighted.classList.add('is-empty');
       } else {
-        weighted.append(el('strong', '', gapText(scored.gap_region)), el('small', '', `all ${gapText(scored.gap_all)}`));
-        weighted.title = 'The GAP to #1 times the tests of the operator in this area, over its tests in all the areas of the Region (all: of every chosen Region). Summed, they give the GAP of the whole Region.';
+        const weight = Number(scored.weight_region);
+        weighted.append(el('strong', '', gapText(scored.gap_region)),
+          el('small', '', `${Number.isFinite(weight) ? `${(weight * 100).toFixed(1)} % · ` : ''}all ${gapText(scored.gap_all)}`));
+        if (Number(scored.gap_region) < 0) weighted.classList.add('is-behind');
+        weighted.title = `What the area adds to the GAP of its Region to its #1 (${scored.leader_region || '#1'}), weighted as the methodology weighs the areas: `
+          + 'its points in its environment and category times its share of the tests of the Region there, minus those of the #1. '
+          + `The area weighs ${Number.isFinite(weight) ? (weight * 100).toFixed(1) : '–'} % of the points of the Region; all: the same over every chosen Region. `
+          + 'Summed with the adjustment of the Region, they give its GAP in Country Areas.';
       }
       return [gap, weighted];
     };
@@ -1510,7 +1525,7 @@
     // The GAP of each Region (and of all the chosen ones) to #1: the weighted GAPs of its areas summed, per operator.
     const totals = (nns.gap_totals || []).filter(row => row.nr_mode === nnsMode);
     const gapBox = section(`GAP to #1 of each Region, ${campaignLabel(latest) || 'latest campaign'}`,
-      'The weighted GAPs of the areas of each Region summed: how many points each operator is behind #1 over the whole Region; below, its points with its areas weighted the same way.');
+      'Each Region scored as Country Areas scores it: the points of each operator and its GAP to the #1 of the Region; below, the weighted GAPs of its areas summed and the adjustment that closes them to that GAP.');
     const gapOperators = [...new Set(totals.map(row => row.operator))].sort((left, right) => String(left).localeCompare(String(right)));
     const gapRegions = [...new Set(totals.map(row => row.region))].sort((left, right) => (left === '') - (right === '') || String(left).localeCompare(String(right)));
     const gapWrap = el('div', 'table-wrap scoring-nns-table-wrap');
@@ -1526,15 +1541,17 @@
       tr.append(el('td', 'scoring-nns-area', regionName || 'All the chosen Regions'));
       for (const operator of gapOperators) {
         const entry = (totalOf.get(`${regionName}|${operator}`)?.campaigns || {})[latest] || {};
-        const value = entry[nnsScoring];
+        const scored = entry[nnsScoring] || {};
         const td = el('td', 'scoring-nns-gap');
-        if (value === undefined || value === null) { td.textContent = '–'; td.classList.add('is-empty'); }
-        else {
-          const points = Number(entry[`${nnsScoring}_points`]);
-          td.append(el('strong', '', gapText(value)), el('small', '', `${Number.isFinite(points) ? `${points.toFixed(1)} pts · ` : ''}${Number(entry.tests || 0).toLocaleString()} tests`));
-          td.title = 'Weighted GAP to #1, then the weighted points of the operator (its areas weighted by its tests) and its tests';
-          if (Number(value) < 0) td.classList.add('is-behind');
+        if (scored.gap === undefined || scored.gap === null) { td.textContent = '–'; td.classList.add('is-empty'); }
+        else if (Number(scored.gap) === 0) {
+          td.append(el('span', 'scoring-nns-leader', '#1'), el('small', '', `${Number(scored.points).toFixed(1)} pts`));
+        } else {
+          td.append(el('strong', '', gapText(scored.gap)), el('small', '', `${Number(scored.points).toFixed(1)} pts · vs ${scored.leader}`),
+            el('small', '', `areas ${gapText(scored.weighted_gap)} · adj. ${gapText(scored.adjustment)}`));
+          td.classList.add('is-behind');
         }
+        td.title = 'The Region scored as Country Areas scores it: its points and its GAP to the #1 of the Region; below, the weighted GAPs of its areas summed and the adjustment left by the scoring not being additive';
         tr.append(td);
       }
       gapBody.append(tr);
@@ -1602,7 +1619,8 @@
     if (!value || typeof value !== 'object') return null;
     const sorted = values => (Array.isArray(values) ? values : []).map(String).sort((left, right) => left.localeCompare(right));
     return [sorted(value.campaigns?.length ? value.campaigns : NNS_DEFAULT_CAMPAIGNS), sorted(value.regions),
-      value.roads === 'each' ? 'each' : 'region'];
+      value.roads === 'each' ? 'each' : 'region',
+      Number.isFinite(Number(value.reference_growth)) ? Number(value.reference_growth) : NNS_DEFAULT_GROWTH];
   }
 
   function selectionWarnings(body) {
@@ -12087,7 +12105,7 @@
       scheduleSelectionSave();
       return;
     }
-    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns], [data-scoring-country-areas-enabled], [data-scoring-trends-enabled], [data-scoring-nns-enabled], [data-scoring-nns-campaigns], [data-scoring-nns-regions], [data-scoring-nns-roads], [data-scoring-trend-areas-same], [data-scoring-trend-breakdown], [data-scoring-trend-cities]')) {
+    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns], [data-scoring-country-areas-enabled], [data-scoring-trends-enabled], [data-scoring-nns-enabled], [data-scoring-nns-campaigns], [data-scoring-nns-regions], [data-scoring-nns-roads], [data-scoring-nns-growth], [data-scoring-trend-areas-same], [data-scoring-trend-breakdown], [data-scoring-trend-cities]')) {
       syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
@@ -13186,9 +13204,9 @@
     if (key === 'country_areas' || key === 'trends') return summary[key] !== false;
     if (key === 'trend_same') return !Array.isArray(summary.trend_cities);
     if (key === 'nns_breakdown') return Boolean(summary.nns_breakdown);
-    if (['nns_campaigns', 'nns_regions', 'nns_roads'].includes(key)) {
+    if (['nns_campaigns', 'nns_regions', 'nns_roads', 'nns_growth'].includes(key)) {
       const signature = nnsSignature(summary.nns_breakdown);
-      return signature ? signature[['nns_campaigns', 'nns_regions', 'nns_roads'].indexOf(key)] : null;
+      return signature ? signature[['nns_campaigns', 'nns_regions', 'nns_roads', 'nns_growth'].indexOf(key)] : null;
     }
     if (key === 'trend_breakdown') return Array.isArray(summary.trend_cities) ? summary.trend_breakdown : null;
     if (key === 'trend_cities') return Array.isArray(summary.trend_cities) ? [summary.trend_cities, Boolean(summary.trend_main_cities)] : null;

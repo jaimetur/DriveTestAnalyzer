@@ -659,18 +659,19 @@ The Scoring Trends tab follows each operator's score over the campaigns or perio
 
 ### NNS Break-down
 
-The NNS Break-down tab scores each city and the connecting roads over several campaigns, with the sites that serve them, and the latest campaign by the kind of site that served each test: the table to project the scoring improvement of the NNS upgrade. It is **off by default**; switch it on in block **6 NNS Break-down**.
+The NNS Break-down tab scores each city and the connecting roads over several campaigns, with the sites that serve them, reconciles them with the scoring of each Region (as Country Areas), scores the latest campaign by the kind of site that served each test and projects the points as the planned NNS sites roll out: the tables to project the scoring improvement of the NNS upgrade. It is **off by default**; switch it on in block **6 NNS Break-down**.
 
 | Setting | Choices |
 | --- | --- |
 | **Campaigns** | **Latest 4 campaigns** (the default), another automatic choice or chosen campaigns, whatever the Campaign filter (the complete campaigns of each NR Mode: Weekly, Daily and Flex CDRs are left out) |
 | **Regions** | The Regions it covers, such as Vendor A, VMO2 North and VMO2 South (it lists the Regions of the CDRs of its own campaigns, whatever the CDRs of the selection); none: every Region |
 | **Connecting roads** | **Grouped by Region** (a row for the Roads and one for the Highway of each Region, the default) or **Each road on its own** |
+| **Reference growth (%/year)** | How much the reference operator grows a year in the Projection sheet (**0.5 %** by default) |
 
 - **Scored like the trends:** the CDRs of its campaigns with the filters of the scoring but Region, Cluster, City and Campaign, its methodology (By campaign: each campaign with its own) and GAP reference. **NSA vs SA** scores each NR Mode apart (an **NR Mode** selector in the tab).
 - **Areas:** a test is in a city when its `G_Level_2` is City (the city is `G_Level_4`, its size `G_Level_3`: Big, Medium or Small Cities), else on a connecting road (`G_Level_3`: Roads or Highway). Each area is scored on its own tests, scaled to the full points as in Country Areas.
-- **One Region per city:** the Region of a test is where it was measured, so a city near a Region border, or with tests of a wrong position (a GPS fix frozen elsewhere), would fall in two Regions. Each city belongs to the Region that holds most of its tests over the campaigns of the break-down, with all its tests; the connecting roads keep the Region of each test.
-- **Scenario of a test:** the kind of site of the cell that served it (`Serving_eMOCN_Scenario` of the Network Inventory): an NNS site with the capacity of the **Master Grid** (its High/Med/Low config), or its eMOCN scenario (S0, S1, S1_CWP…).
+- **One Region per city:** the Region of a test is where it was measured, so a city near a Region border, or with tests of a wrong position (a GPS fix frozen elsewhere), would fall in two Regions. Each city belongs to the Region that holds most of its tests over the campaigns of the break-down, with all its tests; the connecting roads keep the Region of each test. The few tests of a city that Country Areas counts in another Region go to the adjustment of the Regions.
+- **Scenario of a test:** the kind of site that served it, from the newest **Multivendor Mapping** of Workspace (such as the VF3 QGIS All Vendor table, its eMOCN Scenario; a site with an NNS cell is NNS); without one, or for a site it does not list, the `Serving_eMOCN_Scenario` of the CDR row. An NNS site carries the capacity of the **Master Grid** (its High/Med/Low config); the others their eMOCN scenario (S0, S1, S1_CWP…).
 - **Master Grid:** the newest one uploaded in [Workspace Management](workspace-management.md#master-grid). A serving site is found by its own number or by the number of the site it pairs with: Vodafone sites by `Site ID`, `SiteRef2` (`<n>vf`) or `SITE ID + Pairing` (theirs or of a 3 site), 3 sites by `SITE ID + Pairing`, O2 sites by `SiteRef2` (`<n>o2`) or the number of the Vodafone site they share. Without one, the NNS sites have no capacity and no NNS site is planned (a warning says so); a new Master Grid calculates the NNS Break-down again.
 
 **Cities and connecting roads** (one table per NR Mode):
@@ -678,14 +679,19 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 - **Rows:** each Region, then its cities (big to small) and roads, each with a row per operator, from the highest points of the latest campaign (#1 first, then the smallest GAP).
 - **Points:** Best Network or Most Reliable (the **Scoring** selector) of each campaign, with its tests, tinted by their share of the maximum points.
 - **GAP to #1** (latest campaign): the points of the operator minus those of the operator with the most points in the area (**#1** on its row).
-- **Weighted GAP to #1** (latest campaign): the GAP to #1 times the tests of the operator in the area over its tests in all the areas of the Region; below it, over its tests in every chosen Region (**all**). Summed, they give the GAP of the whole Region.
+- **Weighted GAP to #1** (latest campaign): what the area adds to the GAP of its Region to the **#1 of the Region**, weighted as the methodology weighs the areas: its points in its environment and category (Data, Voice) times its share of the tests of the Region there, minus those of the #1 of the Region. Below it, the weight of the area in the Region and the same over every chosen Region (**all**).
 - **Sites:** the serving sites of the tests of the latest campaign: **NNS sites** by capacity (High · Med · Low, plus those not in the Master Grid), the **eMOCN / other sites** by scenario, and the **Planned NNS**: the Keep sites among them, not NNS yet, that the Master Grid plans, by financial year (`Target Deployment FY`).
 
-**GAP to #1 of each Region** (latest campaign): the weighted GAPs of the areas of each Region summed per operator, and of all the chosen Regions: how many points each operator is behind #1 over the whole Region; below, its points with its areas weighted the same way.
+**GAP to #1 of each Region** (latest campaign): each Region, and all the chosen Regions, scored as Country Areas scores it (every test of the Region with its own Region), with the points of each operator and its GAP to the #1 of the Region; below, the weighted GAPs of its areas summed and the **adjustment** that closes them to that GAP (the scoring is not additive: the rates, medians and thresholds of a Region are not those of its areas).
 
 **Latest campaign by city size and scenario:** each city size (and road type) with a row per scenario (NNS High, Medium and Low capacity, then each eMOCN scenario) and the operators side by side, each with its points and tests.
 
-- **Export to Excel:** both tables of every NR Mode with both scorings, in the sheets **Areas** (each campaign under a band of its own colour: its tests, then its Best Network and its Most Reliable points, #1, GAP to #1 and both weighted GAPs to #1), **GAP Totals** (per campaign: the tests, and for each scoring the weighted points and the weighted GAP to #1, summed per Region and for all the chosen Regions), **Sites** (every capacity, scenario and financial year), **Scenarios** and **About**. It is not part of the PowerPoint and Word documents, so it has no Scoring Export Panels.
+- **Export to Excel:** every table of every NR Mode with both scorings; **About** tells every column of every sheet and where it comes from.
+  - **Areas:** each Region with its own scoring, then its areas, then its **Adjustment** row; each campaign under a band of its own colour with its tests, then its Best Network and its Most Reliable points, #1 and GAP to #1 of the area, weight in its Region and weighted GAPs to the #1 of the Region and of all the Regions. Filtered to a Region, its weighted GAPs plus its adjustment are its GAP in Country Areas.
+  - **GAP Totals:** each Region and all the chosen Regions per campaign and scoring: points, #1, GAP to #1, weighted GAP of its areas, adjustment and weighted points of its areas.
+  - **Sites:** every capacity, scenario and planned financial year.
+  - **Scenarios:** the latest campaign by city size and scenario.
+  - **Projection:** each area and operator of the latest campaign over the financial years the Master Grid plans: the share of NNS sites once the planned sites up to that year are NNS, and the points of the year before plus the rise of that share times the NNS points minus the area points (cumulative); the same by the share of tests served by those sites; the reference operator growing its points by **Reference growth** a year, and the GAPs to it. Areas with fewer than 30 NNS tests are not projected. It is not part of the PowerPoint and Word documents, so it has no Scoring Export Panels.
 - **Cost:** it reads the CDRs of its campaigns (about as long as a scoring of them); the same CDRs, methodology, options and Master Grid are taken from the cache of the workspace.
 
 ### Methodology Impact

@@ -2440,8 +2440,11 @@
               <option value="each">Each road on its own</option>
             </select>
           </label>
+          <label data-scoring-config-key="nns_growth">Reference growth (%/year)
+            <input type="number" step="0.1" min="-50" max="50" value="0.5" data-scoring-nns-growth aria-label="Yearly growth of the reference operator in the projection" title="Projection sheet of the Excel: the points of the reference operator grow this much a year (0.5 % by default)">
+          </label>
         </div>
-        <p class="scoring-context-filter-note"><strong>Areas:</strong> each city (G_Level_4, its size from G_Level_3) and the connecting roads, campaign by campaign, with the Best Network and Most Reliable points. <strong>Sites:</strong> the serving sites of the tests of the latest campaign, NNS by the capacity of the newest <strong>Master Grid</strong> (Workspace), the others by eMOCN scenario, and the Keep sites it plans for NNS by financial year. <strong>Scenarios:</strong> the latest campaign by city size and the kind of site that served each test. NSA vs SA scores each NR Mode apart.</p>
+        <p class="scoring-context-filter-note"><strong>Areas:</strong> each Region (as Country Areas), each city (G_Level_4, its size from G_Level_3) and the connecting roads, campaign by campaign, with the Best Network and Most Reliable points and their GAPs. <strong>Sites:</strong> the serving sites of the tests of the latest campaign by eMOCN scenario (newest <strong>Multivendor Mapping</strong>), the NNS by the capacity of the newest <strong>Master Grid</strong>, and the Keep sites it plans for NNS by financial year. <strong>Scenarios:</strong> the latest campaign by city size and the kind of site that served each test. <strong>Projection</strong> (Excel): the points of each area over the financial years of the Master Grid, the reference operator growing by its yearly growth. NSA vs SA scores each NR Mode apart.</p>
       </div>
     </section>
     {# Shown in the dialog of a Saved Scoring being edited or duplicated. #}
@@ -2576,25 +2579,39 @@
                 </ul>
               </section>
               <section data-scoring-part-info-section="nns" data-title="NNS Break-down" data-step="Step 6 · NNS Break-down tab" hidden>
-                <p class="scoring-part-info-lead">The scoring of each city and of the connecting roads with the sites that serve them: the table to project the improvement of the NNS sites.</p>
+                <p class="scoring-part-info-lead">The scoring of each city and of the connecting roads with the sites that serve them, reconciled with the scoring of each Region, and its projection as the NNS sites roll out.</p>
                 <h3>What the tab shows</h3>
                 <ul>
-                  <li><b>Cities and connecting roads:</b> the points of each campaign per operator, the <b>GAP to #1</b> of the area and its <b>weighted GAP to #1</b> in the Region, and the sites serving the latest campaign: NNS by capacity (High · Medium · Low), the others by eMOCN scenario, and the NNS sites planned by financial year.</li>
-                  <li><b>GAP to #1 of each Region:</b> the weighted GAPs of the areas summed, with the points of the areas weighted the same way: how many points each operator is behind #1 over the whole Region, and over all the chosen Regions.</li>
-                  <li><b>Latest campaign by city size and scenario:</b> each test scored by the kind of site that served it (NNS by capacity, or its eMOCN scenario).</li>
-                  <li><b>Export to Excel:</b> every table of every NR Mode, with both scorings and every GAP, ready for the projection.</li>
+                  <li><b>Cities and connecting roads:</b> the points of each campaign per operator, the <b>GAP to #1</b> of the area, and its <b>weighted GAP to #1</b> of the Region with its weight in the Region; the sites serving the latest campaign.</li>
+                  <li><b>GAP to #1 of each Region:</b> each Region scored as Country Areas scores it, its GAP to its #1, the weighted GAPs of its areas summed and the adjustment that closes them to that GAP.</li>
+                  <li><b>Latest campaign by city size and scenario:</b> each test scored by the kind of site that served it.</li>
                 </ul>
+                <h3>The Excel</h3>
+                <dl>
+                  <dt>Areas</dt><dd>Each Region (its own scoring), its areas and its adjustment row; per campaign its tests, then Best Network and Most Reliable: points, #1 and GAP of the area, weight in the Region and weighted GAPs to the #1 of the Region and of all the Regions. Filtered to a Region, its weighted GAPs plus its adjustment are its GAP in Country Areas.</dd>
+                  <dt>GAP Totals</dt><dd>Each Region and all the chosen Regions: points, #1, GAP, weighted GAP of its areas, adjustment and weighted points.</dd>
+                  <dt>Sites</dt><dd>The serving sites by capacity and eMOCN scenario, and the NNS sites planned by financial year.</dd>
+                  <dt>Scenarios</dt><dd>The latest campaign by city size and scenario.</dd>
+                  <dt>Projection</dt><dd>Each area and operator over the financial years: the share of NNS sites (and of tests on them) once the planned sites are NNS, the points rising each year by that rise times the NNS points minus the area points, against the reference operator growing a fixed % a year.</dd>
+                  <dt>About</dt><dd>Every column of every sheet and where it comes from.</dd>
+                </dl>
+                <h3>Where the data comes from</h3>
+                <dl>
+                  <dt>CDRs</dt><dd>Tests, points, Region (each test), city (G_Level_4), size (G_Level_3) and serving site.</dd>
+                  <dt>Inventory</dt><dd>The eMOCN scenario (NNS, S0, S1…) of each serving site, from the latest Multivendor Mapping of Workspace (such as the VF3 QGIS All Vendor table); without one, the scenario of the CDR rows.</dd>
+                  <dt>Master Grid</dt><dd>The capacity (High/Med/Low) of the NNS sites and the sites planned for NNS by financial year (latest Master Grid of Workspace).</dd>
+                </dl>
                 <h3>Settings</h3>
                 <dl>
                   <dt>Campaigns</dt><dd><b>Latest 4 campaigns</b> (the default), another automatic choice or chosen campaigns, whatever the Campaign filter.</dd>
-                  <dt>Regions</dt><dd>The Regions it covers, among those of the CDRs of its campaigns (for example Vendor A, VMO2 North and VMO2 South); none: every Region.</dd>
+                  <dt>Regions</dt><dd>The Regions it covers, among those of the CDRs of its campaigns; none: every Region.</dd>
                   <dt>Connecting roads</dt><dd><b>Grouped by Region</b> (one row for the Roads and one for the Highway of each Region) or each road on its own.</dd>
+                  <dt>Reference growth</dt><dd>How much the reference operator grows a year in the projection (<b>0.5 %</b> by default).</dd>
                 </dl>
                 <h3>Good to know</h3>
                 <ul>
-                  <li><b>Off by default:</b> switched on, it is calculated with the scoring (about a minute per NR Mode) and shown in its own tab.</li>
-                  <li><b>One Region per city:</b> each city belongs to the Region with most of its tests; the roads keep the Region of each test.</li>
-                  <li><b>Master Grid:</b> the capacity and the planned NNS sites come from the latest Master Grid uploaded in Workspace; without it those columns stay empty. A serving site is found by its own number or by the number of the site it pairs with (SITE ID + Pairing, SiteRef2).</li>
+                  <li><b>Off by default:</b> switched on, it is calculated with the scoring (one or two minutes per NR Mode) and shown in its own tab.</li>
+                  <li><b>One Region per city:</b> each city belongs to the Region with most of its tests; the few tests of a city in another Region go to the adjustment.</li>
                   <li><b>NSA vs SA:</b> each NR Mode is scored apart.</li>
                 </ul>
               </section>
