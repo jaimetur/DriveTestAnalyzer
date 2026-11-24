@@ -1327,6 +1327,8 @@
   // sites, then the latest campaign by city size and scenario. Best Network or Most Reliable, one NR Mode at a time.
   let nnsScoring = 'best';
   let nnsMode = '';
+  // The filters of the table of cities and connecting roads (empty: every value).
+  const nnsFilters = {region: '', area: '', size: '', operator: ''};
   function renderNnsBreakdown(pane, payload) {
     if (!pane) return;
     const nns = payload?.nns_breakdown;
@@ -1398,7 +1400,24 @@
     };
     // Cities and connecting roads.
     const campaigns = mode.campaigns || [];
-    const areas = (nns.areas || []).filter(row => row.nr_mode === nnsMode);
+    const modeAreas = (nns.areas || []).filter(row => row.nr_mode === nnsMode);
+    // Filters by Region, area, size and operator: each lists the values left by the others.
+    const filterKeys = ['region', 'area', 'size', 'operator'];
+    const matches = (row, except) => filterKeys.every(key => key === except || !nnsFilters[key] || String(row[key]) === nnsFilters[key]);
+    const filterBar = el('div', 'scoring-nns-filters');
+    for (const [key, label] of [['region', 'Region'], ['area', 'Area'], ['size', 'Size'], ['operator', 'Operator']]) {
+      const values = [...new Set(modeAreas.filter(row => matches(row, key)).map(row => String(row[key] ?? '')).filter(Boolean))]
+        .sort((left, right) => left.localeCompare(right, undefined, {numeric: true}));
+      if (nnsFilters[key] && !values.includes(nnsFilters[key])) nnsFilters[key] = '';
+      filterBar.append(choice(label, [['', `All (${values.length})`], ...values.map(value => [value, value])], nnsFilters[key], value => { nnsFilters[key] = value; }));
+    }
+    if (filterKeys.some(key => nnsFilters[key])) {
+      const clear = el('button', 'scoring-nns-filters-clear', 'Clear filters');
+      clear.type = 'button';
+      clear.addEventListener('click', () => { filterKeys.forEach(key => { nnsFilters[key] = ''; }); renderNnsBreakdown(pane, payload); });
+      filterBar.append(clear);
+    }
+    const areas = modeAreas.filter(row => matches(row, null));
     const sites = new Map((nns.sites || []).filter(row => row.nr_mode === nnsMode).map(row => [`${row.region}|${row.area}`, row]));
     const areasBox = section('Cities and connecting roads',
       `${nnsScoring === 'best' ? 'Best Network' : 'Most Reliable'} points of each campaign; the GAP to #1 (the operator with the most points in the area), its weight in the Region and in all the chosen Regions, and the sites serve the tests of ${campaignLabel(mode.latest_campaign) || 'the latest campaign'}.`);
@@ -1514,14 +1533,14 @@
     }
     if (!ordered.length) {
       const empty = el('tr');
-      const td = el('td', 'scoring-empty', 'No tests in the chosen Regions.');
+      const td = el('td', 'scoring-empty', filterKeys.some(key => nnsFilters[key]) ? 'No area matches these filters.' : 'No tests in the chosen Regions.');
       td.colSpan = 8 + campaigns.length;
       empty.append(td);
       tbody.append(empty);
     }
     table.append(thead, tbody);
     wrap.append(table);
-    areasBox.append(wrap);
+    areasBox.append(filterBar, wrap);
     // The GAP of each Region (and of all the chosen ones) to #1: the weighted GAPs of its areas summed, per operator.
     const totals = (nns.gap_totals || []).filter(row => row.nr_mode === nnsMode);
     const gapBox = section(`GAP to #1 of each Region, ${campaignLabel(latest) || 'latest campaign'}`,

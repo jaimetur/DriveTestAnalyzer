@@ -296,3 +296,24 @@ def test_the_master_grid_matches_the_sites_named_by_the_number_of_the_site_they_
     assert lookup[('VF', '32961')]['config'] == 'High' and lookup[('VF', '18567')]['site_id'] == '32961'
     assert lookup[('VF', '50419')]['config'] == 'Low' and lookup[('3UK', '50419')]['config'] == 'Low'
     assert lookup[('O2', '10020')]['config'] == 'Medium'
+
+
+def test_the_projection_of_a_region_adds_what_its_areas_add_weighted_as_the_methodology():
+    def area(name, operator, points, weight):
+        return {'nr_mode': 'NSA', 'region': 'Vendor A', 'area': name, 'operator': operator,
+                'campaigns': {'Q3': {'best': {'points': points, 'weight_region': weight, 'weight_all': weight}, 'tests': 100}}}
+    def projected(name, operator, points, nns_points):
+        return {'nr_mode': 'NSA', 'region': 'Vendor A', 'area': name, 'operator': operator, 'sites': 10, 'nns_sites': 0,
+                'tests': 100, 'nns_tests': 50, 'planned_sites': {'FY27': 5}, 'planned_tests': {'FY27': 50},
+                'best': {'points': points, 'max_points': 1000.0, 'nns_points': nns_points}}
+    breakdown = {
+        'reference_operator': 'EE', 'modes': [{'nr_mode': 'NSA', 'latest_campaign': 'Q3'}],
+        'areas': [area('Reading', 'VF', 900.0, 0.6), area('Roads', 'VF', 800.0, 0.4), area('Reading', 'EE', 950.0, 0.6)],
+        'gap_totals': [{'nr_mode': 'NSA', 'region': 'Vendor A', 'operator': operator, 'campaigns': {'Q3': {'best': {'points': points, 'max_points': 1000.0}}}}
+                       for operator, points in (('VF', 860.0), ('EE', 940.0))],
+        'projection': [projected('Reading', 'VF', 900.0, 940.0), projected('Roads', 'VF', 800.0, 900.0), projected('Reading', 'EE', 950.0, 960.0)]}
+    rows = {(row['region'], row['operator']): row for row in nb.region_projection(breakdown, ['FY26', 'FY27'], 1.0)}
+    vf = rows[('Vendor A', 'VF')]['lines']
+    # Half of the sites become NNS in FY27: Reading adds 0.6 x 0.5 x 40, the roads 0.4 x 0.5 x 100.
+    assert vf['sites'] == [860.0, 860.0 + 0.6 * 20 + 0.4 * 50] and vf['sites_share'] == [0.0, 0.5]
+    assert rows[('Vendor A', 'EE')]['lines']['sites'] == [940.0, 949.4]

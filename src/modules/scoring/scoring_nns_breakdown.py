@@ -538,6 +538,73 @@ def projection(row: dict[str, Any], years: list[str], growth: float, reference: 
     return projected
 
 
+def region_projection(breakdown: dict[str, Any], years: list[str], growth: float) -> list[dict[str, Any]]:
+    """The projection of each Region (and of all the chosen Regions, ``region`` empty) and operator: its points today (as
+    Country Areas scores it) plus, each year, what the projections of its areas add to it weighted as the methodology
+    weighs them (``weight_region``, ``weight_all``), by NNS sites and by NNS tests; the reference operator growing by
+    ``growth`` % a year from its points today."""
+    reference = str(breakdown.get('reference_operator') or '').strip().casefold()
+    latest = {mode['nr_mode']: mode.get('latest_campaign') for mode in breakdown.get('modes') or [] if isinstance(mode, dict)}
+    weights = {(row['nr_mode'], row['region'], row['area'], row['operator']): ((row.get('campaigns') or {}).get(latest.get(row['nr_mode'])) or {})
+               for row in breakdown.get('areas') or []}
+    totals = {(row['nr_mode'], row['region'], row['operator']): ((row.get('campaigns') or {}).get(latest.get(row['nr_mode'])) or {})
+              for row in breakdown.get('gap_totals') or []}
+    projected: dict[tuple, dict[str, Any]] = {}
+    for row in breakdown.get('projection') or []:
+        is_reference = row['operator'].strip().casefold() == reference
+        lines_of = projection(row, years, growth, is_reference)
+        for region, scope in ((row['region'], 'region'), ('', 'all')):
+            key = (row['nr_mode'], region, row['operator'])
+            if key not in totals:
+                continue
+            entry = projected.setdefault(key, {'nr_mode': row['nr_mode'], 'region': region, 'operator': row['operator'],
+                                              'sites': 0, 'nns_sites': 0, 'tests': 0, 'nns_tests': 0, 'planned_sites': {},
+                                              'planned_tests': {}, 'gains': {}})
+            for name in ('sites', 'nns_sites', 'tests', 'nns_tests'):
+                entry[name] += int(row.get(name) or 0)
+            for name in ('planned_sites', 'planned_tests'):
+                for year, count in (row.get(name) or {}).items():
+                    entry[name][year] = entry[name].get(year, 0) + int(count)
+            for scoring in SCORINGS:
+                lines, weight = lines_of.get(scoring), (weights.get((row['nr_mode'], row['region'], row['area'], row['operator'])) or {}).get(scoring) or {}
+                share = weight.get(f'weight_{scope}')
+                if not lines or share is None or is_reference:
+                    continue
+                gains = entry['gains'].setdefault(scoring, {'sites': [0.0] * len(years), 'tests': [0.0] * len(years)})
+                area_points = float((row.get(scoring) or {}).get('points') or 0)
+                for basis in ('sites', 'tests'):
+                    for index, points in enumerate(lines[basis]):
+                        if points is not None:
+                            gains[basis][index] += float(share) * (points - area_points)
+    rows = []
+    for (nr_mode, region, operator), entry in projected.items():
+        is_reference = operator.strip().casefold() == reference
+        for scoring in SCORINGS:
+            today = (totals.get((nr_mode, region, operator)) or {}).get(scoring) or {}
+            if today.get('points') is None:
+                continue
+            base, maximum = float(today['points']), float(today.get('max_points') or 1000)
+            lines: dict[str, list] = {'sites_share': [], 'sites': [], 'tests_share': [], 'tests': [], 'reference': []}
+            for basis, total, now, planned in (('sites', entry['sites'], entry['nns_sites'], entry['planned_sites']),
+                                               ('tests', entry['tests'], entry['nns_tests'], entry['planned_tests'])):
+                added = 0
+                for index, year in enumerate(years):
+                    added += int(planned.get(year, 0))
+                    lines[f'{basis}_share'].append(round((now + added) / total, 4) if total else None)
+                    gain = 0.0 if is_reference else entry['gains'].get(scoring, {}).get(basis, [0.0] * len(years))[index]
+                    lines[basis].append(round(min(maximum, base + gain), 2))
+            points = base
+            for index, _year in enumerate(years):
+                if index:
+                    points = min(maximum, points * (1 + growth / 100))
+                lines['reference'].append(round(points, 2))
+            if is_reference:
+                lines['sites'], lines['tests'] = list(lines['reference']), list(lines['reference'])
+            rows.append({**{name: entry[name] for name in ('nr_mode', 'region', 'operator', 'sites', 'nns_sites', 'tests', 'nns_tests')},
+                         'scoring': scoring, 'points': round(base, 2), 'lines': lines})
+    return rows
+
+
 def scenario_order(labels: Iterable[str]) -> list[str]:
     """The scenarios in their order: NNS by capacity, the eMOCN scenarios, then the tests without one."""
     labels = list(dict.fromkeys(labels))
@@ -760,6 +827,23 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
     reference = str(breakdown.get('reference_operator') or '').strip().casefold()
     growth = float(breakdown.get('reference_growth', DEFAULT_REFERENCE_GROWTH))
     rows = []
+    # Each Region (and all the chosen Regions) first: its points today plus what its areas add, weighted as the methodology.
+    region_rows = region_projection(breakdown, years, growth)
+    region_reference = {(item['nr_mode'], item['region'], item['scoring']): item['lines']['reference'] for item in region_rows
+                        if item['operator'].strip().casefold() == reference}
+    for item in sorted(region_rows, key=lambda entry: (entry['nr_mode'], entry['region'] == '', entry['region'], entry['operator'],
+                                                       entry['scoring'] != 'best')):
+        name, lines = dict(scorings)[item['scoring']], item['lines']
+        ahead = region_reference.get((item['nr_mode'], item['region'], item['scoring'])) or [None] * len(years)
+        label_region = item['region'] or 'All the chosen Regions'
+        values = [item['nr_mode'], label_region, f'{label_region} (whole Region)' if item['region'] else label_region, 'Region', '',
+                  item['operator'], name, item['sites'], item['nns_sites'], item['tests'], item['nns_tests'], item['points'], None]
+        for index, _year in enumerate(years):
+            reference_points = ahead[index]
+            gap = lambda points: round(points - reference_points, 2) if points is not None and reference_points is not None else None
+            values += [lines['sites_share'][index], lines['sites'][index], lines['tests_share'][index], lines['tests'][index],
+                       reference_points, gap(lines['sites'][index]), gap(lines['tests'][index])]
+        rows.append(values)
     for row in sorted(projected_rows, key=lambda item: (item['nr_mode'], item['region'], item['kind'] != CITY_KIND, item['size'],
                                                         item['area'], item['operator'])):
         is_reference = row['operator'].strip().casefold() == reference
@@ -860,6 +944,9 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
         ['Scenarios', 'Latest campaign', 'Size, Scenario, Best Network, Most Reliable, Tests',
          'Each test scored with the kind of site that served it: an NNS site by its capacity, or its eMOCN scenario '
          '(inventory), per city size and road type.'],
+        ['Projection', 'Region rows', 'Points of each year',
+         'Each Region (and all the chosen Regions) first: its points today, as Country Areas scores it, plus what the '
+         'projections of its areas add, weighted as the methodology weighs them (Weight in its Region of the Areas sheet).'],
         ['Projection', 'Today (latest campaign)', 'Serving sites, NNS sites, Tests, NNS tests, Points, NNS points',
          'The sites and tests of the operator in the area, those of NNS sites, its points and the points of its tests '
          f'served by NNS sites (not projected with fewer than {MIN_NNS_TESTS} NNS tests).'],

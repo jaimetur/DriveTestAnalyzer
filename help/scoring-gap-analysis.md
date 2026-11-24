@@ -676,7 +676,7 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 
 **Cities and connecting roads** (one table per NR Mode):
 
-- **Rows:** each Region, then its cities (big to small) and roads, each with a row per operator, from the highest points of the latest campaign (#1 first, then the smallest GAP).
+- **Rows:** each Region, then its cities (big to small) and roads, each with a row per operator, from the highest points of the latest campaign (#1 first, then the smallest GAP). **Region**, **Area**, **Size** and **Operator** above the table filter it (each lists the values the others leave; **Clear filters** shows every row).
 - **Points:** Best Network or Most Reliable (the **Scoring** selector) of each campaign, with its tests, tinted by their share of the maximum points.
 - **GAP to #1** (latest campaign): the points of the operator minus those of the operator with the most points in the area (**#1** on its row).
 - **Weighted GAP to #1** (latest campaign): what the area adds to the GAP of its Region to the **#1 of the Region**, weighted as the methodology weighs the areas: its points in its environment and category (Data, Voice) times its share of the tests of the Region there, minus those of the #1 of the Region. Below it, the weight of the area in the Region and the same over every chosen Region (**all**).
@@ -691,7 +691,7 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
   - **GAP Totals:** each Region and all the chosen Regions per campaign and scoring: points, #1, GAP to #1, weighted GAP of its areas, adjustment and weighted points of its areas.
   - **Sites:** every capacity, scenario and planned financial year.
   - **Scenarios:** the latest campaign by city size and scenario.
-  - **Projection:** each area and operator of the latest campaign over the financial years the Master Grid plans: the share of NNS sites once the planned sites up to that year are NNS, and the points of the year before plus the rise of that share times the NNS points minus the area points (cumulative); the same by the share of tests served by those sites; the reference operator growing its points by **Reference growth** a year, and the GAPs to it. Areas with fewer than 30 NNS tests are not projected. It is not part of the PowerPoint and Word documents, so it has no Scoring Export Panels.
+  - **Projection:** each area and operator of the latest campaign over the financial years the Master Grid plans: the share of NNS sites once the planned sites up to that year are NNS, and the points of the year before plus the rise of that share times the NNS points minus the area points (cumulative); the same by the share of tests served by those sites; the reference operator growing its points by **Reference growth** a year, and the GAPs to it. Areas with fewer than 30 NNS tests are not projected. Each Region (and all the chosen Regions) comes first: its points today (as Country Areas) plus, each year, what the projections of its areas add, weighted as the methodology weighs them. It is not part of the PowerPoint and Word documents, so it has no Scoring Export Panels.
 - **Cost:** it reads the CDRs of its campaigns (about as long as a scoring of them); the same CDRs, methodology, options and Master Grid are taken from the cache of the workspace.
 
 ### Methodology Impact

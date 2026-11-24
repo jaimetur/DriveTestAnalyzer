@@ -532,6 +532,9 @@
   table.scoring-nns-table td.scoring-nns-score.is-empty { color: #9aa7b2; }
   table.scoring-nns-table td.scoring-nns-sites { min-width: 6rem; max-width: 10.5rem; text-align: center; font-weight: 800; }
   table.scoring-nns-table td.scoring-nns-sites small { white-space: normal; line-height: 1.3; }
+  .scoring-nns-filters { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem .8rem; margin: 0 0 .6rem; }
+  .scoring-nns-filters select { max-width: 16rem; }
+  button.scoring-nns-filters-clear { min-width: 0; padding: .35rem .8rem; border: 1px solid var(--line); border-radius: 999px; background: #fff; box-shadow: none; color: var(--brand-3); font-size: .78rem; font-weight: 700; }
   table.scoring-nns-table td.scoring-nns-gap { min-width: 4.4rem; text-align: center; font-variant-numeric: tabular-nums; }
   table.scoring-nns-table td.scoring-nns-gap strong { display: block; font-size: .95rem; }
   table.scoring-nns-table td.scoring-nns-gap.is-behind strong { color: #b42318; }
@@ -2582,7 +2585,7 @@
                 <p class="scoring-part-info-lead">The scoring of each city and of the connecting roads with the sites that serve them, reconciled with the scoring of each Region, and its projection as the NNS sites roll out.</p>
                 <h3>What the tab shows</h3>
                 <ul>
-                  <li><b>Cities and connecting roads:</b> the points of each campaign per operator, the <b>GAP to #1</b> of the area, and its <b>weighted GAP to #1</b> of the Region with its weight in the Region; the sites serving the latest campaign.</li>
+                  <li><b>Cities and connecting roads</b> (filtered by Region, Area, Size and Operator): the points of each campaign per operator, the <b>GAP to #1</b> of the area, and its <b>weighted GAP to #1</b> of the Region with its weight in the Region; the sites serving the latest campaign.</li>
                   <li><b>GAP to #1 of each Region:</b> each Region scored as Country Areas scores it, its GAP to its #1, the weighted GAPs of its areas summed and the adjustment that closes them to that GAP.</li>
                   <li><b>Latest campaign by city size and scenario:</b> each test scored by the kind of site that served it.</li>
                 </ul>
@@ -2592,7 +2595,7 @@
                   <dt>GAP Totals</dt><dd>Each Region and all the chosen Regions: points, #1, GAP, weighted GAP of its areas, adjustment and weighted points.</dd>
                   <dt>Sites</dt><dd>The serving sites by capacity and eMOCN scenario, and the NNS sites planned by financial year.</dd>
                   <dt>Scenarios</dt><dd>The latest campaign by city size and scenario.</dd>
-                  <dt>Projection</dt><dd>Each area and operator over the financial years: the share of NNS sites (and of tests on them) once the planned sites are NNS, the points rising each year by that rise times the NNS points minus the area points, against the reference operator growing a fixed % a year.</dd>
+                  <dt>Projection</dt><dd>Each Region (its points today plus what its areas add, weighted as the methodology) and each area and operator over the financial years: the share of NNS sites (and of tests on them) once the planned sites are NNS, the points rising each year by that rise times the NNS points minus the area points, against the reference operator growing a fixed % a year.</dd>
                   <dt>About</dt><dd>Every column of every sheet and where it comes from.</dd>
                 </dl>
                 <h3>Where the data comes from</h3>
