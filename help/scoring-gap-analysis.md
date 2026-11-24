@@ -726,6 +726,9 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 
 The pale yellow **Calculation notes** card lists the affected combinations, missing KPIs and the **exact maximum achievable score** without their contributions (for example **VF_UK / Samsung / Q1: maximum 583.2645 of 650 points**; each campaign can differ).
 
+- **No tests in the CDRs for:** KPIs whose tests are not in the CDRs of that series (for example TikTok in a city driven before the test was added to the campaign).
+- **KPIs without valid measurements:** KPIs with tests whose values are not valid.
+
 > [!WARNING]
 > **Missing points are not redistributed.** An incomplete result keeps the original weights and configured benchmark maximum. Available contributions are not scaled up to a complete score.
 

@@ -1,9 +1,11 @@
 """Emails of the follow-up of the Non-Qualified Calls (ticket #187).
 
-The reviewer of a call, and the users of Email Every NQ Call Change To, are told when every field of the analysts of the
-call is filled and when its NQ Call Status or the status of one of its phases changes: one email per recipient for each
-change (a bulk change or a copy to a group lists its calls in one email), with the follow-up of each call, what changed,
-the fields filled by section and those still empty, and a link that opens the call.
+The Analyst and the Reviewer of a call (ticket #199), and the users of Email Every NQ Call Change To, are told when every
+field of the analysts of the call is filled, when one of its key fields changes (its NQ Call Status, the status of a phase,
+its Analyst, Reviewer, Root Domain, Root Category, Root Cause or Initial Classification) and when somebody comments on it:
+one email per recipient for each change (a bulk change or a copy to a group lists its calls in one email), with the
+follow-up of each call, what changed, the new comments, the fields filled by section and those still empty, and a link
+that opens the call.
 
 Each user chooses how often (ticket #194): at once, or in a summary every hour, every day at 17:00 or every Friday at
 17:00 (the default is the daily summary), or never; and whether it is told of its own changes too (not by default). The
@@ -66,12 +68,20 @@ def call_events(before: dict[str, dict[str, Any]], after: dict[str, dict[str, An
     return events
 
 
+def comment_events(state: dict[str, Any], author: str, body: str, created_at: str = '') -> dict[str, dict[str, Any]]:
+    """The event of a new comment on a call (ticket #199): its follow-up and the comment."""
+    return {state['call_key']: {'state': state, 'changes': [], 'completed': False,
+                                'comments': [{'author': str(author or ''), 'body': str(body or ''), 'created_at': str(created_at or '')}]}}
+
+
 def recipients_of(events: dict[str, dict[str, Any]], every: Iterable[str]) -> dict[str, list[str]]:
-    """The calls each recipient (username in lower case) is told of: its reviewer, and the users of every change."""
+    """The calls each recipient (username in lower case) is told of: its Analyst and its Reviewer (an Analyst without an
+    account has no address and is told of none), and the users of every change."""
     everyone = [str(name).casefold() for name in every if str(name).strip()]
     told: dict[str, list[str]] = {}
     for key, event in events.items():
-        for username in [str(event['state'].get('reviewer') or '').casefold(), *everyone]:
+        for username in [str(event['state'].get('analyst') or '').casefold(), str(event['state'].get('reviewer') or '').casefold(),
+                         *everyone]:
             if username:
                 told.setdefault(username, [])
                 if key not in told[username]:
@@ -116,6 +126,12 @@ def _call_part(event: dict[str, Any], base_url: str, names: dict[str, str], *, d
     if event['completed']:
         what.append(notifications.callout('Every field filled', 'Every field of the analysts of this call has a value.',
                                           colour='#2E8B57', background='#EEF8F1'))
+    for comment in event.get('comments') or []:
+        author = names.get(str(comment.get('author') or '').casefold(), str(comment.get('author') or ''))
+        text = html.escape(str(comment.get('body') or '')).replace('\n', '<br>')
+        when = str(comment.get('created_at') or '').replace('T', ' ')[:16]
+        what.append(_table([('By', html.escape(author or '—') + (f' · {html.escape(when)}' if when else '')), ('Comment', text)],
+                           'New comment', '#1E61A3'))
     if event['changes']:
         what.append(_table(
             [(label, f'{html.escape(old or "—")} → <strong>{html.escape(new or "—")}</strong>') for label, old, new in event['changes']],
@@ -148,20 +164,26 @@ def call_thread(workspace: str, call_key: str) -> str:
     return f'nq-call-{workspace}-{call_key}'
 
 
+def _actions(events: dict[str, dict[str, Any]], keys: list[str]) -> list[str]:
+    """What happened to some calls, for the title of their email."""
+    found = [('Completed', any(events[key]['completed'] for key in keys)), ('Changed', any(events[key]['changes'] for key in keys)),
+             ('New comment', any(events[key].get('comments') for key in keys))]
+    return [name for name, happened in found if happened]
+
+
 def call_email(app_name: str, workspace: str, actor_name: str, events: dict[str, dict[str, Any]], keys: list[str], base_url: str,
                names: dict[str, str]) -> tuple[str, str]:
     """The subject and HTML of the email of some calls of a change. The email of one call keeps the same subject for
     every change (what happened leads its title), so its emails are one conversation."""
     shown = keys[:LISTED_CALLS]
-    completed = sum(1 for key in shown if events[key]['completed'])
-    changed = sum(1 for key in shown if events[key]['changes'])
-    actions = [*(['Completed'] if completed else []), *(['Status changed'] if changed else [])]
+    actions = _actions(events, shown)
     if len(shown) == 1:
         title = _call_title(events[shown[0]]['state'])
     else:
         title = f'{len(keys)} NQ calls'
-    intro = (f'<p>{html.escape(actor_name)} changed {"this NQ call" if len(keys) == 1 else f"{len(keys)} NQ calls"} of the '
-             f'workspace <strong>{html.escape(workspace)}</strong>.</p>')
+    only_comments = all(not events[key]['changes'] and not events[key]['completed'] for key in shown)
+    intro = (f'<p>{html.escape(actor_name)} {"commented on" if only_comments else "changed"} '
+             f'{"this NQ call" if len(keys) == 1 else f"{len(keys)} NQ calls"} of the workspace <strong>{html.escape(workspace)}</strong>.</p>')
     parts = [intro, *(_call_part(events[key], base_url, names, detailed=index < DETAILED_CALLS) for index, key in enumerate(shown))]
     if len(keys) > len(shown):
         parts.append(f'<p>And {len(keys) - len(shown)} more calls.</p>')
@@ -225,7 +247,8 @@ def queue_for_summaries(app_repository: Any, workspace: str, actor: str, base_ur
     """Keep the changes of ``events`` for the summaries of the users of ``waiting`` (username: call keys)."""
     now = notifications.queued_at()
     rows = [(username, workspace, key, str(actor or ''), base_url,
-             json.dumps({'state': events[key]['state'], 'changes': events[key]['changes'], 'completed': events[key]['completed']},
+             json.dumps({'state': events[key]['state'], 'changes': events[key]['changes'], 'completed': events[key]['completed'],
+                         'comments': events[key].get('comments') or []},
                         ensure_ascii=False, default=str), now)
             for username, keys in waiting.items() for key in keys]
     with _queue_connection(app_repository) as conn:
@@ -245,7 +268,8 @@ def merge_events(rows: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]],
         event = json.loads(row['event_json'])
         if row['actor'] and row['actor'] not in actors:
             actors.append(row['actor'])
-        current = merged.setdefault(row['call_key'], {'state': event['state'], 'changes': {}, 'completed': False})
+        current = merged.setdefault(row['call_key'], {'state': event['state'], 'changes': {}, 'completed': False, 'comments': []})
+        current['comments'].extend(event.get('comments') or [])
         current['state'] = event['state']
         current['completed'] = current['completed'] or bool(event.get('completed'))
         for label, old, new in event.get('changes') or []:
@@ -257,8 +281,8 @@ def merge_events(rows: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]],
     for key, event in merged.items():
         changes = [(label, old, new) for label, (old, new) in event['changes'].items() if old != new]
         completed = event['completed'] and bool(event['state'].get('complete'))
-        if changes or completed:
-            calls[key] = {'state': event['state'], 'changes': changes, 'completed': completed}
+        if changes or completed or event['comments']:
+            calls[key] = {'state': event['state'], 'changes': changes, 'completed': completed, 'comments': event['comments']}
     return calls, actors
 
 
@@ -275,9 +299,7 @@ def summary_email(app_name: str, workspace: str, frequency: str, events: dict[st
     parts = [intro, *(_call_part(events[key], base_url, names, detailed=index < DETAILED_CALLS) for index, key in enumerate(shown))]
     if len(keys) > len(shown):
         parts.append(f'<p>And {len(keys) - len(shown)} more calls.</p>')
-    completed = sum(1 for key in keys if events[key]['completed'])
-    changed = sum(1 for key in keys if events[key]['changes'])
-    actions = [*(['Completed'] if completed else []), *(['Status changed'] if changed else [])]
+    actions = _actions(events, keys)
     title = f"{SUMMARY_NAMES.get(frequency, 'NQ')} summary · {len(keys)} NQ call{'s' if len(keys) != 1 else ''}"
     link = (('Open the call', f'{base_url}/non-qualified-calls#call={shown[0]}') if len(shown) == 1 else
             ('Open Non-Qualified Calls', f'{base_url}/non-qualified-calls')) if base_url else None

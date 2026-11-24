@@ -127,8 +127,23 @@
   // What the colour of the NQ calls tells, the same on both maps: the site of their CDR, their call type, the domain of their
   // root cause (decided, else that of the DT Analyzer RCA), their campaign or their operator. The map of a call opens by
   // site, NQ Maps by call type; on the map of a call, And Group rings the NQ calls of its groups besides.
-  const FAILURE_COLOURS = {site: 'Site', type: 'Call type', domain: 'Root cause domain', campaign: 'Campaign', operator: 'Operator'};
-  const AREA_FAILURE_COLOURS = {type: 'Call type', domain: 'Root cause domain', campaign: 'Campaign', operator: 'Operator', site: 'Site'};
+  // (Region, Service, Result and Root Category since ticket #198.)
+  const FAILURE_COLOURS = {site: 'Site', type: 'Call type', domain: 'Root cause domain', category: 'Root Category', campaign: 'Campaign',
+    operator: 'Operator', region: 'Region', service: 'Service', result: 'Result'};
+  const AREA_FAILURE_COLOURS = {type: 'Call type', domain: 'Root cause domain', category: 'Root Category', campaign: 'Campaign',
+    operator: 'Operator', region: 'Region', service: 'Service', result: 'Result', site: 'Site'};
+  // The shape of the NQ calls (ticket #198): circles, a ring in their colour over a light fill of it (none without Layer3
+  // Logs on NQ Maps), so that what is under them shows; or stars, as before.
+  const FAILURE_SHAPES = {circle: 'Circles', star: 'Stars'};
+  // The values an NQ call is coloured by, besides its call type, root cause domain, campaign, operator and site: its root
+  // category (the one decided, else that of the DT Analyzer RCA), its Region, its service and its result.
+  const failureCategory = (failure) => failure.root_category || failure.dta_category || '';
+  const VALUE_COLOURS = {
+    category: [(failure) => failureCategory(failure), 'No root category yet'],
+    region: [(failure) => failure.region || '', 'No Region'],
+    service: [(failure) => failure.service_label || SERVICE_LABELS[failure.service] || failure.service || '', 'No service'],
+    result: [(failure) => failure.result || '', 'No result'],
+  };
   const KIND_COLOURS = {voice: '#b0234f', speech: '#7048e8', whatsapp: '#2b8a3e', data: '#1c7ed6', ping: '#f08c00'};
   const DOMAIN_COLOURS = () => window.L3Layers?.DOMAIN_COLOURS || {};
   const failureDomain = (failure) => failure.root_domain || failure.dta_domain || '';
@@ -150,6 +165,10 @@
   let operatorColours = {};
   const failureColourBy = (choice, failure, ownSite = '') => {
     if (choice === 'type') return KIND_COLOURS[failure.kind] || '#495057';
+    if (VALUE_COLOURS[choice]) {
+      const value = VALUE_COLOURS[choice][0](failure);
+      return value ? categoryColour(`${choice}:${value}`) : '#adb5bd';
+    }
     if (choice === 'campaign') return categoryColour(`campaign:${failure.campaign}|${failure.nr_mode}`);
     if (choice === 'operator') return operatorColours[failure.operator] || categoryColour(`operator:${failure.operator}`);
     if (choice === 'site') {
@@ -165,7 +184,8 @@
     const lines = new Map();
     for (const failure of failures) {
       const site = choice === 'site' ? siteOf(failure) : null;
-      const text = choice === 'type' ? KIND_LABELS[failure.kind] || failure.service_label || 'Other'
+      const text = VALUE_COLOURS[choice] ? VALUE_COLOURS[choice][0](failure) || VALUE_COLOURS[choice][1]
+        : choice === 'type' ? KIND_LABELS[failure.kind] || failure.service_label || 'Other'
         : choice === 'campaign' ? campaignText(failure.campaign, failure.nr_mode) || 'No campaign'
           : choice === 'operator' ? failure.operator || 'No operator' : site ? site.name : 'No site';
       const line = lines.get(text) || {text, colour: failureColourBy(choice, failure, ownSite), count: 0, own: Boolean(site && site.key === ownSite)};
@@ -247,6 +267,20 @@
     if (!present.size) ['voice', 'whatsapp', 'data'].forEach((kind) => present.add(kind));
     return [...present].sort((first, second) => (CALL_TYPE_ORDER.indexOf(first) + 1 || 99) - (CALL_TYPE_ORDER.indexOf(second) + 1 || 99)
       || String(first).localeCompare(String(second)));
+  };
+  // Show counts (ticket #198): the ×2, ×3… of the NQ calls at one point of the map, off until switched on.
+  const countsSwitch = (settings, onChange) => {
+    const label = node('label', undefined, 'nq-map-control nq-map-check');
+    label.title = 'How many NQ calls each point of the map holds (×2, ×3…), off by default so that a view of the whole country stays clear';
+    const track = node('span', undefined, 'nq-l3-switch');
+    const box = node('input');
+    box.type = 'checkbox';
+    box.setAttribute('role', 'switch');
+    box.checked = Boolean(settings.showCounts);
+    box.addEventListener('change', () => { settings.showCounts = box.checked; onChange(); });
+    track.append(box, node('span', undefined, 'nq-l3-switch-track'));
+    label.append(node('span', 'Show counts'), track);
+    return label;
   };
   const callTypesControl = ({kinds, hidden, onChange, title}) => {
     const wrapper = node('div', undefined, 'nq-map-control nq-map-types');
@@ -901,7 +935,7 @@
         const note = shared.samplesNote?.();
         if (note) list.append(node('p', note, 'nq-l3-area-note'));
       });
-      const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], ends: ['line', COLOURS.end], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
+      const icons = {failures: [failureShape(), COLOURS.call], sites: ['triangle', '#868e96'], ends: ['line', COLOURS.end], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
         route: ['road', data.area ? COLOURS.route : COLOURS.path], handovers: ['dashed-ring', COLOURS.handover], drive: ['road', COLOURS.route],
         cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
       const rings = visibleRings(data);
@@ -1070,6 +1104,16 @@
         else context.moveTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
       }
       context.closePath();
+    };
+    // The shape of an NQ call chosen (FAILURE_SHAPES): a circle of radius ``size``, else a star.
+    const failureShape = () => (shared.settings?.failureShape === 'star' ? 'star' : 'circle');
+    const nqShape = (context, x, y, size) => {
+      if (failureShape() === 'star') {
+        star(context, x, y, size);
+        return;
+      }
+      context.beginPath();
+      context.arc(x, y, size, 0, Math.PI * 2);
     };
     const pin = (context, x, y, size, colour) => {
       context.beginPath();
@@ -1664,23 +1708,43 @@
       // The mark of an NQ call (and of the call itself): a star in its colour with a shadow, then the outlines of its
       // ``groups`` in their colours, each over a white one.
       const nqMark = (x, y, size, colour, groups, hollow = false) => {
+        const circle = failureShape() === 'circle';
         context.save();
-        context.shadowColor = 'rgba(30, 10, 20, .45)';
-        context.shadowBlur = 5;
-        context.shadowOffsetY = 1;
-        context.lineJoin = 'round';
-        star(context, x, y, size);
-        context.fillStyle = hollow ? '#fff' : colour;
-        context.fill();
-        context.restore();
-        context.save();
-        context.lineJoin = 'round';
-        star(context, x, y, size);
-        context.lineWidth = hollow ? 2.6 : 2;
-        context.strokeStyle = hollow ? colour : '#fff';
-        context.stroke();
+        if (circle) {
+          // A ring in its colour over a light fill of it (none when hollow): what is under it shows (ticket #198).
+          if (!hollow) {
+            nqShape(context, x, y, size);
+            context.globalAlpha = .3;
+            context.fillStyle = colour;
+            context.fill();
+            context.globalAlpha = 1;
+          }
+          context.shadowColor = 'rgba(30, 10, 20, .35)';
+          context.shadowBlur = 3;
+          nqShape(context, x, y, size);
+          context.lineWidth = 2.6;
+          context.strokeStyle = colour;
+          context.stroke();
+          context.restore();
+          context.save();
+        } else {
+          context.shadowColor = 'rgba(30, 10, 20, .45)';
+          context.shadowBlur = 5;
+          context.shadowOffsetY = 1;
+          context.lineJoin = 'round';
+          star(context, x, y, size);
+          context.fillStyle = hollow ? '#fff' : colour;
+          context.fill();
+          context.restore();
+          context.save();
+          context.lineJoin = 'round';
+          star(context, x, y, size);
+          context.lineWidth = hollow ? 2.6 : 2;
+          context.strokeStyle = hollow ? colour : '#fff';
+          context.stroke();
+        }
         groups.forEach((kind, index) => {
-          star(context, x, y, size + OUTLINE_STEP * (index + 1));
+          nqShape(context, x, y, size + OUTLINE_STEP * (index + 1));
           context.lineWidth = OUTLINE_WIDTH + 2;
           context.strokeStyle = 'rgba(255, 255, 255, .9)';
           context.stroke();
@@ -1713,7 +1777,8 @@
           // shared.failureGroups (its cluster inside, its time window outside).
           const groups = data.area ? [] : ['cluster', 'run'].filter((kind) => items.some((item) => shared.failureGroups(item).includes(kind)));
           nqMark(x, y, size, shared.failureColour(failure), groups, hollow);
-          if (items.length > 1) {
+          // How many NQ calls the point holds, only when Show counts is on (ticket #198).
+          if (items.length > 1 && settings.showCounts) {
             const badge = `×${items.length}`;
             context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
             const badgeWidth = Math.max(16, context.measureText(badge).width + 8);
@@ -2304,9 +2369,9 @@
         }
         if (layers.failures) {
           group(`NQ calls · by ${AREA_FAILURE_COLOURS[settings.failureColour].toLowerCase()}`);
-          shared.failureLegend().forEach(([text, colour, extra]) => item('star', text, colour, extra));
-          if (data.failures.some((failure) => !failure.l3_log)) item('star', 'Hollow: without Layer3 Logs', '#495057', 'is-outlined');
-          item('count', 'NQ calls at one point (how many)', '#2d1520');
+          shared.failureLegend().forEach(([text, colour, extra]) => item(failureShape(), text, colour, extra));
+          if (data.failures.some((failure) => !failure.l3_log)) item(failureShape(), 'Hollow: without Layer3 Logs', '#495057', 'is-outlined');
+          if (settings.showCounts) item('count', 'NQ calls at one point (how many)', '#2d1520');
         }
         const routes = (window.L3Layers?.routesOf(shared.l3) || []).length, sites = layers.sites !== false && data.sites.length;
         const drives = routeShown && data.tests.rows.length;
@@ -2335,7 +2400,7 @@
       // The NQ calls around as on NQ Maps: a colour for each value of Colour NQ calls by, with the outlines of And Group.
       if (layers.failures) {
         group(focusKind() ? `NQ calls · only its ${groupFocus.label} (filtering the list)` : `NQ calls · by ${FAILURE_COLOURS[settings.failureColour].toLowerCase()}`);
-        shared.failureLegend().forEach(([text, colour, extra, mark]) => item(mark || 'star', text, colour, extra));
+        shared.failureLegend().forEach(([text, colour, extra, mark]) => item(mark || failureShape(), text, colour, extra));
         item('count', 'NQ calls at one point (how many)', '#2d1520');
       }
       // The shapes of its groups switched on: its own one by one, those of the other calls of its hotspot by kind, then its zone.
@@ -2439,6 +2504,9 @@
       // left for them).
       operators: stored.v >= 2 && ['own', 'all', 'focus'].includes(stored.operators) ? stored.operators : 'focus',
       failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'site',
+      // Circles until Stars are chosen, and no count of the NQ calls at one point until switched on (ticket #198).
+      failureShape: FAILURE_SHAPES[stored.failureShape] ? stored.failureShape : 'circle',
+      showCounts: stored.showCounts === true,
       // Call types: those unchecked (every one shown until unchecked).
       hiddenTypes: Array.isArray(stored.hiddenTypes) ? stored.hiddenTypes.filter((kind) => typeof kind === 'string') : [],
       // And Group: a circle around each NQ call of the groups of the call, in the colour of each group.
@@ -2451,7 +2519,8 @@
     };
     delete settings.layers.tests;
     const save = () => storeSettings({v: 2, tests: settings.tests, measures: settings.measures, operators: settings.operators,
-      failureColour: settings.failureColour, hiddenTypes: settings.hiddenTypes, perGroup: settings.perGroup, layers: settings.layers});
+      failureColour: settings.failureColour, failureShape: settings.failureShape, showCounts: settings.showCounts,
+      hiddenTypes: settings.hiddenTypes, perGroup: settings.perGroup, layers: settings.layers});
     let callKey = '', loadedKey = '', controller = null, expandedView = null, expandedTimeline = null, expandedToolbar = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
     const status = node('p', '', 'nq-map-status');
@@ -2946,7 +3015,7 @@
       for (const item of shown.slice(0, 150)) {
         const entry = node('li');
         entry.style.setProperty('--mark', shared.failureColour(item));
-        const mark = node('span', undefined, 'nq-map-mark is-star');
+        const mark = node('span', undefined, `nq-map-mark is-${settings.failureShape === 'star' ? 'star' : 'circle'}`);
         const text = node('div');
         const title = node('strong', `${kindLabel(item)} · ${item.operator} · ${campaignText(item.campaign, item.nr_mode)}`);
         const tags = [item.same_hotspot ? 'Hotspot' : '', item.same_cluster ? 'Cluster' : '', item.same_run ? 'Time Window' : '',
@@ -3188,7 +3257,11 @@
           }, 'The area around where the call failed: its sites, Non-Qualified Calls and tests. A call opens with the radius that holds every NQ call of its hotspot and cluster, else with 1 km'),
         select('Colour NQ calls by', 'failure-colour', Object.entries(FAILURE_COLOURS), settings.failureColour, (value) => {
           settings.failureColour = value; save(); redrawAll(); renderFailures();
-        }, 'What the colour of the Non-Qualified Calls around tells, as on NQ Maps: the site of their CDR, their call type, the domain of their root cause (the one decided, else that of the DT Analyzer RCA), their campaign or their operator'),
+        }, 'What the colour of the Non-Qualified Calls around tells, as on NQ Maps: the site of their CDR, their call type, the domain or the category of their root cause (the one decided, else that of the DT Analyzer RCA), their campaign, operator, Region, service or result'),
+        select('Shape', 'failure-shape', Object.entries(FAILURE_SHAPES), settings.failureShape, (value) => {
+          settings.failureShape = value; save(); redrawAll(); renderFailures();
+        }, 'The shape of the Non-Qualified Calls, as on NQ Maps: circles (a ring over a light fill, so that what is under them shows) or stars'),
+        countsSwitch(settings, () => { save(); redrawAll(); }),
         perGroup,
         select('Operators', 'operators', [['own', `${data?.call.operator || 'Its operator'} only`],
           ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
@@ -3483,6 +3556,9 @@
     // By call type until another choice (the choices kept before Site came are left for it); the map of a site by site,
     // its own in burgundy.
     failureColour: stored.v >= 3 && AREA_FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : site ? 'site' : 'type',
+    // Circles until Stars are chosen, and no count of the NQ calls at one point until switched on, as on the map of a call.
+    failureShape: FAILURE_SHAPES[stored.failureShape] ? stored.failureShape : 'circle',
+    showCounts: stored.showCounts === true,
     // The Focus operators of the Operator Maps until another choice, as on the map of a call; on the map of a site, its
     // operator.
     operators: site ? (['own', 'focus', 'all'].includes(stored.operators) ? stored.operators : 'own')
@@ -3494,7 +3570,7 @@
       try {
         localStorage.setItem(settingsKey, JSON.stringify({v: 4, layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
           sites: settings.layers.sites, route: settings.layers.route}, measures: settings.measures, failureColour: settings.failureColour,
-        operators: settings.operators, hiddenTypes: settings.hiddenTypes, ...(site ? {radius_km: settings.radius_km} : {})}));
+        failureShape: settings.failureShape, showCounts: settings.showCounts, operators: settings.operators, hiddenTypes: settings.hiddenTypes, ...(site ? {radius_km: settings.radius_km} : {})}));
       } catch (_error) { /* A private window keeps them for the page. */ }
     };
     // ``calls``: the NQ calls of the filters, read again only when the filters change.
@@ -3734,7 +3810,11 @@
         }, 'The area around the site whose NQ calls the table below lists, besides those of the site wherever they are')] : []),
         select('Colour NQ calls by', Object.entries(AREA_FAILURE_COLOURS), settings.failureColour, (value) => {
           settings.failureColour = value; save(); redrawAll();
-        }, 'What the colour of the NQ calls tells, as on the map of a call: their call type, the domain of their root cause (the one decided, else that of the DT Analyzer RCA), their campaign, their operator or the site of their CDR'),
+        }, 'What the colour of the NQ calls tells, as on the map of a call: their call type, the domain or the category of their root cause (the one decided, else that of the DT Analyzer RCA), their campaign, operator, Region, service or result, or the site of their CDR'),
+        select('Shape', Object.entries(FAILURE_SHAPES), settings.failureShape, (value) => {
+          settings.failureShape = value; save(); redrawAll(); renderTable();
+        }, 'The shape of the NQ calls, as on the map of a call: circles (a ring over a light fill, so that what is under them shows; only the ring without Layer3 Logs) or stars'),
+        countsSwitch(settings, () => { save(); redrawAll(); }),
         select('Operators', [...(site && siteOperators.size ? [['own', `${site.operator_label || site.operators[0]} only`]] : []),
           ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll(); renderTable();
@@ -3967,7 +4047,7 @@
         const row = body.insertRow();
         if (item.same_place) row.className = 'is-own';
         if (shared.selection?.kind === 'failure' && shared.selection.item === item) row.classList.add('is-chosen');
-        const mark = node('span', undefined, `nq-map-mark is-star${item.l3_log ? '' : ' is-outlined'}`);
+        const mark = node('span', undefined, `nq-map-mark is-${settings.failureShape === 'star' ? 'star' : 'circle'}${item.l3_log ? '' : ' is-outlined'}`);
         mark.style.setProperty('--mark', shared.failureColour(item));
         mark.title = item.l3_log ? 'With Layer3 Logs' : 'Without Layer3 Logs';
         const choose = node('button', item.join_id || '—', 'nq-link-action nq-site-area-join');

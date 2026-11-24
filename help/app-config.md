@@ -71,13 +71,13 @@ The fields:
 - **Access requests:** emails each access request and the activation of its user (who receives them: [Access Requests](super-admin.md#access-requests)).
 - **Ticket Center:** emails the ticket updates (who receives them: [Email updates](ticket-center.md#email-updates)), at once or in the summary each user chooses in **Email preferences** of the user badge.
 - **Email Every Ticket To:** users who get an email of every new ticket and every change to any ticket, even when they did not open or comment it. Nobody by default.
-- **Non-Qualified Calls:** emails the reviewer of an NQ call when all its analyst fields are filled and when its NQ Call Status or the status of a phase (Analysis, Implementation, Planned) changes, with the fields filled by section, those still empty and a link to the call. Each user chooses in **Email preferences** of the user badge how often it gets them:
+- **Non-Qualified Calls:** emails the Analyst and the Reviewer of an NQ call when all its analyst fields are filled, when one of its key fields changes (NQ Call Status, the status of a phase (Analysis, Implementation, Planned), Analyst, Reviewer, Root Domain, Root Category, Root Cause or Initial Classification) and when somebody comments on it, with what changed, the new comment, the fields filled by section, those still empty and a link to the call. Each user chooses in **Email preferences** of the user badge how often it gets them:
   - **Daily at 17:00** (the default), **Every hour** or **Weekly on Friday at 17:00:** one summary of the calls changed since the previous one, each call once, with each status from its value before the first change to its value after the last one (a status back to its value is left out); one email per workspace.
   - **Immediately:** one email per change. The emails of a call keep its subject (`NQ Call <JOIN_ID> · …`), one conversation in Outlook; a bulk change or a copy to a group lists its calls in one email.
   - **Never:** none.
   - **Own changes:** nobody is emailed the changes it makes itself unless it checks **Also email me the changes I make**.
   - The changes waiting for a summary are kept in the **NQ Email Queue** table, so a restart loses none; the summaries go at the time of the server (Application Runtime timezone).
-- **Email Every NQ Call Change To:** users who get those emails of every NQ call of every workspace, even when they are not its reviewer. Nobody by default.
+- **Email Every NQ Call Change To:** users who get those emails of every NQ call of every workspace, even when they are not its Analyst or Reviewer. Nobody by default.
 
 Every email of the tool starts its subject with `DT Analyzer - ` (for example `DT Analyzer - Ticket #12: …`), so a mail rule can find it. Its links use the [Public address of the server](#runtime-settings).
 

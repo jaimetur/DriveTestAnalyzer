@@ -6560,7 +6560,7 @@ def l3_map_calls(task_repository: Any, filters: dict[str, Any], username: str, l
                                                        'service_label', 'test_name', 'result', 'failure_classification', 'failure_category',
                                                        'failure_subcategory', 'failure_phase', 'technology', 'status', 'start_time',
                                                        'latitude', 'longitude', 'l3_log', 'root_domain', 'root_category', 'root_cause',
-                                                       'site_id', 'host_network')}
+                                                       'site_id', 'host_network', 'region')}
                      | {'kind': call_kind(call.get('service'), call.get('test_name'), call.get('session_type')),
                         'dta_domain': dta.get('dta_domain', ''), 'dta_category': dta.get('dta_category', ''), 'dta_cause': dta.get('dta_cause', ''),
                         'dta_rule': dta.get('dta_rule', '')})
@@ -10656,6 +10656,9 @@ def _upgrade_root_catalog(document: Any) -> Any:
 
 # The fields of the analysts that hold a root category or cause of the catalog as text (the Initial Classification).
 ROOT_TEXT_FIELDS = {'initial_root_category': 'category', 'initial_root_cause': 'cause'}
+# The follow-up of a call whose change emails its Analyst and Reviewer (tickets #187, #199), besides the status of its phases
+# and its Initial Classification.
+EMAILED_TRACKING = ('status', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause')
 
 
 def _translated_initial(values: dict[str, str]) -> dict[str, str]:
@@ -11880,21 +11883,38 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     def tell_reviewers(request: Request, user: Any, repository: Any, before: dict[str, dict[str, Any]],
                        report: dict[str, dict[str, list[str]]]) -> None:
-        """Email the reviewers (and Email Every NQ Call Change To) of the calls a change completed or whose NQ Call Status
-        or the status of a phase it changed (ticket #187), in the background; never fails the change."""
+        """Email the Analysts and Reviewers (and Email Every NQ Call Change To) of the calls a change completed or whose key
+        fields it changed (tickets #187, #199), in the background; never fails the change."""
         from src.modules.nq import nq_call_emails
 
         try:
             keys = [key for key, values in report.items() if values]
             if not keys:
                 return
-            watched = {'status', *(f"field:{field['key']}" for field in phase_status_fields(list_fields(repository)))}
+            watched = {*EMAILED_TRACKING, *(f'field:{key}' for key in ROOT_TEXT_FIELDS),
+                       *(f"field:{field['key']}" for field in phase_status_fields(list_fields(repository)))}
             events = nq_call_emails.call_events(before, analyst_fill_states(repository, keys), report, change_labels(repository), watched)
             nq_call_emails.notify_call_changes(core.repository, getattr(core, '__app_name__', 'DriveTest Analyzer'),
                                                str(getattr(core.active_workspace, 'name', '') or ''), user.username, events,
                                                core.email_base_url(request))
         except Exception as exc:  # noqa: BLE001 - the change is saved; the email is recorded as failed.
             core.repository.try_add_log(user.username, 'email_failed', json.dumps({'kind': 'nq_call', 'error': str(exc)}))
+
+    def tell_of_comment(request: Request, user: Any, repository: Any, comment: dict[str, Any]) -> None:
+        """Email the Analyst and the Reviewer (and Email Every NQ Call Change To) of a call of a new comment on it (ticket
+        #199); never fails the comment."""
+        from src.modules.nq import nq_call_emails
+
+        try:
+            state = analyst_fill_states(repository, [str(comment['call_key'])]).get(str(comment['call_key']))
+            if not state:
+                return
+            events = nq_call_emails.comment_events(state, user.username, comment.get('body') or '', comment.get('created_at') or '')
+            nq_call_emails.notify_call_changes(core.repository, getattr(core, '__app_name__', 'DriveTest Analyzer'),
+                                               str(getattr(core.active_workspace, 'name', '') or ''), user.username, events,
+                                               core.email_base_url(request))
+        except Exception as exc:  # noqa: BLE001 - the comment is saved; the email is recorded as failed.
+            core.repository.try_add_log(user.username, 'email_failed', json.dumps({'kind': 'nq_comment', 'error': str(exc)}))
 
     def readable_changes(labels: dict[str, str], changes: dict[str, list[str]]) -> dict[str, list[str]]:
         return {labels.get(name, name): values for name, values in changes.items()}
@@ -12677,11 +12697,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse({'changed': len(changed), 'group': group, 'call': call_detail(repository, call_key)})
 
     @core.app.post('/api/non-qualified-calls/calls/{call_key}/comments')
-    def nq_add_comment(call_key: str, payload: CommentPayload, user=Depends(editor_user)) -> JSONResponse:
+    def nq_add_comment(request: Request, call_key: str, payload: CommentPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
         comment = translate(lambda: add_comment(repository, call_key, payload.body, user.username))
         log_action(repository, user, 'nq_comment_add', {**nq_app_events.call_identity(repository, call_key), 'comment_id': comment['id'],
                                                          'text': nq_app_events.short_text(comment['body'])})
+        tell_of_comment(request, user, repository, {'call_key': call_key, **comment})
         return JSONResponse({'comment': comment})
 
     @core.app.patch('/api/non-qualified-calls/comments/{comment_id}')

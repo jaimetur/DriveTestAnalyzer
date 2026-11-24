@@ -376,9 +376,9 @@ def test_coverage_notes_name_excluded_kpis_for_each_vendor_campaign_context():
     q1_note = next(note for note in combined_notes if '/ 26-Q1:' in note)
     q2_note = next(note for note in combined_notes if '/ 26-Q2:' in note)
     assert q1_note.startswith('VF_UK / Samsung / North / Leeds / 26-Q1: maximum achievable scoring 933.2645 of 1000 points.')
-    # Short notes: the first missing KPIs by environment, then how many more.
-    assert 'KPIs without valid measurements: Call Setup Time > 10 s [%], Call Setup Time,' in q1_note
-    assert '(DriveCity)' in q1_note and 'more.' in q1_note
+    # Short notes: the first missing KPIs by environment, then how many more; those no test was found for apart (ticket #200).
+    assert 'KPIs without valid measurements: Call Setup Time > 10 s [%], Call Setup Time (DriveCity).' in q1_note
+    assert 'No tests in the CDRs for: ' in q1_note and 'more.' in q1_note
     assert 'maximum achievable scoring 990.9 of 1000 points.' in q2_note
     assert 'Call Setup Success Ratio' in q2_note
     assert 'K7' not in q1_note and 'K10' not in q1_note and 'K11' not in q2_note
@@ -395,3 +395,19 @@ def test_coverage_notes_group_series_with_the_same_missing_contributions():
     notes = scoring_coverage_notes({'configuration': configuration, 'totals': totals, 'scoring': []})['Combined']
     assert len(notes) == 1
     assert notes[0].startswith('EE / All / Leeds / 26-Q1, EE / All / York / 26-Q1, VF_UK / All / Leeds / 26-Q1 and 3 more series:')
+
+
+def test_coverage_notes_tell_kpis_without_tests_from_kpis_without_valid_values():
+    """Ticket #200: a KPI whose filters match no test of the CDRs (TikTok not run in a city yet) is named as such."""
+    configuration = scoring_configuration()
+    totals = [{'environment': 'Combined', 'operator': 'VF_UK', 'campaign': '2026-Q4', 'city': 'Sheffield', 'category': 'Overall',
+               'complete_coverage': False, 'available_points': 954.5, 'max_points': 1000.0}]
+    scoring_rows = [
+        {'environment': 'DriveCity', 'operator': 'VF_UK', 'campaign': '2026-Q4', 'city': 'Sheffield', 'kpi_code': 'K7',
+         'kpi': 'Call Setup Time > 10 s [%]', 'weighted_points': None, 'max_points': 56.875, 'sample_count': 0},
+        {'environment': 'DriveCity', 'operator': 'VF_UK', 'campaign': '2026-Q4', 'city': 'Sheffield', 'kpi_code': 'K10',
+         'kpi': 'Call Setup Time', 'weighted_points': None, 'max_points': 9.8605, 'sample_count': 12},
+    ]
+    note = scoring_coverage_notes({'configuration': configuration, 'totals': totals, 'scoring': scoring_rows})['Combined'][0]
+    assert 'No tests in the CDRs for: Call Setup Time > 10 s [%]' in note
+    assert 'KPIs without valid measurements: Call Setup Time (DriveCity)' in note

@@ -379,12 +379,12 @@ See every filtered NQ call, and the Layer3 Logs of those that have them, on one 
 - **What it draws:** every NQ call of the filters (but the Ping tests) and the [Layer3 Logs](workspace-management.md#layer3-logs) of those with a session in them; the map is read again when the filters change.
 - **Like the map of a call:** it is the [map of a call](#map-of-the-call) for all of them, with the same information, cards, legend, controls and gestures (see [Tips & shortcuts](#tips-shortcuts)), without the groups of a call.
 - **Its own way:** it opens where you left it (your browser keeps its place and zoom); **Fit** shows every NQ call with a log; opened larger, it takes the whole width of the window but 2 % on each side.
-- **Controls above the map:** as on the map of a call, without Radius and And Group: **Colour NQ calls by** opens with *Call type* (the legend names the twelve values with most NQ calls), **Operators** with the Focus operators, and **Call types** with every type checked (**Every call type** checks them all again; at least one stays checked). A line then says how many NQ calls the filters have, how many have a log, and how many sessions.
+- **Controls above the map:** as on the map of a call, without Radius and And Group: **Colour NQ calls by** opens with *Call type* (the legend names the twelve values with most NQ calls), **Shape** with *Circles*, **Show counts** off, **Operators** with the Focus operators, and **Call types** with every type checked (**Every call type** checks them all again; at least one stays checked). A line then says how many NQ calls the filters have, how many have a log, and how many sessions.
 
 **The cards over the map:**
 
 - **CDR Info:**
-  - **NQ calls:** diamonds where they failed, hollow without Layer3 Logs, those on one point as one mark with how many they are, drawn over the routes and the layers of the logs.
+  - **NQ calls:** circles where they failed (a ring in their colour over a light fill of it, so that what is under them shows), only the ring without Layer3 Logs, or stars when **Shape** says so; those on one point as one mark, with how many they are when **Show counts** is on; drawn over the routes and the layers of the logs.
   - **Sites** of the networks that serve their operators, from zoom level 11.
   - **RSRP / SINR (from CDR samples)** of the CDRs of their campaigns in the area shown, from zoom level 13 (an even sample of 20,000 when there are more), each measure with its switch.
   - **Route** (off until switched on): **Drive of each CDR (estimated, between its tests)**, thin grey winding roads joining only its tests close in time and place (2 minutes and 2 km at most, at a speed a car can drive), below everything. The real way of each session is the route of its log.
@@ -656,7 +656,7 @@ Analyse one call: click a row to open its details beside the table.
 - **Complete:** a full bar with *Complete* and a gold trophy (**All fields filled**, popping in as the last one is filled); hover it for the empty ones.
 - **Header** and **Tabs** (above the tabs, beside **Only the fields the analysts fill**) count those of the header and of every tab (dark green, with a check once complete), as each tab counts its own.
 - **Fields that do not apply** count as filled: **N/A** (the last value of a list, or the **N/A** button inside a text, number, date or long text field) says so for one call, and a field whose conditions of **When it applies** do not hold shows **N/A (Auto)**, dimmed (by default Failed Party and Vendor 2 when Failure in Data tests, Planned Date and Planned FY while Planned Status is not Planned). A value filled in still counts as it is; N/A also meets **Required to close**.
-- **Emails:** the reviewer of the call, and the users of **Email Every NQ Call Change To**, are emailed when every field is filled and when the NQ Call Status or the status of a phase changes, with the fields filled by section and those still empty: by default in a summary every day at 17:00, or as each user chooses in **Email preferences** of the user badge (every hour, every Friday at 17:00, at once or never), never of their own changes unless they ask for them (see [Email Delivery](app-config.md#email-delivery)).
+- **Emails:** the Analyst and the Reviewer of the call, and the users of **Email Every NQ Call Change To**, are emailed when every field is filled, when a key field changes (NQ Call Status, the status of a phase, Analyst, Reviewer, Root Domain, Root Category, Root Cause or Initial Classification) and when somebody comments on the call, with the comment, the fields filled by section and those still empty (an Analyst without an account gets none): by default in a summary every day at 17:00, or as each user chooses in **Email preferences** of the user badge (every hour, every Friday at 17:00, at once or never), never of their own changes unless they ask for them (see [Email Delivery](app-config.md#email-delivery)).
 
 **The follow-up fields**, below the header, in this order:
 
@@ -742,7 +742,9 @@ The cells of a call are its **Start cell** and **End cell** (its **Serving cell*
 | Control | What it does |
 | --- | --- |
 | **Radius** | 500 m to 10 km: the area. A call opens with the radius holding every NQ call of its hotspot and cluster (rounded up to 100 m, *(groups)* in the list), else 1 km; it holds while the call stays open. |
-| **Colour NQ calls by** | *Site* (the default: the site their CDR gives, each in its colour, the site of the call in burgundy; the legend names the twelve sites with most NQ calls, that of the call first), *Call type*, *Root cause domain* (decided, else that of the DT Analyzer RCA), *Campaign* or *Operator* (in its [Operator Maps](workspace-config.md#operator-maps) colour). |
+| **Colour NQ calls by** | *Site* (the default: the site their CDR gives, each in its colour, the site of the call in burgundy; the legend names the twelve sites with most NQ calls, that of the call first), *Call type*, *Root cause domain* and *Root Category* (decided, else those of the DT Analyzer RCA), *Campaign*, *Operator* (in its [Operator Maps](workspace-config.md#operator-maps) colour), *Region*, *Service* or *Result*. |
+| **Shape** | *Circles* (the default: a ring in the colour of the NQ call over a light fill of it, so that what is under it shows) or *Stars*; the same on NQ Maps. |
+| **Show counts** | Off by default: switched on, the NQ calls on one point show how many they are (*×2*, *×3*…). |
 | **And Group** | When the call is of a group: an outline over that colour, in the shape of the NQ call, for each group of the call it is of: its **cluster** green innermost, its **time-window issue** blue outside it (never its hotspot, which every NQ call of its groups is of). Each is that of the call alone (the calls the counter card counts *in its cluster* and *in its time window*), unless another group filters the list. |
 | **Operators** | Its operator only, the Focus operators (**Focus operators only**, the default when the workspace has some; its tooltip names them) or every operator. |
 | **Call types** | The call types of the NQ calls around, every one checked by default: only those checked are drawn, counted and listed; the call itself always. |
@@ -769,11 +771,11 @@ The cells of a call are its **Start cell** and **End cell** (its **Serving cell*
 - **NR leg (by PCI):** an NSA call of a Data CDR adds the NR cell with its NR PCI (and NR-ARFCN) on the site of its LTE anchor, else the nearest within 5 km.
 - **Sites around:** the inventory sites of the networks serving its operator within the radius (and those of its cells wherever they are), as triangles in the colour of their vendor ([Vendor Maps](workspace-config.md#vendor-maps)): sectors (azimuth, beamwidth) from zoom 14, Site ID from 15 (the start and end sites at every level). A dashed sector marks a cell with the PCI and channel of a cell of the call (a PCI collision or confusion to check).
 
-**NQ calls around it**, as stars (larger than on NQ Maps; the diamonds are the PCIs and signalling of the logs), of their latest version:
+**NQ calls around it**, as circles or stars (**Shape**; larger than on NQ Maps; the diamonds are the PCIs and signalling of the logs), of their latest version:
 
 - **Which ones:** those of its [groups](#nq-hotspots-clustered-time-window-issues) and of the other clusters and time-window issues of its hotspot; those of its operator at its **site**, always and wherever they are (the site counts every campaign, NR Mode and call type, while a hotspot and a time-window issue keep to its campaign and NR Mode, and a cluster to its NR Mode and the campaigns of the Cluster period, without Ping tests); and the others of the **Operators** chosen, from the campaigns of **Campaigns** (see the cards).
 - **Left out:** Ping tests, and everything of the other NR Mode (its NQ calls and samples).
-- **Stacked calls:** one mark with how many (*×11*), in the colour of the most related one; hover it for *At this point: N NQ calls*.
+- **Stacked calls:** one mark in the colour of the most related one, with how many (*×11*) when **Show counts** is on; hover it for *At this point: N NQ calls*.
 - **One group filtering the list** (by its card in the header or its ID in the panel): the map shows that group alone with its shape; the calls of its other groups, their shapes and the hotspot zone leave it, and the legend names the group.
 
 **Groups and hotspot zone** (legend: **Groups of the call**), drawn as the Groups slide of the presentation:

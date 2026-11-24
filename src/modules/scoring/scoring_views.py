@@ -101,6 +101,9 @@ def scoring_coverage_notes(result: dict[str, Any]) -> dict[str, list[str]]:
                                                configuration.get('metrics', []))
         without_data = []
         missing: list[tuple[str, str]] = []
+        # The KPIs whose filters match no test of the CDRs (a test not run there yet), told apart from those whose tests
+        # gave no valid value (ticket #200).
+        untested: list[tuple[str, str]] = []
         for name in selected_environments:
             measured = [row for row in matches if row.get('environment') == name]
             if not measured and environment == 'Combined':
@@ -108,21 +111,23 @@ def scoring_coverage_notes(result: dict[str, Any]) -> dict[str, list[str]]:
                 continue
             for row in measured:
                 if (_number(row.get('max_points')) or 0) > 0 and _number(row.get('weighted_points')) is None:
-                    missing.append((name, str(row.get('kpi', ''))))
+                    no_tests = 'sample_count' in row and not _number(row.get('sample_count'))
+                    (untested if no_tests else missing).append((name, str(row.get('kpi', ''))))
             for metric in expected_metrics:
                 if (_number(metric.get('contexts', {}).get(name, {}).get('max_points')) or 0) <= 0:
                     continue
                 if not any(row.get('kpi_code') == metric.get('code') for row in measured):
-                    missing.append((name, str(metric.get('kpi', ''))))
+                    untested.append((name, str(metric.get('kpi', ''))))
         missing = list(dict.fromkeys(missing))
+        untested = list(dict.fromkeys(untested))
         context = ' / '.join(_hierarchy_display_value({'level': key.title(), 'value': total.get(key)})
                              for key in context_fields if total.get(key) is not None and str(total.get(key)).strip())
-        group = grouped[environment].setdefault((tuple(without_data), tuple(missing)), {'contexts': [], 'ceilings': []})
+        group = grouped[environment].setdefault((tuple(without_data), tuple(untested), tuple(missing)), {'contexts': [], 'ceilings': []})
         group['contexts'].append(context)
         group['ceilings'].append((_number(total.get('available_points')), _number(total.get('max_points'))))
     notes = {environment: [] for environment in environments}
     for environment, groups in grouped.items():
-        for (without_data, missing), group in groups.items():
+        for (without_data, untested, missing), group in groups.items():
             contexts = group['contexts']
             shown = ', '.join(contexts[:3]) + (f' and {len(contexts) - 3} more series' if len(contexts) > 3 else '')
             ceilings = [(available, maximum) for available, maximum in group['ceilings'] if available is not None and maximum is not None]
@@ -136,14 +141,16 @@ def scoring_coverage_notes(result: dict[str, Any]) -> dict[str, list[str]]:
             parts = []
             if without_data:
                 parts.append(f"No data in {', '.join(without_data)}")
-            if missing:
+            for kpis, text in ((untested, 'No tests in the CDRs for'), (missing, 'KPIs without valid measurements')):
+                if not kpis:
+                    continue
                 by_environment: dict[str, list[str]] = {}
-                for name, kpi in missing[:5]:
+                for name, kpi in kpis[:5]:
                     by_environment.setdefault(name, []).append(kpi)
-                listed = '; '.join(f"{', '.join(kpis)} ({name})" if environment == 'Combined' else ', '.join(kpis)
-                                   for name, kpis in by_environment.items())
-                more = f' and {len(missing) - 5} more' if len(missing) > 5 else ''
-                parts.append(f'KPIs without valid measurements: {listed}{more}')
+                listed = '; '.join(f"{', '.join(names)} ({name})" if environment == 'Combined' else ', '.join(names)
+                                   for name, names in by_environment.items())
+                more = f' and {len(kpis) - 5} more' if len(kpis) > 5 else ''
+                parts.append(f'{text}: {listed}{more}')
             details = '. '.join(parts) or 'Required KPI contributions have no valid measurements'
             notes[environment].append(f'{shown}{ceiling}. {details}. Their weights are neither redistributed nor scaled.')
     return notes

@@ -104,6 +104,8 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     assert call['way']['by'] == 'ends' and call['way']['points'][0] == call['start'] and call['way']['points'][-1] == call['end']
     # Its type, as the NQ Prioritization names it (the NQ calls around carry theirs too).
     assert call['kind'] == 'voice' and all(item['kind'] for item in data['failures'])
+    # Their Region, Service, Result and Root Category colour them too (ticket #198).
+    assert all({'region', 'service', 'result', 'root_category'} <= set(item) for item in data['failures'])
     # Its radio values: the Min / Avg / Max of a measure together.
     rsrp = next(item for item in call['radio'] if item['name'] == '4G RSRP (A)')
     assert (rsrp['min'], rsrp['avg'], rsrp['max']) == ('-121.0', '-114.5', '-104.0')

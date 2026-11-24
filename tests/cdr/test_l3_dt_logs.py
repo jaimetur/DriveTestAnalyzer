@@ -510,6 +510,8 @@ def test_the_map_of_a_site_places_it_and_records_it_in_app_events(client, tmp_pa
     opened = client.post('/api/non-qualified-calls/l3-maps', json=body)
     assert opened.status_code == 200, opened.text
     assert opened.json()['site_position']['latitude'] == 53.1 and opened.json()['calls_count'] == 1
+    # Each NQ call carries its Region, so that NQ Maps colours it by Region (ticket #198).
+    assert all('region' in call for call in opened.json()['calls'])
     moved = client.post('/api/non-qualified-calls/l3-maps', json={**body, 'with_calls': False}).json()
     assert moved['site_position'] is None and moved['calls'] is None
     # App Events records the map opened with the site and whether the inventory places it; moving the map shows the same

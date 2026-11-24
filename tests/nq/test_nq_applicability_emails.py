@@ -105,17 +105,19 @@ def test_the_reviewer_is_emailed_when_a_call_changes_a_status(prioritized, flow)
     core.repository.set_email_preferences('super', nq_frequency='immediate', nq_own_changes=True)
     key = call_of('data')
     call = detail(client, key)
-    # Choosing the reviewer changes no status: nobody is emailed.
+    # Choosing the reviewer is a key field too (ticket #199): one email.
     updated = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'reviewer': 'super'}, 'version': call['version']})
     assert updated.status_code == 200, updated.text
-    assert flow == []
+    assert len(flow) == 1 and 'Reviewer' in json.dumps(flow[0])
+    # A field that is not a key one emails nobody.
+    del flow[:]
     updated = client.patch(f'/api/non-qualified-calls/calls/{key}', json={
         'changes': {'fields': {'analysis_status': 'Finished'}}, 'version': updated.json()['call']['version']})
     assert updated.status_code == 200, updated.text
     # One email (the reviewer is also among the users of every change), with what changed and the fields still empty.
     assert len(flow) == 1
     sent = json.dumps(flow[0])
-    assert 'Status changed' in sent and 'Analysis Status' in sent and 'Finished' in sent and 'Still empty' in sent
+    assert 'Changed' in sent and 'Analysis Status' in sent and 'Finished' in sent and 'Still empty' in sent
     assert 'NQ Call ' in flow[0].get('subject', sent)
     assert '/non-qualified-calls#call=' in sent
     assert any(json.loads(row['details']).get('kind') == 'nq_call' for row in core.repository.list_logs() if row['action'] == 'email_sent')
@@ -138,7 +140,8 @@ def test_a_call_is_told_once_when_all_its_fields_are_filled():
     assert events['k1']['completed'] and events['k1']['changes'] == []
     # Already complete before: nothing to tell.
     assert nq_call_emails.call_events({'k1': {'complete': True}}, {'k1': state}, {'k1': {'field:findings': ['', 'x']}}, {}, {'status'}) == {}
-    assert nq_call_emails.recipients_of(events, ['EJAITUR', 'ebbbbbb']) == {'ebbbbbb': ['k1'], 'ejaitur': ['k1']}
+    # Its Analyst and its Reviewer (ticket #199), and the users of every change.
+    assert nq_call_emails.recipients_of(events, ['EJAITUR', 'ebbbbbb']) == {'eaaaaaa': ['k1'], 'ebbbbbb': ['k1'], 'ejaitur': ['k1']}
     subject, body = nq_call_emails.call_email('DriveTest Analyzer', 'UK', 'User A', events, ['k1'], 'https://tool', {})
     # The emails of one call keep its subject, whatever happened (which leads the title), so they are one conversation.
     assert subject == 'NQ Call J1 · EE · C1 · Data (UK)' and 'Completed' in body and 'Every field filled' in body and 'Filled · Analysis' in body
@@ -250,3 +253,42 @@ def test_each_user_chooses_how_often_it_gets_the_nq_call_emails(prioritized):
     # It travels with Users & Access.
     exported = next(user for user in core.repository.users_access_payload({})['users'] if user['username'] == 'super')
     assert exported['nq_email_frequency'] == 'weekly' and exported['nq_email_own_changes'] is True
+
+
+def test_the_analyst_and_the_reviewer_are_emailed_of_a_new_comment(prioritized, flow):
+    """Ticket #199: a comment emails the Analyst and the Reviewer of the call, with its text, but never its author."""
+    client = prioritized['client']
+    email_delivery.save_email_delivery_settings(core.repository, {
+        'transport': 'webhook', 'webhook_url': FLOW, 'port': 587, 'from_address': 'admin@example.com', 'max_attachments_mb': 20,
+        'link_days': 7}, keep_password=False, keep_webhook_url=False)
+    core.repository.create_user('EANALYST', 'Secret123', 'user-editor')
+    user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'EANALYST')
+    core.repository.set_user_workspace_access(user_id, [core.active_workspace.id])
+    core.repository.set_user_email('EANALYST', 'analyst@example.com')
+    core.repository.set_email_preferences('EANALYST', nq_frequency='immediate')
+    core.repository.set_user_email('super', 'super@example.com')
+    key = call_of('data')
+    call = detail(client, key)
+    updated = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'analyst': 'EANALYST'}, 'version': call['version']})
+    assert updated.status_code == 200, updated.text
+    # The Analyst is told it was given the call (the author, super, is not told of its own change).
+    assert len(flow) == 1 and 'analyst@example.com' in json.dumps(flow[0])
+    del flow[:]
+    response = client.post(f'/api/non-qualified-calls/calls/{key}/comments', json={'body': 'Please check the neighbours'})
+    assert response.status_code == 200, response.text
+    assert len(flow) == 1
+    sent = json.dumps(flow[0])
+    assert 'analyst@example.com' in sent and 'super@example.com' not in sent
+    assert 'New comment' in sent and 'Please check the neighbours' in sent and 'commented on' in sent
+
+
+def test_the_summaries_keep_the_comments_of_each_call():
+    state = {'call_key': 'k1', 'join_id': 'J1', 'operator': 'EE', 'campaign': 'C1', 'service': 'data', 'start_time': '',
+             'status': 'New', 'team': '', 'analyst': 'EAAAAAA', 'reviewer': '', 'root_category': '', 'root_cause': '',
+             'filled': [], 'missing': [('Header', 'Team')], 'complete': False}
+    rows = [{'call_key': 'k1', 'actor': 'EBBBBBB', 'event_json': json.dumps(nq_call_emails.comment_events(state, 'EBBBBBB', text)['k1'])}
+            for text in ('First', 'Second')]
+    events, actors = nq_call_emails.merge_events(rows)
+    assert [comment['body'] for comment in events['k1']['comments']] == ['First', 'Second'] and actors == ['EBBBBBB']
+    subject, body = nq_call_emails.summary_email('DriveTest Analyzer', 'UK', 'daily', events, actors, 'https://tool', {})
+    assert body.count('New comment') >= 2 and 'Second' in body
