@@ -666,7 +666,7 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 | **Campaigns** | **Latest 4 campaigns** (the default), another automatic choice or chosen campaigns, whatever the Campaign filter (the complete campaigns of each NR Mode: Weekly, Daily and Flex CDRs are left out) |
 | **Regions** | The Regions it covers, such as Vendor A, VMO2 North and VMO2 South (it lists the Regions of the CDRs of its own campaigns, whatever the CDRs of the selection); none: every Region |
 | **Connecting roads** | **Grouped by Region** (a row for the Roads and one for the Highway of each Region, the default) or **Each road on its own** |
-| **Reference growth (%/year)** | How much the reference operator grows a year in the Projection sheet (**0.5 %** by default) |
+| **Reference growth (%/year)** | How much the reference operator grows a year in the Projection sheet (**0.1 %** by default) |
 
 - **Scored like the trends:** the CDRs of its campaigns with the filters of the scoring but Region, Cluster, City and Campaign, its methodology (By campaign: each campaign with its own) and GAP reference. **NSA vs SA** scores each NR Mode apart (an **NR Mode** selector in the tab).
 - **Areas:** a test is in a city when its `G_Level_2` is City (the city is `G_Level_4`, its size `G_Level_3`: Big, Medium or Small Cities), else on a connecting road (`G_Level_3`: Roads or Highway). Each area is scored on its own tests, scaled to the full points as in Country Areas.

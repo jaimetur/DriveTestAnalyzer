@@ -438,7 +438,7 @@
   const nnsRegionsByCampaigns = new Map();
   const nnsRoads = root.querySelector('[data-scoring-nns-roads]');
   const nnsGrowth = root.querySelector('[data-scoring-nns-growth]');
-  const NNS_DEFAULT_GROWTH = 0.5;
+  const NNS_DEFAULT_GROWTH = 0.1;
   // The yearly growth of the reference operator in the projection, when it is a number.
   const nnsGrowthValue = () => {
     const value = Number.parseFloat(nnsGrowth?.value ?? '');

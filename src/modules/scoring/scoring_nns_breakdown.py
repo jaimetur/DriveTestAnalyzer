@@ -45,7 +45,7 @@ DEFAULT_CAMPAIGNS = ('@latest-4-campaigns',)
 ROAD_GROUPINGS = ('region', 'each')
 WARNING_PREFIX = 'NNS Break-down:'
 # Raise when the calculation changes, so the results saved before are calculated again.
-VERSION = 5
+VERSION = 6
 CITY_KIND = 'City'
 ROAD_KIND = 'Road'
 NO_SCENARIO = 'No eMOCN scenario'
@@ -53,7 +53,7 @@ NNS_SCENARIO = 'NNS'
 CAPACITIES = ('High', 'Medium', 'Low')
 UNKNOWN_CAPACITY = 'Not in the Master Grid'
 # The yearly growth (%) of the reference operator in the projection, unless the request gives another one.
-DEFAULT_REFERENCE_GROWTH = 0.5
+DEFAULT_REFERENCE_GROWTH = 0.1
 # The fewest tests served by NNS sites whose points the projection trusts (fewer leave the projection of the area empty).
 MIN_NNS_TESTS = 30
 FIELDS = ('G_Level_2', 'G_Level_3', 'G_Level_4', 'Serving_eMOCN_Scenario', 'Serving_Host_Network', 'Serving_Site_ID')
