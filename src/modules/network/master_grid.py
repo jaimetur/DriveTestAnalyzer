@@ -237,27 +237,46 @@ def load_sites(repository: Any, dataset_id: int) -> Any:
     return pd.DataFrame([tuple(row) for row in rows], columns=list(COLUMNS))
 
 
+# The numbers a serving site of each host network can carry in the Master Grid, in order of preference: a site keeps its
+# own number, but VodafoneThree and the shared sites are often named in the CDRs by the number of the site they pair with
+# (checked against the coordinates of the sites: over 99 % of the sites matched each way are within 300 m).
+_KEY_SPACES: dict[str, tuple[tuple[str, str], ...]] = {
+    'VF': (('site_id', 'VF'), ('site_ref2', 'vf'), ('site_pairing', 'VF'), ('site_pairing', '3UK')),
+    '3UK': (('site_pairing', '3UK'), ('site_id', '3UK'), ('site_pairing', 'VF')),
+    'O2': (('site_ref2', 'o2'), ('site_id', 'VF'), ('site_ref2', 'vf'), ('site_pairing', 'VF'), ('site_pairing', '3UK')),
+}
+
+
+def _site_number(value: Any) -> str:
+    match = re.match(r'(\d+)', str(value or '').strip())
+    return match.group(1) if match else ''
+
+
 def site_lookup(sites: Any) -> dict[tuple[str, str], dict[str, str]]:
-    """The Master Grid site of each (operator, site number) a serving cell can name: Vodafone sites by Site ID, 3 sites
-    by SITE ID + Pairing and O2 sites by the number of their SiteRef2."""
-    lookup: dict[tuple[str, str], dict[str, str]] = {}
-    for site in sites.to_dict('records') if hasattr(sites, 'to_dict') else sites:
+    """The Master Grid site of each (host operator, site number) a serving cell can name. Each host network tries the
+    number spaces of _KEY_SPACES in order: Vodafone sites by Site ID, SiteRef2 (<n>vf) or SITE ID + Pairing (theirs or
+    of a 3 site), 3 sites by SITE ID + Pairing, O2 sites by SiteRef2 (<n>o2) or the number of the Vodafone site they
+    share."""
+    rows = list(sites.to_dict('records') if hasattr(sites, 'to_dict') else sites)
+    numbers: dict[tuple[str, str], dict[str, dict[str, str]]] = {}
+    for site in rows:
         operator = str(site.get('operator') or '').strip().upper()
         details = {'config': CONFIG_LABELS.get(str(site.get('config') or '').strip().casefold(), ''),
                    'keep_remove': str(site.get('keep_remove') or '').strip(),
                    'target_fy': str(site.get('target_fy') or '').strip().upper(),
                    'site_id': str(site.get('site_id') or '').strip()}
-        keys = []
-        if operator == 'VF':
-            keys.append(('VF', str(site.get('site_id') or '').strip()))
-        elif operator == '3UK':
-            keys.append(('3UK', str(site.get('site_pairing') or '').strip()))
-        reference = re.fullmatch(r'(\d+)o2', str(site.get('site_ref2') or '').strip(), re.IGNORECASE)
+        for column in ('site_id', 'site_pairing'):
+            number = _site_number(site.get(column))
+            if number:
+                numbers.setdefault((column, operator), {}).setdefault(number, details)
+        reference = re.fullmatch(r'(\d+)([a-z][a-z0-9]*)', str(site.get('site_ref2') or '').strip(), re.IGNORECASE)
         if reference:
-            keys.append(('O2', reference.group(1)))
-        for key in keys:
-            if key[1]:
-                lookup.setdefault(key, details)
+            numbers.setdefault(('site_ref2', reference.group(2).lower()), {}).setdefault(reference.group(1), details)
+    lookup: dict[tuple[str, str], dict[str, str]] = {}
+    for host, spaces in _KEY_SPACES.items():
+        for space in spaces:
+            for number, details in numbers.get(space, {}).items():
+                lookup.setdefault((host, number), details)
     return lookup
 
 

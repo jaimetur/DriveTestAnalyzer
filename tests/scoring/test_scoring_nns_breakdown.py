@@ -180,6 +180,7 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
         weighted = [row['campaigns']['2026-Q3']['best']['gap_region'] for row in breakdown['areas']
                     if row['operator'] == operator and '2026-Q3' in row['campaigns'] and row['campaigns']['2026-Q3']['best']]
         assert total['campaigns']['2026-Q3']['best'] == pytest.approx(sum(weighted), abs=1e-3)
+        assert 0 < total['campaigns']['2026-Q3']['best_points'] <= 1000
 
     # The same selection without it is another Saved Scoring, whose result has none.
     plain, _ready = saved_scorings.save_saved_scoring(repository, ids, ['Operator', 'Campaign'], 'NSA', username='admin',
@@ -191,10 +192,17 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
     assert response.status_code == 200, response.text
     book = load_workbook(BytesIO(response.content))
     assert book.sheetnames == ['Areas', 'GAP Totals', 'Sites', 'Scenarios', 'About']
-    header = [cell.value for cell in book['Areas'][1]]
-    assert header[:6] == ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator'] and sum(str(name).endswith(' Best Network') for name in header) == 2
-    assert sum(str(name).endswith('Most Reliable weighted GAP in its Region') for name in header) == 2
-    assert [cell.value for cell in book['GAP Totals'][1]][:3] == ['NR Mode', 'Region', 'Operator']
+    # Three header rows: each campaign in a band of its own colour, its Tests then its Best Network and Most Reliable.
+    areas = book['Areas']
+    bands, parts, header = ([cell.value for cell in areas[row]] for row in (1, 2, 3))
+    assert header[:6] == ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator'] and [name for name in bands[6:] if name] == ['26-Q2', '26-Q3']
+    assert [name for name in parts[6:] if name] == ['Tests', 'Best Network', 'Most Reliable'] * 2
+    assert header[6:12] == ['Tests', 'Points', '#1', 'GAP to #1', 'Weighted GAP to #1 in its Region', 'Weighted GAP to #1 in all the Regions']
+    assert areas.cell(row=1, column=7).fill.fgColor.rgb != areas.cell(row=1, column=18).fill.fgColor.rgb
+    assert areas.freeze_panes == 'G4' and areas.cell(row=4, column=7).value is not None
+    totals = book['GAP Totals']
+    assert [cell.value for cell in totals[3]][:8] == ['NR Mode', 'Region', 'Operator', 'Tests', 'Weighted points',
+                                                     'Weighted GAP to #1', 'Weighted points', 'Weighted GAP to #1']
     assert 'NNS High' in [cell.value for cell in book['Sites'][1]]
     assert client.get(f"/scoring/saved-scorings/{plain['id']}/export/nns").status_code in {404, 409}
 
@@ -237,3 +245,16 @@ def test_the_gap_to_number_one_is_weighted_by_the_tests_of_each_area():
     assert totals[('Vendor A', 'EE')]['best'] == pytest.approx(-5.0) and totals[('Vendor A', 'VF')]['best'] == pytest.approx(-37.5)
     assert totals[('', 'VF')]['best'] == pytest.approx(-50 * 300 / 800 - 20 * 400 / 800)
     assert totals[('', 'EE')]['tests'] == 800 and 'reliable' not in totals[('', 'EE')]
+    # The points weighted the same way: EE in Vendor A, 960 over 100 tests and 900 over 300.
+    assert totals[('Vendor A', 'EE')]['best_points'] == pytest.approx((960 * 100 + 900 * 300) / 400)
+
+
+def test_the_master_grid_matches_the_sites_named_by_the_number_of_the_site_they_pair_with():
+    """VodafoneThree and shared sites are often named in the CDRs by the number of the site they pair with."""
+    sites = [{'operator': 'VF', 'site_id': '32961', 'site_pairing': '18567', 'site_ref2': '18567vf', 'config': 'High'},
+             {'operator': '3UK', 'site_id': 'AAB002', 'site_pairing': '50419', 'site_ref2': '', 'config': 'Low'},
+             {'operator': 'VF', 'site_id': '10020', 'site_pairing': '10020', 'site_ref2': '10020vf', 'config': 'Med'}]
+    lookup = master_grid.site_lookup(sites)
+    assert lookup[('VF', '32961')]['config'] == 'High' and lookup[('VF', '18567')]['site_id'] == '32961'
+    assert lookup[('VF', '50419')]['config'] == 'Low' and lookup[('3UK', '50419')]['config'] == 'Low'
+    assert lookup[('O2', '10020')]['config'] == 'Medium'

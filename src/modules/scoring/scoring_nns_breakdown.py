@@ -45,7 +45,7 @@ DEFAULT_CAMPAIGNS = ('@latest-4-campaigns',)
 ROAD_GROUPINGS = ('region', 'each')
 WARNING_PREFIX = 'NNS Break-down:'
 # Raise when the calculation changes, so the results saved before are calculated again.
-VERSION = 3
+VERSION = 4
 CITY_KIND = 'City'
 ROAD_KIND = 'Road'
 NO_SCENARIO = 'No eMOCN scenario'
@@ -265,7 +265,8 @@ def scores(result: dict, reliable: dict | None, keys: tuple[str, ...]) -> dict[t
 
 def add_gaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The GAP to #1 of each area row (in place, in each campaign and scoring: ``leader``, ``gap``, ``gap_region`` and
-    ``gap_all``), and the weighted GAPs summed per Region and for all the Regions (``region`` empty), per operator."""
+    ``gap_all``), and the weighted GAPs (``best``, ``reliable``) and points (``best_points``, ``reliable_points``) summed
+    per Region and for all the Regions (``region`` empty), per operator."""
     scorings = ('best', 'reliable')
     leaders: dict[tuple, tuple[float, str]] = {}
     tests_region: dict[tuple, int] = {}
@@ -304,10 +305,14 @@ def add_gaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 scored.update({'leader': leader[1], 'gap': round(gap, 2),
                                'gap_region': round(gap * tests / in_region, 4) if in_region else None,
                                'gap_all': round(gap * tests / in_all, 4) if in_all else None})
-                for region, share in ((row['region'], scored['gap_region']), ('', scored['gap_all'])):
+                # The points of the area weighted the same way: summed, the points of the Region or of all the Regions.
+                for region, share, weight in ((row['region'], scored['gap_region'], tests / in_region if in_region else None),
+                                              ('', scored['gap_all'], tests / in_all if in_all else None)):
                     entry = totals[(region, row['operator'])]['campaigns'][campaign]
                     if share is not None:
                         entry[scoring] = round(entry.get(scoring, 0.0) + share, 4)
+                    if weight is not None:
+                        entry[f'{scoring}_points'] = round(entry.get(f'{scoring}_points', 0.0) + float(scored['points']) * weight, 4)
     return list(totals.values())
 
 
@@ -370,39 +375,93 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
     modes = [mode for mode in breakdown.get('modes') or [] if isinstance(mode, dict)]
     campaigns = sort_campaigns(campaign for mode in modes for campaign in mode.get('campaigns') or [])
     label = lambda value: format_campaign(value) or value
-    header = ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator']
     scorings = (('best', 'Best Network'), ('reliable', 'Most Reliable'))
-    for campaign in campaigns:
-        header += [f'{label(campaign)} Best Network', f'{label(campaign)} Most Reliable', f'{label(campaign)} Tests']
-        for _key, name in scorings:
-            header += [f'{label(campaign)} {name} #1', f'{label(campaign)} {name} GAP to #1',
-                       f'{label(campaign)} {name} weighted GAP in its Region',
-                       f'{label(campaign)} {name} weighted GAP in all the Regions']
+    # Each campaign under a band of its own colour, its Tests first, then its Best Network and its Most Reliable columns.
+    palette = ('1F4E79', '0F766E', '7C3AED', 'B45309', 'BE185D', '15803D', '0369A1', '9F1239')
+
+    def tint(color: str, share: float) -> str:
+        """``color`` mixed with white (``share`` of white)."""
+        channels = [int(color[index:index + 2], 16) for index in (0, 2, 4)]
+        return ''.join(f'{round(value + (255 - value) * share):02X}' for value in channels)
+
+    def grouped_sheet(name: str, fixed: list[str], groups: list[tuple[str, list[tuple[str, list[str]]]]],
+                      rows: list[list[Any]], first: bool = False):
+        """A sheet with three header rows: each group (a campaign) in a band of its colour, its parts (Tests, a scoring)
+        in a lighter band, then the names of the columns; the fixed columns span the three rows."""
+        worksheet = book.active if first else book.create_sheet()
+        worksheet.title = name
+        top, middle, bottom = [''] * len(fixed), [''] * len(fixed), list(fixed)
+        spans = []
+        for index, (group, parts) in enumerate(groups):
+            color = palette[index % len(palette)]
+            start = len(bottom) + 1
+            for part, columns in parts:
+                spans.append(('middle', len(bottom) + 1, len(bottom) + len(columns), part, tint(color, .35 if part != 'Tests' else .55)))
+                middle += [part] + [''] * (len(columns) - 1)
+                bottom += columns
+            top += [group] + [''] * (len(bottom) - start)
+            spans.append(('top', start, len(bottom), group, color))
+        for values in (top, middle, bottom):
+            worksheet.append(values)
+        dark, white = Font(bold=True, color='17232D'), Font(bold=True, color='FFFFFF')
+        # (The names of the fixed columns on the third row, with the filters; the two rows above them in one block.)
+        for column in range(1, len(fixed) + 1):
+            worksheet.merge_cells(start_row=1, start_column=column, end_row=2, end_column=column)
+            for row in (1, 3):
+                cell = worksheet.cell(row=row, column=column)
+                cell.font, cell.fill = header_font, header_fill
+                cell.alignment = Alignment(wrap_text=True, vertical='center')
+        for row_name, first_column, last_column, text, color in spans:
+            row = 1 if row_name == 'top' else 2
+            if last_column > first_column:
+                worksheet.merge_cells(start_row=row, start_column=first_column, end_row=row, end_column=last_column)
+            cell = worksheet.cell(row=row, column=first_column)
+            cell.fill = PatternFill('solid', fgColor=color)
+            cell.font = white if row == 1 else dark
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            for column in range(first_column, last_column + 1):
+                worksheet.cell(row=3, column=column).fill = PatternFill('solid', fgColor=tint(color, .8 if row == 1 else .55))
+        for column in range(len(fixed) + 1, len(bottom) + 1):
+            cell = worksheet.cell(row=3, column=column)
+            cell.font, cell.alignment = Font(bold=True, color='17232D'), Alignment(wrap_text=True, vertical='center', horizontal='center')
+        for row in rows:
+            worksheet.append(row)
+        worksheet.freeze_panes = worksheet.cell(row=4, column=len(fixed) + 1)
+        worksheet.auto_filter.ref = f'A3:{get_column_letter(len(bottom))}{max(3, worksheet.max_row)}'
+        worksheet.row_dimensions[3].height = 45
+        for index, column in enumerate(bottom, start=1):
+            width = max([len(str(column)) if index <= len(fixed) else 10] + [len(str(row[index - 1])) for row in rows[:500] if row[index - 1] is not None])
+            worksheet.column_dimensions[get_column_letter(index)].width = min(40, max(9, width + 2))
+        return worksheet
+
+    area_parts = lambda: [('Tests', ['Tests']), *[(name, ['Points', '#1', 'GAP to #1', 'Weighted GAP to #1 in its Region',
+                                                       'Weighted GAP to #1 in all the Regions']) for _key, name in scorings]]
     rows = []
     for row in sorted(breakdown.get('areas') or [], key=lambda item: (item['nr_mode'], item['region'], item['kind'] != CITY_KIND,
                                                                      item['size'], item['area'], item['operator'])):
         values = [row['nr_mode'], row['region'], row['area'], row['kind'], row['size'], row['operator']]
         for campaign in campaigns:
             scored = (row.get('campaigns') or {}).get(campaign) or {}
-            values += [_value(scored.get('best')), _value(scored.get('reliable')), scored.get('tests') if scored else None]
+            values.append(scored.get('tests') if scored else None)
             for key, _name in scorings:
                 points = scored.get(key) or {}
-                values += [points.get('leader'), points.get('gap'), points.get('gap_region'), points.get('gap_all')]
+                values += [_value(points), points.get('leader'), points.get('gap'), points.get('gap_region'), points.get('gap_all')]
         rows.append(values)
-    sheet('Areas', header, rows, first=True)
-    header = ['NR Mode', 'Region', 'Operator']
-    for campaign in campaigns:
-        header += [f'{label(campaign)} Best Network weighted GAP to #1', f'{label(campaign)} Most Reliable weighted GAP to #1',
-                   f'{label(campaign)} Tests']
+    grouped_sheet('Areas', ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator'],
+                  [(label(campaign), area_parts()) for campaign in campaigns], rows, first=True)
     rows = []
     for row in sorted(breakdown.get('gap_totals') or [], key=lambda item: (item['nr_mode'], item['region'] == '', item['region'],
                                                                            item['operator'])):
         values = [row['nr_mode'], row['region'] or 'All the chosen Regions', row['operator']]
         for campaign in campaigns:
             entry = (row.get('campaigns') or {}).get(campaign) or {}
-            values += [entry.get('best'), entry.get('reliable'), entry.get('tests')]
+            values.append(entry.get('tests'))
+            for key, _name in scorings:
+                values += [entry.get(f'{key}_points'), entry.get(key)]
         rows.append(values)
-    sheet('GAP Totals', header, rows)
+    grouped_sheet('GAP Totals', ['NR Mode', 'Region', 'Operator'],
+                  [(label(campaign), [('Tests', ['Tests']), *[(name, ['Weighted points', 'Weighted GAP to #1'])
+                                                              for _key, name in scorings]]) for campaign in campaigns], rows)
     sites = breakdown.get('sites') or []
     capacities = [*CAPACITIES, *sorted({name for row in sites for name in row.get('nns') or {} if name not in CAPACITIES})]
     scenarios = scenario_order(name for row in sites for name in row.get('scenarios') or {})
@@ -433,9 +492,11 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
                         'tests; the connecting roads keep the Region of each test.'],
              ['GAP to #1', 'The points of the operator minus those of the operator with the most points in the area and '
                            'campaign (#1).'],
-             ['Weighted GAP', 'The GAP to #1 times the tests of the operator in the area, over its tests in all the areas '
-                              'of the Region (in its Region) or of every chosen Region (in all the Regions). Summed '
-                              '(GAP Totals), they give the GAP of the whole Region or of all the chosen Regions.'],
+             ['Weighted GAP to #1', 'The GAP to #1 times the tests of the operator in the area, over its tests in all the '
+                                    'areas of the Region (in its Region) or of every chosen Region (in all the Regions). '
+                                    'Summed (GAP Totals), they give the GAP of the whole Region or of all the chosen Regions.'],
+             ['Weighted points', 'GAP Totals: the points of the areas weighted the same way (by the tests of the operator), '
+                                 'summed per Region and for all the chosen Regions.'],
              ['Sites', 'The serving sites of the tests of the latest campaign: NNS sites by the High/Med/Low config of the '
                        'Master Grid, the other sites by eMOCN scenario, and the Keep sites the Master Grid plans for NNS '
                        '(Target Deployment FY) among those not NNS yet.'],

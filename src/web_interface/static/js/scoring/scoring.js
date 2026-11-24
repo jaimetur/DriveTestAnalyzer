@@ -1400,9 +1400,9 @@
     const latest = mode.latest_campaign || campaigns[campaigns.length - 1] || '';
     const gapText = value => (Number.isFinite(Number(value)) ? `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(Math.abs(Number(value)) < 10 ? 2 : 1)}` : '–');
     const headTitles = {'GAP to #1': `Points to the operator with the most points in the area (#1), ${campaignLabel(latest)}`,
-      'Weighted GAP': 'The GAP to #1 times the tests of the operator in the area, over its tests in the whole Region (below: in all the chosen Regions)',
+      'Weighted GAP to #1': 'The GAP to #1 times the tests of the operator in the area, over its tests in the whole Region (below: in all the chosen Regions)',
       'NNS H · M · L': 'NNS sites by the capacity of the Master Grid: High · Medium · Low'};
-    ['Area', 'Size', 'Operator', ...campaigns.map(campaignLabel), 'GAP to #1', 'Weighted GAP', 'NNS H · M · L', 'eMOCN / other', 'Planned NNS']
+    ['Area', 'Size', 'Operator', ...campaigns.map(campaignLabel), 'GAP to #1', 'Weighted GAP to #1', 'NNS H · M · L', 'eMOCN / other', 'Planned NNS']
       .forEach(text => { const th = el('th', '', text); if (headTitles[text]) th.title = headTitles[text]; headRow.append(th); });
     // The GAP of an operator to #1 in the area, and weighted by its tests in its Region and in all the chosen Regions.
     const gapCells = values => {
@@ -1510,7 +1510,7 @@
     // The GAP of each Region (and of all the chosen ones) to #1: the weighted GAPs of its areas summed, per operator.
     const totals = (nns.gap_totals || []).filter(row => row.nr_mode === nnsMode);
     const gapBox = section(`GAP to #1 of each Region, ${campaignLabel(latest) || 'latest campaign'}`,
-      'The weighted GAPs of the areas of each Region summed: how many points each operator is behind #1 over the whole Region.');
+      'The weighted GAPs of the areas of each Region summed: how many points each operator is behind #1 over the whole Region; below, its points with its areas weighted the same way.');
     const gapOperators = [...new Set(totals.map(row => row.operator))].sort((left, right) => String(left).localeCompare(String(right)));
     const gapRegions = [...new Set(totals.map(row => row.region))].sort((left, right) => (left === '') - (right === '') || String(left).localeCompare(String(right)));
     const gapWrap = el('div', 'table-wrap scoring-nns-table-wrap');
@@ -1530,7 +1530,9 @@
         const td = el('td', 'scoring-nns-gap');
         if (value === undefined || value === null) { td.textContent = '–'; td.classList.add('is-empty'); }
         else {
-          td.append(el('strong', '', gapText(value)), el('small', '', `${Number(entry.tests || 0).toLocaleString()} tests`));
+          const points = Number(entry[`${nnsScoring}_points`]);
+          td.append(el('strong', '', gapText(value)), el('small', '', `${Number.isFinite(points) ? `${points.toFixed(1)} pts · ` : ''}${Number(entry.tests || 0).toLocaleString()} tests`));
+          td.title = 'Weighted GAP to #1, then the weighted points of the operator (its areas weighted by its tests) and its tests';
           if (Number(value) < 0) td.classList.add('is-behind');
         }
         tr.append(td);
