@@ -576,7 +576,7 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
     from src.modules.cdr.column_names import format_campaign
 
     book = Workbook()
-    header_font, header_fill = Font(bold=True, color='FFFFFF'), PatternFill('solid', fgColor='0F766E')
+    header_font, header_fill = Font(bold=True, color='FFFFFF'), PatternFill('solid', fgColor='10314A')
 
     def sheet(name: str, header: list[str], rows: list[list[Any]], first: bool = False):
         worksheet = book.active if first else book.create_sheet()
@@ -599,7 +599,11 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
     label = lambda value: format_campaign(value) or value
     scorings = (('best', 'Best Network'), ('reliable', 'Most Reliable'))
     # Each campaign under a band of its own colour, its Tests first, then its Best Network and its Most Reliable columns.
-    palette = ('1F4E79', '0F766E', '7C3AED', 'B45309', 'BE185D', '15803D', '0369A1', '9F1239')
+    # The colours of the tool: deep navy and teal shades, one per campaign; within a campaign Tests stay neutral, Best
+    # Network takes a mid shade of it and Most Reliable a light one (its values on a faint tint too), with a strong
+    # line between campaigns and a thin one between their parts.
+    palette = ('10314A', '0F766E', '1D4E89', '0E7490', '334E68', '115E59', '1E3A8A', '155E75')
+    part_shades = {'Tests': None, 'Best Network': .3, 'Most Reliable': .62}
 
     def tint(color: str, share: float) -> str:
         """``color`` mixed with white (``share`` of white)."""
@@ -609,20 +613,31 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
     def grouped_sheet(name: str, fixed: list[str], groups: list[tuple[str, list[tuple[str, list[str]]]]],
                       rows: list[list[Any]], first: bool = False):
         """A sheet with three header rows: each group (a campaign) in a band of its colour, its parts (Tests, a scoring)
-        in a lighter band, then the names of the columns; the fixed columns span the three rows."""
+        in a band of a shade of it, then the names of the columns; the fixed columns on the third row."""
+        from openpyxl.styles import Border, Side
+
         worksheet = book.active if first else book.create_sheet()
         worksheet.title = name
         top, middle, bottom = [''] * len(fixed), [''] * len(fixed), list(fixed)
-        spans = []
+        spans, lines, faint = [], {}, []
         for index, (group, parts) in enumerate(groups):
             color = palette[index % len(palette)]
             start = len(bottom) + 1
-            for part, columns in parts:
-                spans.append(('middle', len(bottom) + 1, len(bottom) + len(columns), part, tint(color, .35 if part != 'Tests' else .55)))
+            lines[start] = Side(style='medium', color=color)
+            for position, (part, columns) in enumerate(parts):
+                shade = part_shades.get(part, .45)
+                first_column, last_column = len(bottom) + 1, len(bottom) + len(columns)
+                if position:
+                    lines.setdefault(first_column, Side(style='thin', color=tint(color, .2)))
+                spans.append(('middle', first_column, last_column, part,
+                              'E2E8F0' if shade is None else tint(color, shade), shade is not None and shade < .5,
+                              'F1F5F9' if shade is None else tint(color, min(.9, shade + .52))))
+                if shade is not None and shade >= .5:
+                    faint.append((first_column, last_column, tint(color, .94)))
                 middle += [part] + [''] * (len(columns) - 1)
                 bottom += columns
             top += [group] + [''] * (len(bottom) - start)
-            spans.append(('top', start, len(bottom), group, color))
+            spans.append(('top', start, len(bottom), group, color, True, None))
         for values in (top, middle, bottom):
             worksheet.append(values)
         dark, white = Font(bold=True, color='17232D'), Font(bold=True, color='FFFFFF')
@@ -633,21 +648,42 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
                 cell = worksheet.cell(row=row, column=column)
                 cell.font, cell.fill = header_font, header_fill
                 cell.alignment = Alignment(wrap_text=True, vertical='center')
-        for row_name, first_column, last_column, text, color in spans:
+        for row_name, first_column, last_column, text, color, light_text, names_color in spans:
             row = 1 if row_name == 'top' else 2
             if last_column > first_column:
                 worksheet.merge_cells(start_row=row, start_column=first_column, end_row=row, end_column=last_column)
             cell = worksheet.cell(row=row, column=first_column)
             cell.fill = PatternFill('solid', fgColor=color)
-            cell.font = white if row == 1 else dark
+            cell.font = white if light_text else dark
             cell.alignment = Alignment(horizontal='center', vertical='center')
-            for column in range(first_column, last_column + 1):
-                worksheet.cell(row=3, column=column).fill = PatternFill('solid', fgColor=tint(color, .8 if row == 1 else .55))
+            if names_color:
+                for column in range(first_column, last_column + 1):
+                    worksheet.cell(row=3, column=column).fill = PatternFill('solid', fgColor=names_color)
         for column in range(len(fixed) + 1, len(bottom) + 1):
             cell = worksheet.cell(row=3, column=column)
             cell.font, cell.alignment = Font(bold=True, color='17232D'), Alignment(wrap_text=True, vertical='center', horizontal='center')
         for row in rows:
             worksheet.append(row)
+        # Shares as percentages, points and GAPs with two decimals, tests as whole numbers.
+        for index, name in enumerate(bottom, start=1):
+            if index <= len(fixed) and name not in ('Serving sites', 'NNS sites', 'Tests', 'NNS tests', 'Points', 'NNS points'):
+                continue
+            text = str(name)
+            number_format = ('0.0%' if text.startswith(('Weight in', 'NNS %')) else '#,##0' if text in ('Tests', 'NNS tests', 'Serving sites', 'NNS sites')
+                             else '0.00' if any(word in text for word in ('Points', 'points', 'GAP', 'Adjustment')) else None)
+            if number_format:
+                for row_cells in worksheet.iter_rows(min_row=4, max_row=worksheet.max_row, min_col=index, max_col=index):
+                    row_cells[0].number_format = number_format
+        # The values of Most Reliable on a faint tint, and the lines between the campaigns and their parts on every row.
+        for first_column, last_column, color in faint:
+            fill = PatternFill('solid', fgColor=color)
+            for row_cells in worksheet.iter_rows(min_row=4, max_row=worksheet.max_row, min_col=first_column, max_col=last_column):
+                for cell in row_cells:
+                    cell.fill = fill
+        for column, side in lines.items():
+            for row_index in range(1, worksheet.max_row + 1):
+                cell = worksheet.cell(row=row_index, column=column)
+                cell.border = Border(left=side, top=cell.border.top, bottom=cell.border.bottom, right=cell.border.right)
         worksheet.freeze_panes = worksheet.cell(row=4, column=len(fixed) + 1)
         worksheet.auto_filter.ref = f'A3:{get_column_letter(len(bottom))}{max(3, worksheet.max_row)}'
         worksheet.row_dimensions[3].height = 45
