@@ -32,9 +32,12 @@ COPY tools/presentations/package.json tools/presentations/package-lock.json ./to
 RUN npm ci --prefix tools/presentations --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # The latest-noavx image replaces the official DuckDB wheel (x86-64-v3, AVX2) with the one compiled for x86-64-v2 by the
-# Build DuckDB without AVX workflow. It comes after the heavy layers so both images share them.
+# Build DuckDB without AVX workflow. It comes after the heavy layers so both images share them. DUCKDB_WHEEL_URL is a URL
+# or a file of the docker folder of the context, mounted at /tmp/docker-context (the workflow downloads the wheel there,
+# as the release of a private repository cannot be fetched anonymously).
 ARG DUCKDB_WHEEL_URL=""
-RUN if [ -n "${DUCKDB_WHEEL_URL}" ]; then pip install --no-cache-dir --no-deps --force-reinstall "${DUCKDB_WHEEL_URL}"; fi
+RUN --mount=type=bind,source=docker,target=/tmp/docker-context \
+    if [ -n "${DUCKDB_WHEEL_URL}" ]; then pip install --no-cache-dir --no-deps --force-reinstall "${DUCKDB_WHEEL_URL}"; fi
 
 # Keep dependency layers cacheable, but make every application layer belong to
 # one exact Git commit. This also leaves a directly inspectable revision inside

@@ -220,6 +220,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      # The release of the wheel is private with the repository: the build cannot fetch it anonymously, so the job
+      # downloads it with its token and hands it to the build as a file of the context.
+      - name: Download the DuckDB wheel without AVX
+        id: wheel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WHEEL_URL: ${{ needs.duckdb-noavx-wheel.outputs.wheel_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$(basename "$(dirname "${WHEEL_URL}")")"
+          FILE="$(basename "${WHEEL_URL}")"
+          mkdir -p docker/duckdb-noavx
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --pattern "${FILE}" --dir docker/duckdb-noavx --clobber
+          echo "path=/tmp/docker-context/duckdb-noavx/${FILE}" >> "${GITHUB_OUTPUT}"
+
       - name: Build and push the image without AVX
         uses: docker/build-push-action@v7
         env:
@@ -236,7 +252,7 @@ jobs:
             ${{ needs.docker.outputs.image_name }}:latest-noavx
           build-args: |
             SOURCE_REVISION=${{ github.sha }}
-            DUCKDB_WHEEL_URL=${{ needs.duckdb-noavx-wheel.outputs.wheel_url }}
+            DUCKDB_WHEEL_URL=${{ steps.wheel.outputs.path }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
