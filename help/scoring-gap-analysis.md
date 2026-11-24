@@ -638,7 +638,7 @@ The Country Areas tab scores the whole country and each area of **Country Areas*
 | **Each operator against the reference per region** (city, city or route, cluster) | Per chosen operator other than the reference, its GAP in each location, overall, Voice and Data, in points of percentage of the points available, as bars left (behind) or right (ahead), the furthest behind first |
 
 - **Split by Vendor:** the Nationwide card has a column per operator (Operator Maps order) and a row per Vendor (**All** first for operators without one such as EE, then by name, Mixed and Unknown), each cell with its bar, its position among the operators of the Vendor and its points behind the first; the per-area cards come in a set per Vendor (**Vendor: Ericsson**).
-- **Order:** Nationwide, then Region, Cluster and City, also in the documents; with several campaigns, the latest one's set of cards.
+- **Order:** Nationwide, then Region, Cluster and City, also in the documents; with several campaigns, the latest one's set of cards. The title of each card names the campaign it scores (for example *Most Reliable Network Scoring per Region — 26-Q3*).
 - **All Environments:** each card adds the environments measured there and scales them to the full maximum (1,000 points in NetCheck 2026), so a city measured only in Drive - City compares with the others as in the NetCheck per-city rankings; the note above the cards gives the maximum and its Voice and Data parts. A single environment shows its own points.
 - **Older results:** a Saved Scoring calculated before is calculated again when opened; older results show a note.
 

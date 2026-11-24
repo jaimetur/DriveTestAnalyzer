@@ -9027,11 +9027,18 @@
       const notice = wholeCountryNotice('This tab is');
       if (notice) pane.append(notice);
     }
+    // The campaign each card scores: its own (with several, the latest one is shown), else those of the result.
+    const resultCampaigns = (Array.isArray(payload?.campaigns) ? payload.campaigns : []).filter(Boolean);
+    const campaignOf = group => {
+      const values = group.campaign ? [group.campaign] : resultCampaigns;
+      return values.map(value => hierarchyDisplayValue({level: 'Campaign', value})).join(' + ');
+    };
     for (const group of groups) {
       // The scoring Nationwide (the card of the whole country) comes first, then each Region, Cluster and City. They are
       // calculated on the whole country, so their pills name no City, Cluster or Region filter; split by Vendor, those
-      // of each area name its Vendor.
-      pane.append(makeExpandableChartCard(group.level === 'National' ? `${scoringLabel()} Scoring Nationwide` : `${scoringLabel()} Scoring per ${group.level}`,
+      // of each area name its Vendor. The title names the campaign it scores.
+      const campaign = campaignOf(group);
+      pane.append(makeExpandableChartCard(`${group.level === 'National' ? `${scoringLabel()} Scoring Nationwide` : `${scoringLabel()} Scoring per ${group.level}`}${campaign ? ` — ${campaign}` : ''}`,
         [environmentLabel(environment), group.title].filter(Boolean).join(' · '), makeLocationCardsView(group, position),
         group.context || {}, {wholeCountry: true}));
     }
