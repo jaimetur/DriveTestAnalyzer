@@ -4560,7 +4560,7 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-final .dataset-card-campaigns { --dataset-card-colour: #1d4f8f; }
 .dataset-card-weekly .dataset-card-campaigns { --dataset-card-colour: #7b5cc4; }
 .dataset-card-daily .dataset-card-campaigns { --dataset-card-colour: #d08a1c; }
-@media (max-width: 640px) { .dataset-card-cdr .dataset-card-head { padding-right: 4.2rem; } .dataset-card-cdr .dataset-card-head h3 { flex-wrap: wrap; } .dataset-card-badges { position: static; order: 3; flex-basis: 100%; } }
+@media (max-width: 640px) { .dataset-card-cdr .dataset-card-head { padding-right: 4.2rem; } .dataset-card-head h3:has(.dataset-card-badges) { flex-wrap: wrap; } .dataset-card-badges { position: static; order: 3; flex-basis: 100%; flex-wrap: wrap; } }
 .dataset-card-icon svg { width: 1.9rem; height: 1.9rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .combined-dataset-section-copy { padding-right: 4.2rem; }
 .dataset-card-icon-final { --dataset-card-colour: #1d4f8f; }
