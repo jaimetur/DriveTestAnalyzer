@@ -86,9 +86,12 @@ LATER_SECTIONS = frozenset({'dataset_analysis'})
 # The results tabs of Scoring & GAP Analysis and the slides of each one (the content options of a report scenario,
 # see scoring_reports, and the panels of scoring_export_panels); the KPI and GAP values of the tables are options of
 # the section.
+# The Methodology Impact is generated only when the latest campaign of the section has another methodology than the
+# campaign before it (see SectionGenerator.methodology_impact).
 SCORING_SUBMODULES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = tuple(
-    (group, title, tuple((key, label) for key, label, _operators in panels)) for group, title, panels in EXPORT_PANELS
-    if group != 'impact')  # (The Methodology Impact has documents of its own, from the comparison chosen in its tab.)
+    (group, title, tuple((key, label) for key, label, _operators in panels)) for group, title, panels in EXPORT_PANELS)
+# Sub-modules added after reports were saved: those reports keep them unchecked, so they generate what they did.
+LATER_SCORING_SUBMODULES = frozenset({'impact'})
 # The section each Scoring slide is named after (see scoring_exports) and its results tab.
 SCORING_TAGS = {'summary': 'summary', 'charts': 'charts', 'tables': 'tables', 'comparison': 'tables',
                 'geographical_areas': 'geographical_areas', 'locations': 'geographical_areas',
@@ -315,6 +318,8 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
     order += [key for key in catalogue if key not in order]
     items = []
     for key in order:
+        if section == 'scoring' and raw_items and key in LATER_SCORING_SUBMODULES and key not in saved:
+            saved[key] = {'key': key, 'enabled': False}
         item = saved.get(key, {})
         chosen = item.get('components') if isinstance(item.get('components'), dict) else {}
         items.append({'key': key, 'enabled': bool(item.get('enabled', True)),
@@ -1822,6 +1827,8 @@ class SectionGenerator:
         def content(kind: str) -> dict[str, Any]:
             groups = {}
             for key, _title, components in SCORING_SUBMODULES:
+                if key == 'impact':
+                    continue
                 item = chosen.get(key)
                 groups[key] = {name: bool(item and item['components'].get(name)) for name, _label in components}
             groups['tables'].update({'kpi_values': options['kpi_values'], 'gap_values': options['gap_values']})
@@ -1846,12 +1853,76 @@ class SectionGenerator:
                 'reuse_saved_scorings': True}
         self.progress('Calculating Scoring & GAP Analysis')
         try:
-            content_bytes, _filename, _job = self.core.build_scoring_report_document(self.repository, base, report, self.user.username)
+            content_bytes, _filename, job = self.core.build_scoring_report_document(self.repository, base, report, self.user.username)
         except ValueError as exc:
             raise BundleReportTemplateError(str(exc)) from exc
         titles = {key: title for key, title, _components in SCORING_SUBMODULES}
-        return SectionDeck('scoring', '', [], decks=[(None, content_bytes)], order=[item['key'] for item in section['items']],
+        deck = SectionDeck('scoring', '', [], decks=[(None, content_bytes)], order=[item['key'] for item in section['items']],
                            item_titles=titles)
+        if chosen.get('impact') and any(chosen['impact']['components'].values()):
+            self.methodology_impact(deck, job, section, nr_mode)
+        return deck
+
+    def methodology_impact(self, deck: SectionDeck, job: dict[str, Any], section: dict[str, Any], nr_mode: str) -> None:
+        """The Methodology Impact of a Scoring section, only when the latest campaign it scores has another methodology than
+        the campaign before it: the tests of the latest campaign scored with both methodologies (as the Methodology Impact
+        tab compares them by default), with the panels chosen. Otherwise its cover says the methodology did not change."""
+        from src.modules.scoring import scoring_impact
+        from src.modules.scoring.saved_scorings import get_saved_scoring
+        from src.modules.scoring.scoring_export_panels import load_export_panels
+        from src.modules.scoring.scoring_impact_exports import export_impact_powerpoint
+
+        options = section['options']
+        if options['methodology'] != BY_CAMPAIGN:
+            deck.lines.append('Methodology Impact: every campaign is scored with the same methodology')
+            return
+        saved = get_saved_scoring(self.repository, job['id']) if job.get('id') is not None else None
+        saved = saved or job
+        try:
+            impact_options = scoring_impact.impact_options(self.repository, saved)
+        except (ValueError, KeyError) as exc:
+            deck.lines.append(f'Skipped: Methodology Impact ({exc})')
+            return
+        mode = nr_mode if nr_mode in impact_options['nr_modes'] else impact_options['nr_modes'][0]
+        entries = [entry for entry in impact_options['campaigns'].get(mode) or [] if not entry['flex']]
+        chosen = impact_options['by_nr_mode'].get(mode) or {}
+        values = [entry['value'] for entry in entries]
+        latest = chosen.get('campaign_b')
+        previous = values[values.index(latest) + 1] if latest in values and values.index(latest) + 1 < len(values) else None
+        by_value = {entry['value']: entry for entry in entries}
+        if not previous or chosen.get('campaign_a') != previous or \
+                by_value[previous]['methodology_id'] == by_value[latest]['methodology_id']:
+            deck.lines.append(f"Methodology Impact: {by_value[latest]['label'] if latest in by_value else 'the latest campaign'} "
+                              f"keeps the methodology of the campaign before it")
+            return
+        self.progress(f"Comparing the methodologies of {by_value[previous]['label']} and {by_value[latest]['label']}")
+        try:
+            prepared = scoring_impact.prepare_impact(self.repository, saved, {'mode': 'campaigns', 'nr_mode': mode,
+                                                                              'campaign_a': previous, 'campaign_b': latest})
+            impact = scoring_impact.read_impact(self.repository, prepared['key'])
+            if impact is None:
+                scoring_impact.run_impact(self.repository, prepared, self.user.username)
+                impact = scoring_impact.read_impact(self.repository, prepared['key'])
+            if not impact or not impact.get('scorings'):
+                state = scoring_impact.state_of(self.repository, prepared['key']) or {}
+                raise BundleReportTemplateError(state.get('error') or 'there is no impact to show')
+            panels = load_export_panels(self.repository)
+            item = next(entry for entry in section['items'] if entry['key'] == 'impact')
+            panels['impact'] = {key: {**value, 'exportable': bool(value.get('exportable')) and bool(item['components'].get(key))}
+                                for key, value in panels['impact'].items()}
+            from src.config import settings
+            from src.modules.cdr_analysis.cdr_reporting import TEMPLATE_NAMES
+            scoring = next((key for key in options['scorings'] if key in impact['scorings']), next(iter(impact['scorings'])))
+            content = export_impact_powerpoint(impact, settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa'],
+                                               self.repository.list_operator_mapping_groups(), scoring=scoring,
+                                               panels=panels, theme=self.definition['theme'],
+                                               maps=scoring_impact.read_maps(self.repository, prepared['key']))
+        except Exception as exc:  # The rest of the section stays.
+            deck.lines.append(f"Skipped: Methodology Impact ({getattr(exc, 'detail', exc)})")
+            return
+        deck.decks.append(('impact', content))
+        deck.lines.append(f"Methodology Impact: {by_value[previous]['label']} ({by_value[previous]['methodology_name']}) → "
+                          f"{by_value[latest]['label']} ({by_value[latest]['methodology_name']})")
 
     def network_selection(self, section: dict[str, Any]) -> dict[str, Any]:
         """The Network Insights selection of the section: the common filters, its Campaigns and its options."""

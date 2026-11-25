@@ -86,7 +86,8 @@ Each module has its own, at the top of its card and in amber so they stand out (
 ### Sub-modules
 
 - **PPT Designer:** every saved Design, each reading the CDRs of the NR Mode of the common filters (its template serves every NR Mode). A Design of [NSA & SA](ppt-designer.md#nsa-sa-in-one-design) keeps reading both, the Campaigns choosing the CDRs of each NR Mode; a Design generated in an NR Mode other than its own goes without its saved comments; reports saved before keep checked only the Designs of their NR Mode, as they generated.
-- **Scoring & GAP Analysis:** Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis and Points Lost.
+- **Scoring & GAP Analysis:** Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis, Points Lost and Methodology Impact.
+  - **Methodology Impact** is generated only when the latest campaign of the section has another methodology than the campaign before it (with the Methodology **By campaign**): the tests of the latest campaign scored with both methodologies, as the [Methodology Impact](scoring-gap-analysis.md#methodology-impact) tab compares them by default, with the panels checked in its **Charts & tables**. Otherwise the cover of the section says that the latest campaign keeps the methodology of the one before it. Reports saved before it have it unchecked.
 - **Network Insights** and **Non-Qualified Calls:** their panels.
 - **CDR Analysis:** CDR Data, CDR Voice and CDR Speech, each with CDR Summary, Selected Metric Cards, Visual Analytics of each metric and Processed Metrics.
 

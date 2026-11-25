@@ -1385,3 +1385,41 @@ def test_sub_modules_repeated_for_areas_are_generated_for_each_area_and_composed
         next(section for section in saved['sections'] if section['key'] == 'network_insights')))
     changes = bundle_report_templates.definition_changes({}, saved)
     assert 'Areas: +London (Cities: London)' in changes and 'Areas: +National (The whole country)' in changes
+
+
+def test_the_methodology_impact_is_generated_only_when_the_latest_campaign_changes_methodology(client, monkeypatch, tmp_path):
+    # Ticket #202: a Scoring section shows the Methodology Impact only when its latest campaign has another methodology
+    # than the campaign before it (the same tests scored with both).
+    from src.modules.scoring import scoring_impact, saved_scorings
+    from src.modules.scoring import scoring_impact_exports
+
+    def options(methodologies):
+        entries = [{'value': value, 'label': value, 'flex': False, 'methodology_id': method, 'methodology_name': method.upper()}
+                   for value, method in methodologies]
+        earlier = next((entry for entry in entries[1:] if entry['methodology_id'] != entries[0]['methodology_id']), entries[1])
+        return {'nr_modes': ['NSA'], 'campaigns': {'NSA': entries},
+                'by_nr_mode': {'NSA': {'campaign_b': entries[0]['value'], 'campaign_a': earlier['value']}}}
+
+    asked = []
+    monkeypatch.setattr(saved_scorings, 'get_saved_scoring', lambda repository, saved_id: {'id': saved_id})
+    monkeypatch.setattr(scoring_impact, 'prepare_impact', lambda repository, saved, selection: asked.append(selection) or {'key': 'k'})
+    monkeypatch.setattr(scoring_impact, 'read_impact', lambda repository, key: {'scorings': {'best_network': {}}})
+    monkeypatch.setattr(scoring_impact, 'read_maps', lambda repository, key: None)
+    monkeypatch.setattr(scoring_impact_exports, 'export_impact_powerpoint', lambda *args, **kwargs: b'impact-deck')
+    monkeypatch.setattr('src.modules.scoring.scoring_export_panels.load_export_panels', lambda repository: {
+        'impact': {'changes': {'exportable': True, 'operators': 'all'}}})
+    definition = bundle_report_templates.normalize_definition({})
+    section = next(item for item in definition['sections'] if item['key'] == 'scoring')
+    generator = bundle_report_templates.SectionGenerator(core, core.repository, None, definition, tmp_path)
+
+    for methodologies, generated in (([('26-Q3', 'b'), ('26-Q2', 'a')], True), ([('26-Q4', 'b'), ('26-Q3', 'b'), ('26-Q2', 'a')], False)):
+        monkeypatch.setattr(scoring_impact, 'impact_options', lambda repository, saved, methodologies=methodologies: options(methodologies))
+        deck = bundle_report_templates.SectionDeck('scoring', '', [], decks=[(None, b'scoring')])
+        generator.methodology_impact(deck, {'id': 7}, section, 'NSA')
+        assert (('impact', b'impact-deck') in deck.decks) is generated
+    assert asked == [{'mode': 'campaigns', 'nr_mode': 'NSA', 'campaign_a': '26-Q2', 'campaign_b': '26-Q3'}]
+    assert deck.lines == ['Methodology Impact: 26-Q4 keeps the methodology of the campaign before it']
+    # Reports saved before the Methodology Impact keep it unchecked; new ones have it checked.
+    saved = bundle_report_templates.normalize_definition({'sections': [{'key': 'scoring', 'items': [{'key': 'charts'}]}]})
+    assert [item['enabled'] for item in saved['sections'][0]['items'] if item['key'] == 'impact'] == [False]
+    assert [item['enabled'] for item in section['items'] if item['key'] == 'impact'] == [True]
