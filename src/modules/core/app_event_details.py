@@ -613,6 +613,15 @@ _DESCRIBERS: dict[str, Callable[[Any], str]] = {
         'email.'),
     'report_email_link_denied': lambda details: (
         f"Link of a report email to {details.get('file')} refused: no access to the workspace of the report."),
+    'report_email_sent_as_links': lambda details: (
+        f"Email of the report {details.get('task')} (run {details.get('run_id')}) sent with the links of its files: "
+        f"{details.get('reason')}"),
+    'report_pregenerated': lambda details: (
+        f"Report {details.get('report')} generated in advance in {details.get('seconds')} s"
+        + (f" (reused: {details['reused']})." if details.get('reused') else '.')),
+    'report_pregeneration_failed': lambda details: (
+        f"Report {details.get('report') or ''} could not be generated in advance: "
+        f"{'; '.join(str(item) for item in details.get('errors') or []) or details.get('error') or 'unknown error'}"),
     'operator_mapping_assign': _mapping_assign('Operator'),
     'operator_name_comments': _name_comments,
     'vendor_mapping_assign': _mapping_assign('Vendor'),
@@ -722,7 +731,7 @@ _MODULE_ACTIONS = (
                         'update_design_chart_template', 'interrupt_design_preparation')),
     ('reporting', ('save_reporting_job', 'run_reporting_job', 'delete_reporting_job', 'download_reporting_job_',
                    'rerun_reporting_job_run', 'stop_reporting_job_run', 'bundle_report_templates_design_nr_modes',
-                   'bundle_report_template_')),
+                   'bundle_report_template_', 'report_pregenerat', 'report_email_sent_as_links')),
     ('builders', ('run_query_builder', 'save_query_builder', 'update_query_builder', 'delete_query_builder',
                   'export_query_builder_', 'cancel_query_builder_run')),
     ('admin', ('create_user', 'update_user', 'delete_user', 'bulk_update_users', 'reset_user_password', 'create_modules_profile',
