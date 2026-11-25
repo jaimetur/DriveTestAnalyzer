@@ -122,8 +122,6 @@ label { display: grid; gap: 0.45rem; color: var(--muted); }
 .topnav .topnav-link-home:hover, .topnav .topnav-link-home:focus-visible { background: rgba(255, 255, 255, .26); color: #fff; outline: none; }
 .topnav .topnav-link-home[hidden] { display: none; }
 .topnav .topnav-link-home svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.topnav .topnav-link-landing { justify-content: center; padding: .55rem; aspect-ratio: 1; }
-.topnav .topnav-link-landing svg { width: 1.35rem; height: 1.35rem; }
 .topnav .topnav-link-signin svg { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .topnav .topnav-link-signin:hover, .topnav .topnav-link-signin:focus-visible { color: #fff; transform: translateY(-2px); box-shadow: 0 16px 34px rgba(8, 115, 109, .45); animation: none; outline: none; }
 @keyframes signin-pulse { 0%, 100% { box-shadow: 0 12px 28px rgba(8, 115, 109, .35), 0 0 0 0 rgba(32, 160, 143, .45); } 50% { box-shadow: 0 12px 28px rgba(8, 115, 109, .35), 0 0 0 10px rgba(32, 160, 143, 0); } }
@@ -5866,6 +5864,18 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 .topnav-user-control:hover .topnav-user-badge, .topnav-user-control:focus-visible .topnav-user-badge { filter: none; transform: none; background: rgba(255, 255, 255, .18); box-shadow: none; }
 .topnav .topnav-link-logout { border-color: rgba(255, 255, 255, .26); background: transparent; color: #ffd4d0; }
 .topnav .topnav-link-logout:hover { background: rgba(240, 121, 108, .22); color: #fff; }
+/* The landing page: a round button as high as the other buttons of the row; the workspace switcher fills the row too. */
+.topnav .topnav-link-landing { justify-content: center; padding: .48rem; }
+.topnav .topnav-link-landing svg { width: 1.05rem; height: 1.05rem; }
+.topnav .topnav-workspace-switcher { display: flex; }
+.topnav .topnav-workspace-switcher > .topnav-workspace-badge { flex: 1 1 auto; align-items: center; }
+/* A tablet: the buttons of the application bar in one row, centred under the name of the tool; the workspace shows its
+   name and size without "Active workspace:". */
+@media (min-width: 641px) and (max-width: 900px) {
+  .topnav { justify-content: center; }
+  .topnav .topnav-workspace-badge > span:first-child { font-size: 0; }
+  .topnav .topnav-workspace-badge > span:first-child > span { font-size: .9rem; }
+}
 /* The menus of the application bar (the workspaces to open, the options of the user) in the colour of the bar: that of
    the module open, or the teal of the tool. The list of workspaces is as wide as their names. */
 .topbar { --header-accent: var(--module-accent, #0c5d5a); }
@@ -6013,15 +6023,17 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .topbar .brand-lockup h1 { font-size: 1.2rem; }
   .topbar .brand-mark { width: 30px; height: 30px; padding: 3px; border-radius: 9px; }
   .title-badge { padding: .18rem .5rem; font-size: .66rem; }
-  .topnav { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .35rem; width: 100%; }
+  .topnav { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: .35rem; width: 100%; }
   .topnav .topnav-link { min-height: 0; padding: .36rem .65rem; font-size: .76rem; }
+  .topnav .topnav-link-landing { padding: .36rem; }
+  .topnav .topnav-link-landing svg { width: .9rem; height: .9rem; }
   .topnav .topnav-workspace-switcher { min-width: 0; }
   .topnav .topnav-workspace-badge { min-width: 0; gap: .35rem; }
   /* (The chip of the workspace shows its name and size: there is no room for "Active workspace:".) */
   .topnav .topnav-workspace-badge > span:first-child { min-width: 0; overflow: hidden; font-size: 0; text-overflow: ellipsis; white-space: nowrap; }
   .topnav .topnav-workspace-badge > span:first-child > span { font-size: .76rem; }
   .topnav .topnav-workspace-badge [data-header-active-workspace-size] { display: none; }
-  .topnav .topnav-user-control { min-width: 0; max-width: 11.5rem; }
+  .topnav .topnav-user-control { min-width: 0; max-width: 9rem; }
   .topnav .topnav-user-badge { justify-content: flex-start; }
   .topnav .topnav-user-control .topnav-user-badge { max-width: 100%; }
   .topnav .topnav-user-control .topnav-user-badge > :not(:first-child), .topnav .topnav-user-badge { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
