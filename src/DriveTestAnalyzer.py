@@ -15090,6 +15090,7 @@ def render_admin_template(
         'admin_notices_seen': 'Admin Notices Seen',
         'report_tasks': 'Report Tasks',
         'bundle_report_templates': 'Bundle Report Templates',
+        'bundle_report_template_slides': 'Bundle Report Template Slides',
         'network_insights_favourites': 'Network Insights Favourites',
         'map_area_layers': 'Map Area Layers',
         'map_area_fills': 'Map Area Fills',
@@ -18080,7 +18081,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
         kind_type = 'Non-Qualified Calls'
     elif name.startswith(('scoring_', 'saved_scorings')):
         kind_type = 'Scoring & GAP Analysis'
-    elif name.startswith('report_task') or name == 'bundle_report_templates':
+    elif name.startswith('report_task') or name in {'bundle_report_templates', 'bundle_report_template_slides'}:
         kind_type = 'Reporting'
     elif name.startswith(('design_', 'report_templates')):
         kind_type = 'PPT Designer & Templates'

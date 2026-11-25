@@ -433,3 +433,14 @@ button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: under
   .bundle-report-template-panel .brt-area { grid-template-columns: minmax(0, 1fr); }
   .bundle-report-template-panel .brt-item-areas { flex-basis: 100%; }
 }
+/* The decks of slides written by hand of a report (Cover step). */
+.bundle-report-template-panel .brt-slides { display: grid; gap: .45rem; grid-column: 1 / -1; padding: .8rem; border: 1px solid #c9b8ea; border-radius: 12px; background: #f7f3fd; }
+.bundle-report-template-panel .brt-slides h4 { margin: 0; color: #5b2fa6; }
+.bundle-report-template-panel .brt-slide-list { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
+.bundle-report-template-panel .brt-slide { display: grid; grid-template-columns: auto minmax(10rem, 1fr) minmax(9rem, 12rem) minmax(0, 1fr) auto; gap: .5rem; align-items: end; padding: .5rem; border-radius: 10px; background: #fff; box-shadow: inset 4px 0 0 #7b5cc4; }
+.bundle-report-template-panel .brt-slide-file { align-self: center; overflow: hidden; color: var(--muted); font-size: .84rem; text-overflow: ellipsis; white-space: nowrap; }
+.bundle-report-template-panel .brt-slide-upload { justify-self: start; display: inline-flex; align-items: center; }
+@media (max-width: 900px) {
+  .bundle-report-template-panel .brt-slide { grid-template-columns: auto minmax(0, 1fr); }
+  .bundle-report-template-panel .brt-slide > :nth-child(n + 3) { grid-column: 1 / -1; }
+}

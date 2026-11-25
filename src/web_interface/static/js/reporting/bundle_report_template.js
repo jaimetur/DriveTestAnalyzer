@@ -225,6 +225,68 @@
     host.replaceChildren(modeRow, grid, areasEditor());
   }
 
+  // -- slides written by hand -----------------------------------------------------------------------
+  // Decks of slides written by hand (an executive summary, conclusions…), each a part of the report with its title,
+  // after the cover or at the end; each upload is kept once by its content.
+  let slideRows = [];
+  function renderSlides() {
+    const host = $('brt-slides');
+    if (!host) return;
+    const places = Object.entries(brtOptions.slide_places || {start: 'After the cover', end: 'At the end'});
+    host.replaceChildren(node('h4', 'Slides written by hand'), node('p', 'PowerPoint decks of your own, such as an executive summary or the '
+      + 'conclusions, each a part of the report after its cover or at its end.', 'form-note'));
+    const list = node('ol', undefined, 'brt-slide-list');
+    slideRows = [];
+    const row = (saved) => {
+      const item = node('li', undefined, 'brt-slide');
+      const enabled = check('', saved.enabled !== false, 'brt-check');
+      enabled.title = 'Include it in the report';
+      const title = node('label', 'Title', 'brt-field');
+      const input = node('input');
+      input.type = 'text'; input.maxLength = 120; input.value = saved.title || ''; input.addEventListener('change', changed);
+      title.append(input);
+      const place = selectField('Place', places, saved.place || 'start');
+      place.input.addEventListener('change', changed);
+      const file = node('span', `${saved.file_name || 'Slides'}${saved.slides ? ` · ${saved.slides} slides` : ''}`, 'brt-slide-file');
+      const remove = node('button', 'Remove', 'brt-secondary brt-danger');
+      remove.type = 'button';
+      remove.addEventListener('click', () => { item.remove(); slideRows = slideRows.filter((entry) => entry !== item); changed(); });
+      enabled.box.addEventListener('change', changed);
+      item.append(enabled, title, place, file, remove);
+      item.collect = () => ({sha256: saved.sha256, file_name: saved.file_name || '', title: input.value.trim() || 'Slides',
+        place: place.input.value, enabled: enabled.box.checked});
+      slideRows.push(item);
+      list.append(item);
+    };
+    (definition.slides || []).forEach(row);
+    const upload = node('label', '+ Add slides (.pptx)', 'brt-secondary brt-slide-upload');
+    const picker = node('input');
+    picker.type = 'file'; picker.accept = '.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    picker.hidden = true;
+    picker.addEventListener('change', async () => {
+      const chosen = picker.files?.[0];
+      picker.value = '';
+      if (!chosen) return;
+      const body = new FormData();
+      body.append('file', chosen);
+      status(`Uploading ${chosen.name}…`);
+      try {
+        const response = await fetch('/api/reporting/bundle-report-template/slides', {method: 'POST', body, credentials: 'same-origin'});
+        const stored = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(typeof stored.detail === 'string' ? stored.detail : 'The upload failed.');
+        row({sha256: stored.sha256, file_name: stored.file_name, slides: stored.slides, title: stored.titles?.[0] || chosen.name.replace(/\.pptx$/i, ''),
+          place: slideRows.length ? 'end' : 'start', enabled: true});
+        status(`${stored.file_name}: ${stored.slides} slides added.`, 'done');
+        changed();
+      } catch (error) {
+        status(error.message, 'error');
+      }
+    });
+    upload.append(picker);
+    host.append(list, upload);
+  }
+  const collectSlides = () => slideRows.map((item) => item.collect());
+
   // -- areas ---------------------------------------------------------------------------------------
   // The named areas of the report (National, London, a group of Regions, the Main Cities…): each sub-module and PPT
   // Design can be repeated for some of them, each time with the Regions, Clusters and Cities of the area instead of
@@ -682,6 +744,7 @@
       chart_pictures: $('brt-chart-pictures').checked,
       filters: collectFilters(),
       areas: collectAreas(),
+      slides: collectSlides(),
       sections: [...$('brt-sections').children].map((card) => card.collect()),
     };
   }
@@ -711,6 +774,7 @@
     if (!theme.value && theme.options.length) theme.selectedIndex = 0;
     $('brt-chart-pictures').checked = definition.chart_pictures === true;
     filterPickers = {};
+    renderSlides();
     renderFilters();
     renderSections();
   }

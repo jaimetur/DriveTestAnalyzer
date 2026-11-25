@@ -1424,3 +1424,48 @@ def test_the_methodology_impact_is_generated_only_when_the_latest_campaign_chang
     saved = bundle_report_templates.normalize_definition({'sections': [{'key': 'scoring', 'items': [{'key': 'charts'}]}]})
     assert [item['enabled'] for item in saved['sections'][0]['items'] if item['key'] == 'impact'] == [False]
     assert [item['enabled'] for item in section['items'] if item['key'] == 'impact'] == [True]
+
+
+def test_slides_written_by_hand_open_and_close_the_report_and_travel_with_it(client, monkeypatch):
+    # Ticket #202: decks of slides written by hand (an executive summary, conclusions) are uploaded once, inserted after
+    # the cover or at the end of the report, each a part of its own, and travel with the report in its export.
+    login(client)
+    monkeypatch.setattr(core, 'write_network_insights_summary', lambda selection, export_kind, destination, **kwargs: Path(destination).write_bytes(
+        _deck(lambda presentation: _small_table(presentation, 'Network Snapshot', 'snapshot'))) and {})
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.document_pdf', lambda content, suffix: b'%PDF-1.4')
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.pdf_page_images', lambda pdf, dpi, pages=None: [PNG])
+    monkeypatch.setattr(bundle_report_templates, 'compose_word', lambda *args, **kwargs: (
+        packed_component_document([PackItem('heading1', 'Network Insights')]), []))
+    summary = _deck(lambda presentation: _small_table(presentation, 'Executive summary', 'summary'))
+    refused = client.post('/api/reporting/bundle-report-template/slides', files={'file': ('notes.txt', b'hello', 'text/plain')})
+    assert refused.status_code == 400
+    uploaded = client.post('/api/reporting/bundle-report-template/slides', files={'file': ('Summary.pptx', summary, 'application/octet-stream')})
+    assert uploaded.status_code == 200, uploaded.text
+    stored = uploaded.json()
+    assert stored['slides'] == 1 and stored['titles'] == ['Executive summary']
+    definition = bundle_report_templates.normalize_definition({
+        'filters': {'nr_mode': 'NSA'},
+        'slides': [{'sha256': stored['sha256'], 'title': 'Executive summary', 'file_name': 'Summary.pptx', 'place': 'start'},
+                   {'sha256': stored['sha256'], 'title': 'Conclusions', 'file_name': 'Summary.pptx', 'place': 'end'},
+                   {'sha256': 'x' * 64, 'title': 'Not a hash'}]})
+    assert [item['title'] for item in definition['slides']] == ['Executive summary', 'Conclusions']
+    for section in definition['sections']:
+        section['enabled'] = section['key'] == 'network_insights'
+        for item in section['items']:
+            item['enabled'] = item['key'] == 'snapshot'
+            if 'components' in item:
+                item['components'] = {key: key == 'snapshot' for key in item['components']}
+    _run_id, opened = _generated(client, definition, 'Hand-written', refresh=True)
+    assert opened['run']['status'] == 'completed', opened
+    titles = [item['title'] for item in opened['report']['outline']]
+    assert titles[:7] == ['Hand-written', 'Executive summary', 'Executive summary', 'Network Insights', 'Network Snapshot',
+                          'Conclusions', 'Executive summary']
+    assert 'Slides: +Executive summary (After the cover, included)' in bundle_report_templates.definition_changes({}, definition)
+    # The export carries the deck; imported where it is missing, the report finds it again.
+    entry = next(item for item in bundle_report_templates.export_entries(core.repository) if item['name'] == 'Hand-written')
+    assert list(entry['slide_files']) == [stored['sha256']]
+    with core.repository.connection() as connection:
+        connection.execute(f'DELETE FROM {bundle_report_templates.BUNDLE_REPORT_TEMPLATE_SLIDES_TABLE}')
+    assert bundle_report_templates.report_slides_content(core.repository, stored['sha256']) is None
+    bundle_report_templates.import_entries(core.repository, [entry], 'super', bundle_report_templates.workspace_designs(core.repository))
+    assert bundle_report_templates.report_slides_content(core.repository, stored['sha256']) == summary

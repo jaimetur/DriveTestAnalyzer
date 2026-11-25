@@ -46,6 +46,12 @@ from src.modules.scoring.scoring_themes import DEFAULT_THEME, THEMES, normalize_
 from src.modules.reporting.slide_titles import fit_slide_title
 
 BUNDLE_REPORT_TEMPLATES_TABLE = 'bundle_report_templates'
+# The PowerPoint decks of slides written by hand (an executive summary, conclusions…) that reports insert after their
+# cover or at their end, each kept once by its content (see report_slides).
+BUNDLE_REPORT_TEMPLATE_SLIDES_TABLE = 'bundle_report_template_slides'
+SLIDE_PLACES = {'start': 'After the cover', 'end': 'At the end'}
+MAX_REPORT_SLIDES = 10
+MAX_SLIDES_BYTES = 60 * 1024 * 1024
 # The tables of the workspaces made when Bundle Report Templates were called Complete Reports, then (briefly, while they
 # were renamed) Reporting Jobs Templates and Bundle Reports Templates (see ensure_tables).
 LEGACY_TABLES = ('complete_reports', 'reporting_jobs_templates', 'bundle_reports_templates')
@@ -60,6 +66,14 @@ CREATE TABLE IF NOT EXISTS {BUNDLE_REPORT_TEMPLATES_TABLE} (
     updated_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_bundle_report_templates_name ON {BUNDLE_REPORT_TEMPLATES_TABLE}(name COLLATE NOCASE);
+CREATE TABLE IF NOT EXISTS {BUNDLE_REPORT_TEMPLATE_SLIDES_TABLE} (
+    sha256 TEXT PRIMARY KEY,
+    file_name TEXT NOT NULL,
+    slides INTEGER NOT NULL DEFAULT 0,
+    content BLOB NOT NULL,
+    uploaded_by TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL
+);
 """
 MAX_FAVOURITES = 100
 DEFAULT_TITLE = 'Drive Test Analyzer Report'
@@ -354,6 +368,58 @@ def normalize_areas(raw: Any) -> list[dict[str, Any]]:
     return areas
 
 
+def normalize_report_slides(raw: Any) -> list[dict[str, Any]]:
+    """The decks of slides written by hand that a report inserts: each uploaded deck (its SHA-256), the title of the
+    part it starts, its place (after the cover or at the end) and whether it is included."""
+    slides = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        sha = str(item.get('sha256') or '').strip().lower()
+        if len(sha) != 64 or any(character not in '0123456789abcdef' for character in sha):
+            continue
+        slides.append({'sha256': sha, 'title': ' '.join(str(item.get('title') or '').split())[:120] or 'Slides',
+                       'file_name': str(item.get('file_name') or '').strip()[:200],
+                       'place': item['place'] if item.get('place') in SLIDE_PLACES else 'start',
+                       'enabled': bool(item.get('enabled', True))})
+        if len(slides) == MAX_REPORT_SLIDES:
+            break
+    return slides
+
+
+def store_report_slides(repository: Any, file_name: str, content: bytes, username: str) -> dict[str, Any]:
+    """Keep an uploaded deck of slides written by hand (once per content) and say what it holds."""
+    import hashlib
+
+    if not content:
+        raise ValueError('The file is empty.')
+    if len(content) > MAX_SLIDES_BYTES:
+        raise ValueError(f'The file is larger than {MAX_SLIDES_BYTES // (1024 * 1024)} MB.')
+    try:
+        presentation = compose.deck(content)
+    except Exception as exc:  # noqa: BLE001 - any unreadable file
+        raise ValueError('The file is not a PowerPoint presentation (.pptx).') from exc
+    slides = len(presentation.slides)
+    if not slides:
+        raise ValueError('The presentation has no slides.')
+    sha = hashlib.sha256(content).hexdigest()
+    ensure_tables(repository)
+    with repository.connection() as connection:
+        connection.execute(f'INSERT OR IGNORE INTO {BUNDLE_REPORT_TEMPLATE_SLIDES_TABLE} '
+                           '(sha256, file_name, slides, content, uploaded_by, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)',
+                           (sha, file_name[:200], slides, content, username, datetime.now().isoformat(timespec='seconds')))
+    titles = [compose.title_parts(slide)[0] for slide in presentation.slides]
+    return {'sha256': sha, 'file_name': file_name[:200], 'slides': slides, 'titles': titles, 'size': len(content)}
+
+
+def report_slides_content(repository: Any, sha: str) -> bytes | None:
+    """The content of an uploaded deck of slides written by hand."""
+    ensure_tables(repository)
+    with repository.connection() as connection:
+        row = connection.execute(f'SELECT content FROM {BUNDLE_REPORT_TEMPLATE_SLIDES_TABLE} WHERE sha256 = ?', (sha,)).fetchone()
+    return bytes(row[0]) if row else None
+
+
 def area_filters(filters: dict[str, Any], area: dict[str, Any] | None) -> dict[str, Any]:
     """The common filters of a repetition for ``area``: its Regions, Clusters and Cities instead of the common ones
     (the NR Mode, Operators and Vendors stay); the common filters themselves without an area."""
@@ -407,6 +473,7 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         'options': _normalize_options(key, raw_sections.get(key, {}).get('options'), legacy),
     } for key in order]
     definition['areas'] = normalize_areas(raw.get('areas'))
+    definition['slides'] = normalize_report_slides(raw.get('slides'))
     known = {area['name'] for area in definition['areas']}
     for section in definition['sections']:
         for item in section['items']:
@@ -849,9 +916,9 @@ def definition_changes(before: Any, after: Any) -> list[str]:
     changes): its cover, its common filters and each section with its Campaigns, options, sub-modules and components."""
     old, new = normalize_definition(before), normalize_definition(after)
     cover = lambda definition: {key: THEMES.get(value, {}).get('label', value) if key == 'theme' else value  # noqa: E731
-                                for key, value in definition.items() if key not in {'filters', 'sections', 'areas'}}
+                                for key, value in definition.items() if key not in {'filters', 'sections', 'areas', 'slides'}}
     changes = [*_value_changes('', cover(old), cover(new)), *_value_changes('Filters · ', old['filters'], new['filters']),
-               *_area_changes(old['areas'], new['areas'])]
+               *_area_changes(old['areas'], new['areas']), *_slides_changes(old['slides'], new['slides'])]
     if _order_changed([section['key'] for section in old['sections'] if section['enabled']],
                       [section['key'] for section in new['sections'] if section['enabled']]):
         changes.append('Modules: new order')
@@ -870,6 +937,17 @@ def definition_changes(before: Any, after: Any) -> list[str]:
                     f"{', '.join(before_areas.get(item['key']) or []) or 'Common filters'} → {', '.join(item['areas']) or 'Common filters'}"
                     for item in section['items'] if (item.get('areas') or []) != before_areas.get(item['key'], [])]
     return changes
+
+
+def _slides_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
+    """The decks of slides written by hand added, removed or changed."""
+    told = lambda item: f"{item['title']} ({SLIDE_PLACES[item['place']]}, {_included(item['enabled']).lower()})"  # noqa: E731
+    # (One deck can open and close a report: each part is its deck and title.)
+    was = {(item['sha256'], item['title']): item for item in before}
+    now = {(item['sha256'], item['title']): item for item in after}
+    return [*(f'Slides: +{told(item)}' for key, item in now.items() if key not in was),
+            *(f"Slides: −{item['title']}" for key, item in was.items() if key not in now),
+            *(f"Slides · {item['title']}: {told(was[key])} → {told(item)}" for key, item in now.items() if key in was and was[key] != item)]
 
 
 def _area_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
@@ -1018,9 +1096,16 @@ def export_entries(repository: Any) -> list[dict[str, Any]]:
     uids = portable_identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES, [str(item['id']) for item in favourites])
     stars, schedules = report_star_users(repository), schedule_entries(repository)
     entries = []
+    import base64
+
     for item in favourites:
         entry = {'name': item['name'], 'definition': _named_designs(item['definition'], designs),
                  'created_by': item['created_by'], 'uid': uids[str(item['id'])], 'starred_by': stars.get(item['id'], [])}
+        # The decks of slides written by hand it inserts travel with it.
+        files = {slide['sha256']: content for slide in item['definition'].get('slides') or []
+                 if (content := report_slides_content(repository, slide['sha256'])) is not None}
+        if files:
+            entry['slide_files'] = {sha: base64.b64encode(content).decode('ascii') for sha, content in files.items()}
         if str(item['id']) in schedules:
             entry['schedule'] = schedules[str(item['id'])]
         entries.append(entry)
@@ -1193,6 +1278,7 @@ def import_entries(repository: Any, entries: Any, username: str,
         if not isinstance(entry, dict) or not str(entry.get('name') or '').strip():
             continue
         definition = _imported_definition(entry.get('definition'), designs or {}, aliases, designs_of_report_mode)
+        _import_slide_files(repository, entry.get('slide_files'), username)
         target, name = matcher.match(entry.get('uid'), ' '.join(str(entry['name']).split())[:120])
         saved = save_favourite(repository, target, name, definition, username)
         if target is not None and local_names.get(target) != name:
@@ -1218,6 +1304,24 @@ def import_entries(repository: Any, entries: Any, username: str,
     if summary is not None:
         summary.extend(matcher.summary())
     return imported
+
+
+def _import_slide_files(repository: Any, files: Any, username: str) -> None:
+    """Keep the decks of slides written by hand that an imported report carries (each once by its content)."""
+    import base64
+    import binascii
+
+    for sha, encoded in (files.items() if isinstance(files, dict) else []):
+        try:
+            content = base64.b64decode(str(encoded), validate=True)
+        except (binascii.Error, ValueError):
+            continue
+        try:
+            stored = store_report_slides(repository, f'{sha[:12]}.pptx', content, username)
+        except ValueError:
+            continue
+        if stored['sha256'] != sha:
+            continue
 
 
 # -- generation -------------------------------------------------------------------
@@ -2421,6 +2525,28 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
         deck.lines = [*section_lines(section, designs, methodology_names), *deck.lines]
         decks.append(deck)
         section_keys.append(key)
+    # The decks of slides written by hand, each a part of its own after the cover or at the end.
+    for place in ('start', 'end'):
+        parts = []
+        for number, slide in enumerate(definition['slides'], start=1):
+            if not slide['enabled'] or slide['place'] != place:
+                continue
+            content = report_slides_content(repository, slide['sha256'])
+            if content is None:
+                warnings.append(f"Slides {slide['title']}: the file is no longer in this workspace")
+                continue
+            # (Each part is a section of its own, named after its title in the navigation of the preview.)
+            key = f'slides-{number}'
+            titles[key] = slide['title']
+            parts.append((SectionDeck(key, slide['title'], [slide['file_name'] or 'Slides written by hand'],
+                                      decks=[('slides', content)], order=['slides'], item_titles={'slides': slide['title']}),
+                          f"slides-{slide['sha256']}-{slide['title']}"))
+        if place == 'start':
+            decks[:0] = [deck for deck, _key in parts]
+            section_keys[:0] = [key for _deck, key in parts]
+        else:
+            decks.extend(deck for deck, _key in parts)
+            section_keys.extend(key for _deck, key in parts)
     if not decks:
         raise BundleReportTemplateError(' '.join(warnings) or 'No section could be generated.')
     from src.config import settings
@@ -2582,7 +2708,7 @@ def install_bundle_report_template_routes(core: Any) -> None:
             'scorings': [{'value': key, 'label': label} for key, label in SCORINGS],
             'network_technologies': NI_TECHNOLOGIES, 'network_groupings': NI_GROUPINGS,
             'nq_granularities': NQ_GRANULARITIES,
-            'nr_layouts': list(NR_LAYOUT_LABELS.items()), 'nr_charts': list(NR_CHARTS_LABELS.items()), 'design_comments': DESIGN_COMMENTS,
+            'nr_layouts': list(NR_LAYOUT_LABELS.items()), 'nr_charts': list(NR_CHARTS_LABELS.items()), 'design_comments': DESIGN_COMMENTS, 'slide_places': SLIDE_PLACES,
             'area_summary_breakdowns': list(AREA_SUMMARY_BREAKDOWNS), 'area_summary_time_splits': list(AREA_SUMMARY_TIME_SPLITS),
             'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
         }
@@ -2631,6 +2757,25 @@ def install_bundle_report_template_routes(core: Any) -> None:
             'id': favourite['id'], 'name': favourite['name'], 'created': favourite_id is None,
             **definition_summary(favourite['definition']), **({'schedule': saved_schedule} if saved_schedule else {})})
         return {'favourite': favourite, 'favourites': list_favourites(repository)}
+
+    @app.post('/api/reporting/bundle-report-template/slides')
+    async def bundle_report_template_slides_upload(request: core.Request, user=Depends(editor_user)):
+        """Keep a deck of slides written by hand (a .pptx) for the reports to insert; it says what the deck holds."""
+        form = await request.form()
+        upload = form.get('file')
+        if upload is None or not hasattr(upload, 'read'):
+            raise HTTPException(400, 'Choose a PowerPoint file (.pptx).')
+        file_name = str(getattr(upload, 'filename', '') or 'slides.pptx')
+        if not file_name.casefold().endswith('.pptx'):
+            raise HTTPException(400, 'Choose a PowerPoint file (.pptx).')
+        repository = repository_for(user)
+        try:
+            stored = store_report_slides(repository, file_name, await upload.read(), user.username)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        log(repository, user, 'bundle_report_template_slides_uploaded', {
+            'file_name': stored['file_name'], 'sha256': stored['sha256'], 'slides': stored['slides'], 'size': stored['size']})
+        return stored
 
     @app.post('/api/reporting/bundle-report-template/favourites')
     def bundle_report_template_favourite_create(payload: FavouritePayload, user=Depends(editor_user)):

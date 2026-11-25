@@ -18,6 +18,7 @@ guide:reporting.md
 | --- | --- |
 | Find and manage the reports | [Reports](#reports) |
 | Create or edit a report | [The report editor](#the-report-editor) |
+| <span class="guide-sub">↳ Add slides written by hand</span> | <span class="guide-sub">↳ [Slides written by hand](#slides-written-by-hand)</span> |
 | <span class="guide-sub">↳ Repeat sub-modules and PPT Designs for areas</span> | <span class="guide-sub">↳ [Areas](#areas)</span> |
 | <span class="guide-sub">↳ Choose the campaigns of each module</span> | <span class="guide-sub">↳ [Campaigns of each module](#campaigns-of-each-module)</span> |
 | <span class="guide-sub">↳ Set the options of each module</span> | <span class="guide-sub">↳ [Options of each module](#options-of-each-module)</span> |
@@ -57,11 +58,19 @@ Report names are unique in the workspace, which keeps up to 100 reports. A new w
 
 The four steps:
 
-1. **Cover:** the **Name**, the **Title on the cover** (the name when empty), the **Subtitle** under it, the **Theme** and **Chart Pictures for the iPhone Preview** (see below).
+1. **Cover:** the **Name**, the **Title on the cover** (the name when empty), the **Subtitle** under it, the **Theme**, the **Slides written by hand** (see [Slides written by hand](#slides-written-by-hand)) and **Chart Pictures for the iPhone Preview** (see below).
 2. **Filters:** the common filters, which apply to every module: the **NR Mode**, on its own row, then Operators, Operator_Vendor, Vendor_Operator, Vendors, Regions, Clusters and Cities (with **Main Cities**, those of the workspace at each generation), as in Scoring & GAP Analysis. They replace the saved filters of the Designs and give a field-values [parameter](ppt-designer.md#template-parameters) of a Design's template on one of their fields (a City Report template's Cities) the values chosen. Empty filters include every value; Operators take [patterns](web-interface.md#operator-patterns) such as `VF*`.
    Below them, **Areas** names the areas the sub-modules and PPT Designs can be repeated for (see [Areas](#areas)).
 3. **Modules:** the five sections, by default **Scoring & GAP Analysis**, **Network Insights**, **Non-Qualified Calls**, **PPT Designer** and **CDR Analysis** (each with the title of its module in Interface Settings; a saved report keeps its own order, and reports saved before CDR Analysis was a section have it unchecked). Each has its checkbox, its **Campaigns**, its **Options** and its **Sub-modules** (its **Designs** in PPT Designer), each in a subpanel; **Charts & tables** unfolds the charts and tables of a sub-module to include all of it or only some. Drag a module or sub-module by its handle (⋮⋮), or focus the handle and use the arrow keys, to order them.
 4. **Schedule:** whether and when it is generated on its own, its formats and whom it is emailed to (see [Schedule and email](#schedule-and-email)).
+
+### Slides written by hand
+
+A report can open and close with slides of your own, such as an executive summary or the conclusions and recommendations, so the document comes out complete.
+
+- **+ Add slides (.pptx)**, in the Cover step, uploads a PowerPoint deck (up to 60 MB): it is kept once in the workspace by its content (the Bundle Report Template Slides table of Database Management), so two reports, or two parts of one, can use the same file.
+- **Each deck is a part of the report** with its **Title** (the title of its first slide at first), its **Place** (**After the cover** or **At the end**, before the closing slide), its checkbox (left out when unchecked) and **Remove**. It starts with a cover named after its title, as the modules, and keeps its slides as they are (its closing slide is left out).
+- **Saved with the report:** the decks travel with it in Import / Export, transfers and backups; App Events records each upload, and the decks added, removed or changed in a report. A deck that is no longer in the workspace is left out with a warning.
 
 ### Areas
 
