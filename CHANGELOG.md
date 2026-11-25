@@ -37,7 +37,7 @@
 - **PPT Designer — Charts emptied by their own Campaign filter:** a chart whose filter names campaigns that the campaigns chosen do not include (such as `Campaign IN (UK_Q2_2026, UK_Q3_NSA_2026)` with 26-Q3 and 26-Q4 chosen) says so, naming the filter and the campaigns chosen, in the viewer and the PPT, instead of *No valid samples* ([ticket #201](https://108.132.147.165:8443/tickets/201)).
 
 #### 📚 Documentation:
-- **README:** a button under the logo opens the landing page of DriveTest Analyzer on the server.
+- **README:** two buttons under the logo open the landing page of DriveTest Analyzer on the server and the application itself (its sign-in page, or the application when already signed in).
 
 ---
 

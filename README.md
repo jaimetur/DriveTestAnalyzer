@@ -3,7 +3,9 @@
 </p>
 
 <p align="center">
-  <a href="https://108.132.147.165:8443/?landing"><img src="https://img.shields.io/badge/Open%20the%20landing%20page-DriveTest%20Analyzer-0b5fff?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Open the landing page of DriveTest Analyzer" height="44"></a>
+  <a href="https://108.132.147.165:8443/?landing"><img src="https://img.shields.io/badge/%F0%9F%8C%90%20Visit%20the%20website-108.132.147.165%3A8443-0b7a75?style=for-the-badge&labelColor=10314a" alt="Visit the website of DriveTest Analyzer" height="40"></a>
+  &nbsp;
+  <a href="https://108.132.147.165:8443/login"><img src="https://img.shields.io/badge/%F0%9F%9A%80%20Open%20the%20app-108.132.147.165%3A8443%2Flogin-dd653e?style=for-the-badge&labelColor=10314a" alt="Open DriveTest Analyzer" height="40"></a>
 </p>
 
 # DriveTest Analyzer
