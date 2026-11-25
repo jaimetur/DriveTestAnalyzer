@@ -434,6 +434,9 @@ button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: under
   .bundle-report-template-panel .brt-item-areas { flex-basis: 100%; }
 }
 /* The decks of slides written by hand of a report (Cover step). */
+/* (The cover fields and the decks shrink to the editor: their rows would otherwise widen the step past a phone.) */
+.bundle-report-template-panel .brt-cover-fields, .bundle-report-template-panel .brt-slides, .bundle-report-template-panel .brt-slide > * { min-width: 0; }
+.bundle-report-template-panel .brt-slide input, .bundle-report-template-panel .brt-slide select { width: 100%; box-sizing: border-box; }
 .bundle-report-template-panel .brt-slides { display: grid; gap: .45rem; grid-column: 1 / -1; padding: .8rem; border: 1px solid #c9b8ea; border-radius: 12px; background: #f7f3fd; }
 .bundle-report-template-panel .brt-slides h4 { margin: 0; color: #5b2fa6; }
 .bundle-report-template-panel .brt-slide-list { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
