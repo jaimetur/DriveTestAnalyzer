@@ -122,6 +122,8 @@ label { display: grid; gap: 0.45rem; color: var(--muted); }
 .topnav .topnav-link-home:hover, .topnav .topnav-link-home:focus-visible { background: rgba(255, 255, 255, .26); color: #fff; outline: none; }
 .topnav .topnav-link-home[hidden] { display: none; }
 .topnav .topnav-link-home svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.topnav .topnav-link-landing { justify-content: center; padding: .55rem; aspect-ratio: 1; }
+.topnav .topnav-link-landing svg { width: 1.35rem; height: 1.35rem; }
 .topnav .topnav-link-signin svg { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .topnav .topnav-link-signin:hover, .topnav .topnav-link-signin:focus-visible { color: #fff; transform: translateY(-2px); box-shadow: 0 16px 34px rgba(8, 115, 109, .45); animation: none; outline: none; }
 @keyframes signin-pulse { 0%, 100% { box-shadow: 0 12px 28px rgba(8, 115, 109, .35), 0 0 0 0 rgba(32, 160, 143, .45); } 50% { box-shadow: 0 12px 28px rgba(8, 115, 109, .35), 0 0 0 10px rgba(32, 160, 143, 0); } }
