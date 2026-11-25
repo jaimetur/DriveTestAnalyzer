@@ -3061,6 +3061,10 @@ def _each_value_mask(series: pd.Series, predicate: Callable[[object], bool]) -> 
     return pd.Series(_map_each_value(series, predicate).to_numpy(dtype=bool), index=series.index)
 
 
+# The frame attribute naming a chart Campaign filter that kept none of the campaigns chosen (see catalog_chart_payload).
+CAMPAIGN_FILTER_EMPTY = "catalogue_campaign_filter_empty"
+
+
 def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor: bool, metric: str | None) -> pd.DataFrame:
     # The rows are only read until the filtered rows are returned, as a new frame. Text is compared as
     # ``astype(str).str.casefold()`` (or ``str.contains(case=False, regex=False)``) compares it, once per distinct value;
@@ -3181,6 +3185,15 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
                 comparison = _each_value_mask(comparison_series, lambda value: _chart_payload_value(value).casefold() in accepted)
             if condition.operator == "NOT IN":
                 comparison = ~comparison
+        if is_campaign_filter and len(result) and not bool(np.asarray(comparison, dtype=bool).any()):
+            # The chart's own Campaign filter keeps none of the campaigns chosen (for example campaigns written in the
+            # template that the selection no longer has): its empty chart says so instead of a generic message.
+            chosen = sorted({_chart_payload_value(value) for value in comparison_series.unique()}, key=campaign_sort_key)
+            values = ", ".join(str(value) for value in condition.values)
+            written = f"{condition.column} {condition.operator} ({values})" if condition.operator in {"IN", "NOT IN"} else (
+                f"{condition.column} {condition.operator} {values}")
+            result.attrs[CAMPAIGN_FILTER_EMPTY] = (
+                f"No samples: the chart filter {written} keeps none of the campaigns chosen ({', '.join(chosen)})")
         result = result.loc[comparison]
     return result.copy()
 
@@ -7114,7 +7127,25 @@ def catalog_chart_payload(
     The payload retains the historical renderer's aggregation hierarchy,
     ordering, colours, legend resolution and logical 1600 x 900 geometry. The
     browser only performs the inexpensive final paint and tooltip hit testing.
+
+    An empty chart whose own Campaign filter keeps none of the campaigns chosen names that filter in its message.
     """
+    notes: dict[str, object] = {}
+    payload = _catalog_chart_model(frame, entry, multivendor=multivendor, prefiltered=prefiltered, notes=notes)
+    reason = notes.get("empty_reason")
+    if reason and isinstance(payload, dict) and payload.get("type") == "empty" and not payload.get("spacer"):
+        payload = {**payload, "message": reason}
+    return payload
+
+
+def _catalog_chart_model(
+    frame: pd.DataFrame,
+    entry: CatalogEntry,
+    *,
+    multivendor: bool,
+    prefiltered: bool,
+    notes: dict[str, object],
+) -> dict[str, object]:
     if entry.chart_type.casefold() == "histogram bars":
         if any(condition.column == "Histogram Operator" and condition.values == ("__unused_slot__",)
                for condition in parse_catalog_filters(entry.filters)):
@@ -7135,6 +7166,7 @@ def catalog_chart_payload(
         filtered, _group, _period = _source_for_spec({render_entry.source_kind: source_frame}, spec, multivendor)
         metric = _metric_column(filtered, spec)
         filtered = _apply_catalog_filters(filtered, render_entry, multivendor, metric)
+    notes["empty_reason"] = frame.attrs.get(CAMPAIGN_FILTER_EMPTY) or filtered.attrs.get(CAMPAIGN_FILTER_EMPTY)
     filtered = _select_dynamic_chart_frame(filtered, render_entry)
     filtered.attrs["catalogue_calculated_dimensions"] = render_entry.calculated_dimensions
     filtered.attrs["catalogue_cdr_source"] = render_entry.cdr_source

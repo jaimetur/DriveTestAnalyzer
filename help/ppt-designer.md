@@ -1251,6 +1251,7 @@ The dynamic layouts are `Title + 2 rows + dynamic columns`, `Title + dynamic row
 | Chart says no CDR is selected | Choose a Campaign with a CDR of the type that chart needs, or check its Active? choice in Workspace |
 | Filtered rows are zero | Check dates and empty value selections; use Clear Filters to remove restrictions |
 | Chart is empty with nonzero rows | Check its source type, template filters, NR Mode and chart Dataset |
+| Chart says *No samples: the chart filter Campaign IN (…) keeps none of the campaigns chosen* | Its own filter names campaigns the selection does not have (for example campaigns written when the template was made). Remove that condition so the chart follows the Campaigns chosen, or split NSA and SA with `NR Mode IN (NSA)` / `NR Mode IN (SA)` instead of campaign names |
 | Multivendor is unavailable | Check at least two Vendors and persist mappings for selected CDRs |
 | Preparation failed or stays queued | Inspect App Logs and retry; clear derived PPT cache only if invalid |
 | Viewer and old export differ | Compare applied live inputs with the completed job's saved snapshot |

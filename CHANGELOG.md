@@ -28,6 +28,7 @@
 - **Scoring & GAP Analysis — Favourite Scorings with several users at once:** opening a Favourite Scoring or the Scoring page no longer waits for the other users: reading the accounts, the application state and the settings of the modules no longer takes the write lock of the application database, opening a Saved Scoring takes the write lock of the workspace only when its result has to be calculated again, and the result of a calculation is prepared for the page in a process of its own (once, also when it is opened meanwhile), so the other users are answered while it is prepared ([ticket #188](https://108.132.147.165:8443/tickets/188)).
 - **Sign in — Links of the emails:** a link opened without a session (the call of an NQ Calls email, from its title or its Open the call button) opens its page, and its call, after signing in, instead of the Help ([ticket #187](https://108.132.147.165:8443/tickets/187)).
 - **Workspace — Datasets cards on the phone:** the CA Appendix and Master Grid cards keep their title on one line and show their counters below it, wrapped when they do not fit, like the CDR cards.
+- **PPT Designer — Charts emptied by their own Campaign filter:** a chart whose filter names campaigns that the campaigns chosen do not include (such as `Campaign IN (UK_Q2_2026, UK_Q3_NSA_2026)` with 26-Q3 and 26-Q4 chosen) says so, naming the filter and the campaigns chosen, in the viewer and the PPT, instead of *No valid samples* ([ticket #201](https://108.132.147.165:8443/tickets/201)).
 
 #### 📚 Documentation:
 

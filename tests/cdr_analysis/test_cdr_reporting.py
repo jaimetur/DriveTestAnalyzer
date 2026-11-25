@@ -3308,3 +3308,31 @@ def test_average_vertical_bars_have_a_value_in_each_bar_with_rows_columns_or_bot
     entry = CatalogEntry(slide=1, slide_title='Rates', slide_subtitle='', layout='', chart_title='Rate', cdr_source='CDR-Data',
                          kpi='Mean_Data_Rate', chart_type='Average Vertical Bars', legend='', filters='', rows_split=rows, columns_split=columns)
     assert catalog_chart_payload(frame, entry)['cells'] == cells
+
+
+def test_empty_chart_names_its_campaign_filter_that_keeps_none_of_the_campaigns_chosen() -> None:
+    # Ticket #201: a chart filter with campaigns written in the template (Campaign IN (UK_Q2_2026, UK_Q3_NSA_2026))
+    # draws nothing once other campaigns are chosen; its message says so instead of a generic one.
+    frame = chart_frame({
+        'Campaign': ['UK_Q3_NSA_2026', 'UK_Q4_NSA_2026', 'UK_Q4_NSA_2026', 'UK_Q3_NSA_2026'],
+        'Subscriber': ['EE', 'EE', 'VF', 'VF'],
+        'Mean_Data_Rate': [10.0, 12.0, 8.0, 9.0],
+        'Test_ID': ['A', 'B', 'C', 'D'],
+    })
+    entry = CatalogEntry(
+        slide=1, slide_title='FDFS UL', slide_subtitle='', layout='', chart_title='FDFS UL Transfer Time',
+        cdr_source='CDR-Data', kpi='AVG(Mean_Data_Rate)', chart_type='Average Vertical Bars', legend='', filters='Campaign IN (UK_Q2_2026)',
+        rows_split='', columns_split='Subscriber × Campaign', legend_position='',
+    )
+
+    model = catalog_chart_payload(frame, entry)
+    prepared, render_entry = prepare_catalog_chart_preview_frame(frame, entry)
+    prepared_model = catalog_chart_payload(prepared, render_entry, prefiltered=True)
+
+    expected = 'No samples: the chart filter Campaign IN (UK_Q2_2026) keeps none of the campaigns chosen (26-Q3-NSA, 26-Q4-NSA)'
+    assert model['type'] == 'empty' and model['message'] == expected
+    assert prepared_model['type'] == 'empty' and prepared_model['message'] == expected
+    kept = catalog_chart_payload(frame, replace(entry, filters='Campaign IN (UK_Q2_2026, UK_Q4_NSA_2026)'))
+    assert kept['type'] != 'empty'
+    other = catalog_chart_payload(frame, replace(entry, filters='Test_ID IN (Z)'))
+    assert other['message'] == 'No valid samples for this KPI and technology filter'
