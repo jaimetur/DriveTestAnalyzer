@@ -2,6 +2,10 @@
   <img src="src/web_interface/static/img/brand-mark.png" alt="DriveTest Analyzer logo" width="320">
 </p>
 
+<p align="center">
+  <a href="https://108.132.147.165:8443/?landing"><img src="https://img.shields.io/badge/Open%20the%20landing%20page-DriveTest%20Analyzer-0b5fff?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Open the landing page of DriveTest Analyzer" height="44"></a>
+</p>
+
 # DriveTest Analyzer
 
 DriveTest Analyzer is a multi-user web application for processing CDR datasets, exploring KPI performance, building charts and generating template-driven PowerPoint reports. Every workspace keeps its datasets, database, generated output and Report Templates isolated; users and access permissions remain global application configuration.
