@@ -610,3 +610,96 @@ def test_each_user_chooses_how_often_it_gets_the_emails_of_its_tickets(client, f
     assert logged('email_sent')[-1]['kind'] == 'ticket_summary'
     exported = next(user for user in core.repository.users_access_payload({})['users'] if user['username'] == 'EREPORT')
     assert exported['ticket_email_frequency'] == 'weekly'
+
+
+class SizedSMTP:
+    """An SMTP server that announces the largest email it takes (SIZE) and may answer 552 to a message."""
+    sent: list = []
+
+    def __init__(self, size='', answer=None):
+        self.esmtp_features = {'size': size} if size else {}
+        self.answer = answer
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def ehlo(self):
+        pass
+
+    def login(self, *args):
+        pass
+
+    def send_message(self, message):
+        if self.answer:
+            raise self.answer
+        SizedSMTP.sent.append(message)
+
+
+def test_attachments_count_their_size_in_the_email_against_the_limit_of_application_config_and_of_the_smtp_server(tmp_path, monkeypatch):
+    """Ticket #203: attachments take about 37% more once encoded in the email; they must fit Max attachments MB and the
+    SIZE the SMTP server announces, and a 552 answer of the server is an email too large, not a failure of the run."""
+    assert email_delivery.encoded_size(57) == 78 and email_delivery.encoded_size(7_000_000) > 9_500_000
+    settings = {'configured': True, 'transport': 'smtp', 'host': 'mail.example.com', 'port': 465, 'security': 'ssl',
+                'from_address': 'dt-analyzer@example.com', 'max_attachments_mb': 10}
+    assert email_delivery.attachments_fit(settings, 7 * 1024 * 1024) and not email_delivery.attachments_fit(settings, 8 * 1024 * 1024)
+    assert not email_delivery.attachments_fit({**settings, 'max_attachments_mb': 100}, 8 * 1024 * 1024, server_limit=10_240_000)
+    file = tmp_path / 'report.pptx'
+    file.write_bytes(b'x' * 1_000_000)
+    send = lambda: email_delivery.send_email(settings, ['user@example.com'], 'Report', 'Text', '<p>Text</p>', [(file.name, file)])
+    # Larger than the server takes: refused before it is sent.
+    monkeypatch.setattr(email_delivery.smtplib, 'SMTP_SSL', SizedSMTP(size='1000000'))
+    with pytest.raises(email_delivery.EmailTooLarge, match='the email server takes'):
+        send()
+    # A server that does not announce its size answers 552.
+    monkeypatch.setattr(email_delivery.smtplib, 'SMTP_SSL', SizedSMTP(answer=email_delivery.smtplib.SMTPDataError(
+        552, b'5.3.4 Message size exceeds fixed limit')))
+    with pytest.raises(email_delivery.EmailTooLarge, match='Message size exceeds fixed limit'):
+        send()
+    # Within both limits it is sent.
+    SizedSMTP.sent.clear()
+    monkeypatch.setattr(email_delivery.smtplib, 'SMTP_SSL', SizedSMTP(size='10240000'))
+    send()
+    assert len(SizedSMTP.sent) == 1
+
+
+def test_a_report_email_too_large_for_the_smtp_server_is_sent_again_with_the_links_of_the_files(client, monkeypatch):
+    from tests.reporting.test_reporting_jobs import RECIPIENTS, start_run, wait_for_run
+    from src.modules.reporting.report_tasks import register_report_artifact_provider, save_task
+
+    def generate(config, folder, stamp, user):
+        path = folder / f'{stamp} - Large report.pptx'
+        path.write_bytes(b'large report')
+        return [{'module': 'fake', 'title': 'Large report', 'file_name': path.name, 'size': 12, 'status': 'ready', 'details': []}]
+
+    sent = []
+
+    def send_email(settings, recipients, subject, text, html, attachments=None, **kwargs):
+        if attachments:
+            raise email_delivery.EmailTooLarge('The email server refused the email for its size: 552 5.3.4 Message size exceeds fixed limit')
+        sent.append(html)
+
+    register_report_artifact_provider('fake', 'Fake module', 'datasets-analysis', generate)
+    try:
+        email_delivery.save_email_delivery_settings(core.repository, {
+            'transport': 'smtp', 'host': 'mail.example.com', 'port': 465, 'security': 'ssl', 'username': 'dt-analyzer@example.com',
+            'password': 'secret', 'from_address': 'dt-analyzer@example.com', 'max_attachments_mb': 10, 'link_days': 7,
+        }, keep_password=False, keep_webhook_url=False)
+        core.repository.set_application_state(core.RUNTIME_CONFIGURATION_STATE_KEY, json.dumps({'public_address': 'https://tool.example:8443'}))
+        monkeypatch.setattr(core, 'send_email', send_email)
+        login(client)
+        task = save_task(core.repository, None, {
+            'name': 'Quarterly check', 'definition': {'modules': {'fake': {'enabled': True}}}, 'send_email': True,
+            'recipients': 'a@example.com', 'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}, 'enabled': False,
+        }, 'super', **RECIPIENTS)
+        run = wait_for_run(client, start_run(task))
+        assert run['status'] == 'sent' and 'as links: the files are larger than the email server takes' in run['email_status'], run
+        assert len(sent) == 1 and 'https://tool.example:8443/reporting/files/' in sent[0]
+        assert logged('report_email_sent_as_links')[-1]['task'] == 'Quarterly check'
+    finally:
+        report_tasks.ARTIFACT_PROVIDERS.pop('fake', None)

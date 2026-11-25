@@ -38,7 +38,7 @@ from src.modules.cdr.nr_mode import DEFAULT_NR_MODE, NSA_VS_SA, normalize_scorin
 from src.modules.scoring.scoring_reports import NR_CHARTS, NR_CHARTS_LABELS, NR_LAYOUT_LABELS, NR_LAYOUTS
 from src.modules.core.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
 from src.modules.core.repository import schema_in_place
-from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, WEBHOOK_MAX_BYTES, webhook_payload
+from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, WEBHOOK_MAX_BYTES, EmailTooLarge, attachments_fit, webhook_payload
 from src.modules.scoring.scoring_themes import DEFAULT_THEME, normalize_theme, themes_payload
 
 REPORT_TASKS_TABLE = 'report_tasks'
@@ -1194,22 +1194,36 @@ def install_report_task_routes(core: Any) -> None:
         links, views = file_links(folder, ready, task['created_by'], settings, run_id)
         webhook = settings['transport'] == 'webhook'
         total = sum((folder / item['file_name']).stat().st_size for item in ready)
-        attach = not webhook and (total <= int(settings['max_attachments_mb']) * 1024 * 1024 or not links)
+        # (Their size in the email, about 37% more than the files.)
+        attach = not webhook and (attachments_fit(settings, total) or not links)
         if webhook and not links:
             raise RuntimeError('Set the Public address of the server in Application Runtime: a Power Automate flow sends links '
                                'to the files, not attachments.')
         subject = email_subject(task['name'], started)
-        for details, cards in ((True, True), (False, True), (False, False)):
-            text, body = email_bodies(task['name'], started, artifacts, core.__app_name__, links=links, attached=attach,
-                                      link_days=settings['link_days'], details=details, cards=cards, views=views)
-            # (A flow request takes about 28 KB: without the filters of each file when they do not fit, then without the
-            # cards.)
-            if not webhook or not cards or len(json.dumps(webhook_payload(
-                    settings, task['recipients'], subject, body, kind='report'), ensure_ascii=False).encode()) <= WEBHOOK_MAX_BYTES:
-                break
-        core.send_email(settings, task['recipients'], subject, text, body,
-                        [(item['file_name'], folder / item['file_name']) for item in ready] if attach else [],
-                        kind='report')
+
+        def send(attached: bool) -> None:
+            for details, cards in ((True, True), (False, True), (False, False)):
+                text, body = email_bodies(task['name'], started, artifacts, core.__app_name__, links=links, attached=attached,
+                                          link_days=settings['link_days'], details=details, cards=cards, views=views)
+                # (A flow request takes about 28 KB: without the filters of each file when they do not fit, then without
+                # the cards.)
+                if not webhook or not cards or len(json.dumps(webhook_payload(
+                        settings, task['recipients'], subject, body, kind='report'), ensure_ascii=False).encode()) <= WEBHOOK_MAX_BYTES:
+                    break
+            core.send_email(settings, task['recipients'], subject, text, body,
+                            [(item['file_name'], folder / item['file_name']) for item in ready] if attached else [],
+                            kind='report')
+
+        try:
+            send(attach)
+        except EmailTooLarge as exc:
+            # Larger than the email server takes: the same email with the download links of the files.
+            if not attach or not links:
+                raise
+            core.repository.try_add_log(task.get('created_by') or 'system', 'report_email_sent_as_links', json.dumps({
+                'task': task['name'], 'run_id': run_id, 'attachments_bytes': total, 'reason': str(exc)}))
+            send(False)
+            return f"Sent to {', '.join(task['recipients'])} (as links: the files are larger than the email server takes)"
         return f"Sent to {', '.join(task['recipients'])} ({'attached' if attach else 'as links'})"
 
 

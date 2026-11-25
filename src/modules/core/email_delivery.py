@@ -41,6 +41,26 @@ WEBHOOK_TIMEOUT_SECONDS = 30
 WEBHOOK_MAX_BYTES = 27_000
 # Every email of the tool starts its subject with it, so mail clients and rules can tell them apart.
 SUBJECT_PREFIX = 'DT Analyzer - '
+# Room for the headers and the bodies beside the attachments, within the size limit of an email.
+EMAIL_BODY_ALLOWANCE_BYTES = 256 * 1024
+
+
+class EmailTooLarge(RuntimeError):
+    """The email is larger than the SMTP server takes (the SIZE it announces, or a 552 answer): sent with links instead."""
+
+
+def encoded_size(raw_bytes: int) -> int:
+    """Bytes the attachments take in the email: base64 lines of 76 characters and CRLF for every 57 bytes (about 37% more)."""
+    return -(-int(raw_bytes) // 57) * 78
+
+
+def attachments_fit(settings: dict[str, Any], raw_bytes: int, server_limit: int = 0) -> bool:
+    """Whether attachments of ``raw_bytes`` fit in an email: their encoded size against Max attachments MB of Application
+    Config and, when known, the size the SMTP server takes."""
+    limits = [int(settings.get('max_attachments_mb') or DEFAULT_MAX_ATTACHMENTS_MB) * 1024 * 1024]
+    if server_limit:
+        limits.append(int(server_limit) - EMAIL_BODY_ALLOWANCE_BYTES)
+    return encoded_size(raw_bytes) <= min(limits)
 
 # Deployment defaults; values saved in Application Config take precedence.
 EMAIL_ENVIRONMENT_DEFAULTS = {
@@ -312,10 +332,9 @@ def send_email(settings: dict[str, Any], recipients: list[str], subject: str, te
             settings, recipients, subject, html, cc=cc, reply_to=reply_to, kind=kind))
         return
     total_bytes = sum(path.stat().st_size for _name, path in attachments)
-    limit_bytes = int(settings.get('max_attachments_mb') or DEFAULT_MAX_ATTACHMENTS_MB) * 1024 * 1024
-    if total_bytes > limit_bytes:
-        raise RuntimeError(
-            f'The attachments total {total_bytes / 1024 / 1024:.1f} MB, above the '
+    if not attachments_fit(settings, total_bytes):
+        raise EmailTooLarge(
+            f'The attachments take {encoded_size(total_bytes) / 1024 / 1024:.1f} MB in the email, above the '
             f'{settings.get("max_attachments_mb")} MB limit set in Application Config.'
         )
     message = build_email(settings, recipients, subject, text, html, attachments, cc=cc, reply_to=reply_to, thread=thread)
@@ -332,4 +351,17 @@ def send_email(settings: dict[str, Any], recipients: list[str], subject: str, te
             server.ehlo()
         if settings.get('username'):
             server.login(settings['username'], settings.get('password') or '')
-        server.send_message(message)
+        # (The server announces the largest email it takes; the attachments are refused before they are sent.)
+        announced = str(getattr(server, 'esmtp_features', {}).get('size') or '')
+        server_limit = int(announced) if announced.isdigit() else 0
+        if attachments and server_limit and not attachments_fit(settings, total_bytes, server_limit):
+            raise EmailTooLarge(
+                f'The attachments take {encoded_size(total_bytes) / 1024 / 1024:.1f} MB in the email, above the '
+                f'{server_limit / 1024 / 1024:.1f} MB the email server takes.')
+        try:
+            server.send_message(message)
+        except smtplib.SMTPResponseException as exc:
+            if exc.smtp_code == 552:
+                raise EmailTooLarge(f'The email server refused the email for its size: {exc.smtp_code} '
+                                    f'{exc.smtp_error.decode("utf-8", "replace") if isinstance(exc.smtp_error, bytes) else exc.smtp_error}') from exc
+            raise

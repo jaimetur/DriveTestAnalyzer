@@ -35,6 +35,7 @@
 - **Sign in — Links of the emails:** a link opened without a session (the call of an NQ Calls email, from its title or its Open the call button) opens its page, and its call, after signing in, instead of the Help ([ticket #187](https://108.132.147.165:8443/tickets/187)).
 - **Workspace — Datasets cards on the phone:** the CA Appendix and Master Grid cards keep their title on one line and show their counters below it, wrapped when they do not fit, like the CDR cards.
 - **PPT Designer — Charts emptied by their own Campaign filter:** a chart whose filter names campaigns that the campaigns chosen do not include (such as `Campaign IN (UK_Q2_2026, UK_Q3_NSA_2026)` with 26-Q3 and 26-Q4 chosen) says so, naming the filter and the campaigns chosen, in the viewer and the PPT, instead of *No valid samples* ([ticket #201](https://108.132.147.165:8443/tickets/201)).
+- **Reporting — Report emails larger than the email server takes:** attachments are measured by their size in the email (about 37% more than the files) against the Attachment Size Limit and the largest email the SMTP server announces, and an email the server refuses for its size (*552 Message size exceeds fixed limit*) is sent again with the download links of the files instead of failing the run ([ticket #203](https://108.132.147.165:8443/tickets/203)).
 
 #### 📚 Documentation:
 - **README:** two buttons under the logo open the landing page of DriveTest Analyzer on the server and the application itself (its sign-in page, or the application when already signed in).
