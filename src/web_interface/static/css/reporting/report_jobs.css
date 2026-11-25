@@ -420,3 +420,16 @@ button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: under
   .rp-files { min-width: 0; }
   .rp-file { min-width: 0; width: 100%; box-sizing: border-box; }
 }
+/* The named areas of a report (Filters step) and the Areas each sub-module or PPT Design is repeated for, in teal. */
+.bundle-report-template-panel .brt-areas { display: grid; gap: .5rem; margin-top: .4rem; padding: .8rem; border: 1px solid #99d5cf; border-radius: 12px; background: #f0faf8; }
+.bundle-report-template-panel .brt-areas h4 { margin: 0; color: #0f766e; }
+.bundle-report-template-panel .brt-area-list { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.bundle-report-template-panel .brt-area { display: grid; grid-template-columns: minmax(9rem, 1fr) repeat(3, minmax(0, 1fr)) auto; gap: .5rem; align-items: end; padding: .5rem; border-radius: 10px; background: #fff; box-shadow: inset 4px 0 0 #0f766e; }
+.bundle-report-template-panel .brt-area-add { justify-self: start; }
+.bundle-report-template-panel .brt-item-areas { flex: 0 1 14rem; min-width: 0; }
+.bundle-report-template-panel .brt-item-areas .rj-multi-label { color: #0f766e; font-weight: 800; }
+.bundle-report-template-panel .brt-item-areas .rj-multi > summary { min-height: 2.3rem; padding: .45rem .7rem; border-color: #5fb8ae; background: #f0faf8; color: #134e4a; }
+@media (max-width: 900px) {
+  .bundle-report-template-panel .brt-area { grid-template-columns: minmax(0, 1fr); }
+  .bundle-report-template-panel .brt-item-areas { flex-basis: 100%; }
+}

@@ -18,6 +18,7 @@ guide:reporting.md
 | --- | --- |
 | Find and manage the reports | [Reports](#reports) |
 | Create or edit a report | [The report editor](#the-report-editor) |
+| <span class="guide-sub">↳ Repeat sub-modules and PPT Designs for areas</span> | <span class="guide-sub">↳ [Areas](#areas)</span> |
 | <span class="guide-sub">↳ Choose the campaigns of each module</span> | <span class="guide-sub">↳ [Campaigns of each module](#campaigns-of-each-module)</span> |
 | <span class="guide-sub">↳ Set the options of each module</span> | <span class="guide-sub">↳ [Options of each module](#options-of-each-module)</span> |
 | <span class="guide-sub">↳ Choose the theme and iPhone pictures</span> | <span class="guide-sub">↳ [Theme and iPhone pictures](#theme-and-iphone-pictures)</span> |
@@ -58,8 +59,20 @@ The four steps:
 
 1. **Cover:** the **Name**, the **Title on the cover** (the name when empty), the **Subtitle** under it, the **Theme** and **Chart Pictures for the iPhone Preview** (see below).
 2. **Filters:** the common filters, which apply to every module: the **NR Mode**, on its own row, then Operators, Operator_Vendor, Vendor_Operator, Vendors, Regions, Clusters and Cities (with **Main Cities**, those of the workspace at each generation), as in Scoring & GAP Analysis. They replace the saved filters of the Designs and give a field-values [parameter](ppt-designer.md#template-parameters) of a Design's template on one of their fields (a City Report template's Cities) the values chosen. Empty filters include every value; Operators take [patterns](web-interface.md#operator-patterns) such as `VF*`.
+   Below them, **Areas** names the areas the sub-modules and PPT Designs can be repeated for (see [Areas](#areas)).
 3. **Modules:** the five sections, by default **Scoring & GAP Analysis**, **Network Insights**, **Non-Qualified Calls**, **PPT Designer** and **CDR Analysis** (each with the title of its module in Interface Settings; a saved report keeps its own order, and reports saved before CDR Analysis was a section have it unchecked). Each has its checkbox, its **Campaigns**, its **Options** and its **Sub-modules** (its **Designs** in PPT Designer), each in a subpanel; **Charts & tables** unfolds the charts and tables of a sub-module to include all of it or only some. Drag a module or sub-module by its handle (⋮⋮), or focus the handle and use the arrow keys, to order them.
 4. **Schedule:** whether and when it is generated on its own, its formats and whom it is emailed to (see [Schedule and email](#schedule-and-email)).
+
+### Areas
+
+A report can repeat a sub-module, or a PPT Design, for several areas, such as the Scoring Charts of National, London, Vendor A, Vendor A+VMO2 and the 7 main cities, or a City Report Design for each city.
+
+- **Name the areas** in the Filters step, under the common filters. **+ Add area** adds one with its **Name**, **Regions**, **Clusters** and **Cities** (with **Main Cities**, those of the workspace at each generation); an area without them is the whole country (National). **Remove** deletes it.
+- **Choose them per sub-module:** each sub-module and PPT Design of the Modules step has its **Areas** (teal), shown when the report has areas. None: it is generated once, with the common filters, as before.
+- **What each repetition uses:** the Regions, Clusters and Cities of its area instead of those of the common filters; the NR Mode, Operators and Vendors of the common filters stay, and so do the Campaigns and options of the module.
+- **How the section shows them:** sub-module by sub-module, in their order, each area after a transition named after the sub-module and the area (*Scoring Charts · London*) that says what the area chooses. Its cover lists the areas.
+- **Generation:** the module is generated once for the common filters (its sub-modules without areas) and once for each area used, with the sub-modules repeated for it; each one is reused as any section (see [Generate and preview](#generate-and-preview)). An area that cannot be generated is left out with a warning, the others stay.
+- **Saved with the report:** the areas travel with it in Import / Export, transfers and backups; App Events records the areas added, removed or changed and the Areas of each sub-module.
 
 ### Campaigns of each module
 

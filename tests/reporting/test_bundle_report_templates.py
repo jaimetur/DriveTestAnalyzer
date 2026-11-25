@@ -121,7 +121,7 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert len(network['items']) == len(ni.REPORT_PANELS)
     assert network['options']['technology'] == 'nr' and network['options']['group'] == ['vendor']
     assert network['options']['overshoot_km'] == 100
-    assert definition['sections'][1]['items'] == [{'key': 'd1', 'label': 'Weekly', 'enabled': True, 'nr_mode': ''}]
+    assert definition['sections'][1]['items'] == [{'key': 'd1', 'label': 'Weekly', 'enabled': True, 'nr_mode': '', 'areas': []}]
     chosen = [section['key'] for section in bundle_report_templates.enabled_sections(definition)]
     # Designs is unchecked; Scoring, Network Insights and Non-Qualified Calls have checked sub-modules; CDR Analysis,
     # added after the report was saved, is unchecked.
@@ -1342,3 +1342,46 @@ def test_hotspots_consecutive_and_clustered_issues_come_before_the_nq_prioritiza
     clusters = next(item for item in items if item['key'] == 'clusters')
     assert clusters['components'] == {'hotspots': False, 'consecutive': True, 'issues': True}
     assert set(next(item for item in items if item['key'] == 'prioritization')['components']) == {'queue', 'rules', 'kpis'}
+
+
+def test_sub_modules_repeated_for_areas_are_generated_for_each_area_and_composed_one_after_another(client, monkeypatch):
+    # Ticket #202: each sub-module can be repeated for named areas (National, London…), each time with the Regions,
+    # Clusters and Cities of the area; the section shows each area after a transition named after it.
+    login(client)
+    selections = []
+
+    def network_summary(selection, export_kind, destination, components=None, compose=True, theme=None):
+        selections.append((selection['regions'], selection['cities'], components))
+        place = ', '.join(selection['cities']) or 'Nationwide'
+        Path(destination).write_bytes(_deck(lambda presentation: _small_table(presentation, f'Network Snapshot {place}', 'snapshot')))
+        return {}
+
+    monkeypatch.setattr(core, 'write_network_insights_summary', network_summary)
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.document_pdf', lambda content, suffix: b'%PDF-1.4')
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.pdf_page_images', lambda pdf, dpi, pages=None: [PNG])
+    monkeypatch.setattr(bundle_report_templates, 'compose_word', lambda *args, **kwargs: (
+        packed_component_document([PackItem('heading1', 'Network Insights')]), []))
+    definition = bundle_report_templates.normalize_definition({
+        'filters': {'nr_mode': 'NSA', 'regions': ['Vendor A']},
+        'areas': [{'name': 'National'}, {'name': 'London', 'cities': ['London']}, {'name': 'Unused', 'cities': ['Leeds']}]})
+    for section in definition['sections']:
+        section['enabled'] = section['key'] == 'network_insights'
+        for item in section['items']:
+            item['enabled'] = item['key'] == 'snapshot'
+            if 'components' in item:
+                item['components'] = {key: key == 'snapshot' for key in item['components']}
+            if item['key'] == 'snapshot':
+                item['areas'] = ['National', 'London', 'Gone']
+    saved = bundle_report_templates.normalize_definition(definition)
+    assert next(item for item in saved['sections'][1]['items'] if item['key'] == 'snapshot')['areas'] == ['National', 'London']
+    _run_id, opened = _generated(client, definition, 'Areas', refresh=True)
+    assert opened['run']['status'] == 'completed', opened
+    # Each area replaces the Regions, Clusters and Cities of the common filters; the unused area is not generated.
+    assert [(regions, cities) for regions, cities, _components in selections] == [([], []), ([], ['London'])]
+    titles = [item['title'] for item in opened['report']['outline']]
+    assert titles[1:6] == ['Network Insights', 'Network Snapshot · National', 'Network Snapshot Nationwide',
+                           'Network Snapshot · London', 'Network Snapshot London']
+    assert any('Areas: National, London' in line for line in bundle_report_templates.section_lines(
+        next(section for section in saved['sections'] if section['key'] == 'network_insights')))
+    changes = bundle_report_templates.definition_changes({}, saved)
+    assert 'Areas: +London (Cities: London)' in changes and 'Areas: +National (The whole country)' in changes

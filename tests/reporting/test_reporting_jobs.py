@@ -1102,7 +1102,7 @@ def test_reports_are_read_online_in_the_slide_viewer_of_the_presentations(client
     assert 'js/help/presentation_viewer.js' in client.get('/reporting').text
     root = Path(__file__).resolve().parents[2] / 'src/web_interface/static/js'
     viewer = (root / 'help/presentation_viewer.js').read_text(encoding='utf-8')
-    assert 'window.PresentationViewer = {enhance, open: openViewer};' in viewer
+    assert 'window.PresentationViewer = {enhance, open: openViewer, openPresentation, openGuide};' in viewer
     script = (root / 'reporting/bundle_report_template.js').read_text(encoding='utf-8')
     # (In the format a link asks for, when the report has its preview, else the first one.)
     assert 'window.PresentationViewer.open(reportPresentation(job, available.includes(format) ? format : available[0], available), index);' in script

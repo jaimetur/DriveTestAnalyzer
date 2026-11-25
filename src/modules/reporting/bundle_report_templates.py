@@ -97,6 +97,11 @@ SCORING_TAGS = {'summary': 'summary', 'charts': 'charts', 'tables': 'tables', 'c
 RENAMED_SCORING_SUBMODULES = {'locations': 'geographical_areas'}
 SCORINGS = (('best_network', 'Best Network'), ('most_reliable', 'Most Reliable Network'))
 COMBINED_ENVIRONMENT = 'all'
+# The named areas of a report (National, London, a group of Regions, the Main Cities…): each sub-module and PPT Design
+# can be repeated for some of them, each repetition with the Regions, Clusters and Cities of its area instead of those
+# of the common filters (see build_report).
+MAX_AREAS = 30
+AREA_FIELDS = ('regions', 'clusters', 'cities')
 FILTER_FIELDS = ('operators', 'operator_vendors', 'vendor_operators', 'vendors', 'regions', 'clusters', 'cities')
 FILTER_LABELS = {'operators': 'Operators', 'operator_vendors': 'Operator_Vendor', 'vendor_operators': 'Vendor_Operator',
                  'vendors': 'Vendors', 'regions': 'Regions', 'clusters': 'Clusters', 'cities': 'Cities'}
@@ -278,7 +283,8 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
                 # The name and NR Mode of the PPT Design find it again in another workspace.
                 mode = str(item.get('nr_mode') or '').upper()
                 items.append({'key': key, 'label': str(item.get('label') or '').strip()[:160], 'enabled': bool(item.get('enabled', True)),
-                              'nr_mode': mode if mode in {'NSA', 'SA', NSA_VS_SA} else ''})
+                              'nr_mode': mode if mode in {'NSA', 'SA', NSA_VS_SA} else '',
+                              'areas': _strings(item.get('areas'), MAX_AREAS)})
         return items
     catalogue = {key: (title, components) for key, title, components in _panels()[section]}
     if section == 'scoring':
@@ -312,8 +318,43 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
         item = saved.get(key, {})
         chosen = item.get('components') if isinstance(item.get('components'), dict) else {}
         items.append({'key': key, 'enabled': bool(item.get('enabled', True)),
-                      'components': {name: bool(chosen.get(name, True)) for name, _label in catalogue[key][1]}})
+                      'components': {name: bool(chosen.get(name, True)) for name, _label in catalogue[key][1]},
+                      'areas': _strings(item.get('areas'), MAX_AREAS)})
     return items
+
+
+def normalize_areas(raw: Any) -> list[dict[str, Any]]:
+    """The named areas of a report, each with its Regions, Clusters and Cities (none: the whole country) and whether it
+    takes the Main Cities of the workspace at each generation; names are unique (the first one is kept)."""
+    areas, seen = [], set()
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = ' '.join(str(item.get('name') or '').split())[:80]
+        if not name or name.casefold() in seen:
+            continue
+        seen.add(name.casefold())
+        areas.append({'name': name, **{field: _strings(item.get(field)) for field in AREA_FIELDS},
+                      'main_cities': bool(item.get('main_cities'))})
+        if len(areas) == MAX_AREAS:
+            break
+    return areas
+
+
+def area_filters(filters: dict[str, Any], area: dict[str, Any] | None) -> dict[str, Any]:
+    """The common filters of a repetition for ``area``: its Regions, Clusters and Cities instead of the common ones
+    (the NR Mode, Operators and Vendors stay); the common filters themselves without an area."""
+    if area is None:
+        return filters
+    return {**filters, **{field: list(area[field]) for field in AREA_FIELDS}, 'main_cities': bool(area['main_cities'])}
+
+
+def area_line(area: dict[str, Any]) -> str:
+    """What an area chooses, as its transition and the cover of its section say it."""
+    parts = [f"{FILTER_LABELS[field]}: {', '.join(area[field])}" for field in AREA_FIELDS if area[field]]
+    if area['main_cities']:
+        parts.append('Main Cities of the workspace')
+    return ' · '.join(parts) or 'The whole country'
 
 
 def normalize_definition(raw: Any) -> dict[str, Any]:
@@ -352,6 +393,11 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         'items': _normalize_items(key, raw_sections.get(key, {}).get('items')),
         'options': _normalize_options(key, raw_sections.get(key, {}).get('options'), legacy),
     } for key in order]
+    definition['areas'] = normalize_areas(raw.get('areas'))
+    known = {area['name'] for area in definition['areas']}
+    for section in definition['sections']:
+        for item in section['items']:
+            item['areas'] = [name for name in dict.fromkeys(item['areas']) if name in known]
     # The one colour theme of the report, read by every section that supports themes (Scoring & GAP Analysis, Network
     # Insights, PPT Designer and CDR Analysis), chosen beside the title; reports saved before, which kept it in their
     # Scoring and Network Insights sections, take that of their Scoring section.
@@ -419,7 +465,11 @@ def scope_line(options: dict[str, Any]) -> str:
 def section_lines(section: dict[str, Any], design_names: dict[str, str] | None = None,
                   methodology_names: dict[str, str] | None = None) -> list[str]:
     """What the Campaigns and options of a section choose, as its cover shows them."""
-    return [scope_line(section['options']), *_option_lines(section, design_names, methodology_names)]
+    lines = [scope_line(section['options']), *_option_lines(section, design_names, methodology_names)]
+    repeated = list(dict.fromkeys(name for item in section['items'] for name in item.get('areas') or []))
+    if repeated:
+        lines.append(f"Areas: {', '.join(repeated)}")
+    return lines
 
 
 def _option_lines(section: dict[str, Any], design_names: dict[str, str] | None,
@@ -782,8 +832,9 @@ def definition_changes(before: Any, after: Any) -> list[str]:
     changes): its cover, its common filters and each section with its Campaigns, options, sub-modules and components."""
     old, new = normalize_definition(before), normalize_definition(after)
     cover = lambda definition: {key: THEMES.get(value, {}).get('label', value) if key == 'theme' else value  # noqa: E731
-                                for key, value in definition.items() if key not in {'filters', 'sections'}}
-    changes = [*_value_changes('', cover(old), cover(new)), *_value_changes('Filters · ', old['filters'], new['filters'])]
+                                for key, value in definition.items() if key not in {'filters', 'sections', 'areas'}}
+    changes = [*_value_changes('', cover(old), cover(new)), *_value_changes('Filters · ', old['filters'], new['filters']),
+               *_area_changes(old['areas'], new['areas'])]
     if _order_changed([section['key'] for section in old['sections'] if section['enabled']],
                       [section['key'] for section in new['sections'] if section['enabled']]):
         changes.append('Modules: new order')
@@ -795,6 +846,22 @@ def definition_changes(before: Any, after: Any) -> list[str]:
         changes += _value_changes(f'{title} · ', _told_options(key, was['options']), _told_options(key, section['options']))
         changes += (_design_changes(was['items'], section['items']) if key == 'designs'
                     else _submodule_changes(key, was['items'], section['items']))
+        names = ({item['key']: item.get('label') or item['key'] for item in section['items']} if key == 'designs'
+                 else {item_key: name for item_key, name, _components in _panels()[key]})
+        before_areas = {item['key']: item.get('areas') or [] for item in was['items']}
+        changes += [f"{title} · {names.get(item['key'], item['key'])} · Areas: "
+                    f"{', '.join(before_areas.get(item['key']) or []) or 'Common filters'} → {', '.join(item['areas']) or 'Common filters'}"
+                    for item in section['items'] if (item.get('areas') or []) != before_areas.get(item['key'], [])]
+    return changes
+
+
+def _area_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
+    """The named areas of a report added, removed or changed."""
+    was, now = {area['name']: area for area in before}, {area['name']: area for area in after}
+    changes = [f"Areas: +{name} ({area_line(area)})" for name, area in now.items() if name not in was]
+    changes += [f"Areas: −{name}" for name in was if name not in now]
+    changes += [f"Areas · {name}: {area_line(was[name])} → {area_line(area)}" for name, area in now.items()
+                if name in was and was[name] != area]
     return changes
 
 
@@ -1143,8 +1210,9 @@ class SectionDeck:
     key: str
     title: str
     lines: list[str]
-    # (sub-module key or None to read it from each slide, deck)
-    decks: list[tuple[str | None, bytes]] = field(default_factory=list)
+    # (sub-module key or None to read it from each slide, deck); a section repeated for areas (see build_report) also
+    # has (sub-module key, deck of a repetition, its sub-module key or None, the sub-module whose slides it keeps).
+    decks: list[tuple[Any, ...]] = field(default_factory=list)
     order: list[str] = field(default_factory=list)
     item_titles: dict[str, str] = field(default_factory=dict)
     generated_at: str = ''
@@ -1204,7 +1272,10 @@ def _section_entries(section: SectionDeck, *, module_cover: bool = False) -> lis
     ``module_cover``, for the export of the module on its own) and the closing slides left out, each block (after a
     cover, such as a scoring or an environment) ordered on its own."""
     entries: list[Entry] = []
-    for item_key, content in section.decks:
+    for part in section.decks:
+        # (A part of a repetition keeps only the slides of one sub-module of its deck, without its covers.)
+        owner, content = part[0], part[1]
+        item_key, kept = (part[2], part[3]) if len(part) == 4 else (owner, None)
         presentation = compose.deck(content)
         size = (int(presentation.slide_width), int(presentation.slide_height))
         for index, slide in enumerate(presentation.slides):
@@ -1219,6 +1290,10 @@ def _section_entries(section: SectionDeck, *, module_cover: bool = False) -> lis
                 item = SCORING_TAGS.get(tag, 'cover')
             else:
                 item = tag or 'selection'
+            if kept is not None:
+                if item != kept or (section.key != 'designs' and compose.is_cover(slide)):
+                    continue
+                item = owner
             entries.append(Entry(section.key, item, slide, compose.is_cover(slide), size))
     rank = {key: position for position, key in enumerate(section.order)}
     ordered: list[Entry] = []
@@ -2133,6 +2208,67 @@ def store_preview(root: Path | None, key: str | None, suffix: str, pdf: bytes | 
         (folder / f'preview-{suffix}-{index}.png').write_bytes(image)
 
 
+def template_path() -> Path:
+    from src.config import settings
+    return settings.powerpoint_template
+
+
+def area_transition(template: Path, title: str, subtitle: str) -> bytes:
+    """A transition slide naming an area of a repeated sub-module (such as Scoring Charts · London)."""
+    from src.modules.cdr_analysis.cdr_reporting import _set_structural_slide_text
+
+    composer = compose.DeckComposer(template)
+    slide = composer.add_layout_slide('Transition')
+    _set_structural_slide_text(slide, title, subtitle)
+    return composer.save()
+
+
+def _repeated_section(definition: dict[str, Any], section: dict[str, Any], titles: dict[str, str],
+                      generate: Callable[[dict[str, Any], dict[str, Any], str], tuple[SectionDeck, str | None]],
+                      warnings: list[str], template: Path) -> tuple[SectionDeck, str | None]:
+    """A section whose sub-modules (or PPT Designs) are repeated for areas: the section is generated once for the
+    common filters (the sub-modules without areas) and once for each area, with the sub-modules repeated for it, each
+    time with the Regions, Clusters and Cities of the area; then, sub-module by sub-module in their order, each area
+    after a transition named after the sub-module and the area. Its identity is that of every repetition."""
+    areas = {area['name']: area for area in definition['areas']}
+    runs = list(dict.fromkeys(name for item in section['items'] for name in (item.get('areas') or [''])))
+    generated: dict[str, SectionDeck] = {}
+    keys: list[str | None] = []
+    title = titles[section['key']]
+    for name in runs:
+        run_section = {**section, 'items': [item for item in section['items'] if name in (item.get('areas') or [''])]}
+        run_definition = {**definition, 'filters': area_filters(definition['filters'], areas.get(name))}
+        try:
+            deck, key = generate(run_definition, run_section, name)
+        except Exception as exc:  # An area that fails leaves the others in the section.
+            warnings.append(f"{title}{' · ' + name if name else ''}: {getattr(exc, 'detail', exc)}")
+            keys.append(None)
+            continue
+        generated[name] = deck
+        keys.append(key)
+    if not generated:
+        raise BundleReportTemplateError('No area could be generated.')
+    first = next(iter(generated.values()))
+    names = {key: value for deck in generated.values() for key, value in deck.item_titles.items()}
+    merged = SectionDeck(section['key'], '', [line for deck in generated.values() for line in deck.lines],
+                         order=[item['key'] for item in section['items']], item_titles=names or first.item_titles)
+    item_titles = {key: label for key, label, _components in _panels().get(section['key'], ())}
+    for item in section['items']:
+        item_title = (item.get('label') or names.get(item['key']) or item['key']) if section['key'] == 'designs' \
+            else item_titles.get(item['key'], item['key'])
+        for name in item.get('areas') or ['']:
+            deck = generated.get(name)
+            if deck is None:
+                continue
+            if name:
+                merged.decks.append((item['key'], area_transition(template, f'{item_title} · {name}', area_line(areas[name]))))
+            for part in deck.decks:
+                merged.decks.append((item['key'], part[1], part[0], item['key']))
+    identity = None if any(key is None for key in keys) else _json_hash({'areas': runs, 'keys': keys,
+                                                                         'items': section['items']})
+    return merged, identity
+
+
 def build_report(core: Any, repository: Any, user: Any, definition: dict[str, Any], export_format: str, folder: Path, *,
                  name: str = '', section_titles: dict[str, str] | None = None,
                  progress: Callable[[int, str], None] = lambda _percent, _message: None,
@@ -2164,21 +2300,29 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
         def report(message: str, share=share) -> None:
             progress(int(5 + share), message)
 
-        generator = SectionGenerator(core, repository, user, definition, folder, report)
-        try:
-            key = section_fingerprint(core, repository, definition, section, generator) if cache_root is not None else None
-        except Exception:  # noqa: BLE001 - a section whose identity cannot be known is generated.
-            key = None
-        try:
+        def generate(run_definition: dict[str, Any], run_section: dict[str, Any], label: str) -> tuple[SectionDeck, str | None]:
+            generator = SectionGenerator(core, repository, user, run_definition, folder, report)
+            try:
+                key = section_fingerprint(core, repository, run_definition, run_section, generator) if cache_root is not None else None
+            except Exception:  # noqa: BLE001 - a section whose identity cannot be known is generated.
+                key = None
             with _section_lock(key) if key else nullcontext():
                 deck = _cached_section(cache_root, key) if key and reuse else None
                 if deck is not None:
-                    reused.append(section['key'])
-                    report(f"Using {titles[section['key']]} generated at {deck.generated_at.replace('T', ' ')[:16]}")
+                    reused.append(section['key'] if not label else f"{section['key']} · {label}")
+                    report(f"Using {titles[section['key']]}{' · ' + label if label else ''} generated at "
+                           f"{deck.generated_at.replace('T', ' ')[:16]}")
                 else:
-                    deck = getattr(generator, section['key'])(section)
+                    deck = getattr(generator, section['key'])(run_section)
                     if key:
                         _store_section(cache_root, key, deck)
+            return deck, key
+
+        try:
+            if any(item.get('areas') for item in section['items']):
+                deck, key = _repeated_section(definition, section, titles, generate, warnings, template_path())
+            else:
+                deck, key = generate(definition, section, '')
         except Exception as exc:  # A section that fails leaves the others in the report.
             warnings.append(f"{titles[section['key']]}: {getattr(exc, 'detail', exc)}")
             continue

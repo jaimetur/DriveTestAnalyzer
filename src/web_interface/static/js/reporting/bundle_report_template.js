@@ -222,7 +222,57 @@
       return filterPickers[key];
     });
     grid.append(...fields);
-    host.replaceChildren(modeRow, grid);
+    host.replaceChildren(modeRow, grid, areasEditor());
+  }
+
+  // -- areas ---------------------------------------------------------------------------------------
+  // The named areas of the report (National, London, a group of Regions, the Main Cities…): each sub-module and PPT
+  // Design can be repeated for some of them, each time with the Regions, Clusters and Cities of the area instead of
+  // those of the common filters.
+  let areaRows = [];
+  function areasEditor() {
+    const box = node('div', undefined, 'brt-areas');
+    box.append(node('h4', 'Areas'), node('p', 'Name the areas the sub-modules and PPT Designs of the Modules step can be repeated for, '
+      + 'each time with the Regions, Clusters and Cities of the area instead of those above (an area without them is the whole '
+      + 'country, such as National).', 'form-note'));
+    const list = node('ol', undefined, 'brt-area-list');
+    const add = node('button', '+ Add area', 'brt-secondary brt-area-add');
+    add.type = 'button';
+    areaRows = [];
+    const areasChanged = () => { refreshAreaPickers(); changed(); };
+    const row = (saved) => {
+      const item = node('li', undefined, 'brt-area');
+      const name = node('label', 'Name', 'brt-field brt-area-name');
+      const input = node('input');
+      input.type = 'text'; input.maxLength = 80; input.value = saved.name || ''; input.placeholder = 'London, Vendor A+VMO2…';
+      input.addEventListener('change', areasChanged);
+      name.append(input);
+      const pickers = Object.fromEntries([['regions', 'Regions', 'Region'], ['clusters', 'Clusters', 'Cluster'], ['cities', 'Cities', 'City']]
+        .map(([key, label, valuesKey]) => [key, multiField(label, options.values?.[valuesKey] || [], saved[key] || [], {list: true,
+          ...(key === 'cities' ? {preset: {label: 'Main Cities (workspace list at each export)', values: options.main_cities || [],
+            checked: saved.main_cities, dynamic: true}} : {})})]));
+      const remove = node('button', 'Remove', 'brt-secondary brt-danger brt-area-remove');
+      remove.type = 'button';
+      remove.addEventListener('click', () => { item.remove(); areaRows = areaRows.filter((entry) => entry !== item); areasChanged(); });
+      item.append(name, pickers.regions, pickers.clusters, pickers.cities, remove);
+      item.collect = () => ({name: input.value.trim(), regions: pickers.regions.getValue?.() || [],
+        clusters: pickers.clusters.getValue?.() || [], cities: pickers.cities.getValue?.() || [],
+        main_cities: Boolean(pickers.cities.getPreset?.())});
+      areaRows.push(item);
+      list.append(item);
+    };
+    (definition.areas || []).forEach(row);
+    add.addEventListener('click', () => { row({name: ''}); changed(); });
+    box.append(list, add);
+    return box;
+  }
+  const collectAreas = () => areaRows.map((item) => item.collect()).filter((area) => area.name);
+  const areaNames = () => [...new Set(collectAreas().map((area) => area.name))];
+  // The Areas of each sub-module list the areas named now (an area renamed or removed is left out of them).
+  let areaPickers = [];
+  function refreshAreaPickers() {
+    const names = areaNames();
+    areaPickers.forEach((holder) => holder.refresh(names));
   }
 
   function collectFilters() {
@@ -441,12 +491,32 @@
     return box;
   }
 
+  // The areas a sub-module or PPT Design is repeated for (none: once, with the common filters).
+  function areaField(saved) {
+    const holder = node('div', undefined, 'brt-item-areas');
+    let field = null;
+    let chosen = [...(saved || [])];
+    holder.refresh = (names) => {
+      if (field) chosen = field.getValue?.() || [];
+      chosen = chosen.filter((name) => names.includes(name));
+      holder.hidden = !names.length;
+      field = names.length ? multiField('Areas', names, chosen, {list: true, allLabel: 'Common filters'}) : null;
+      if (field) field.title = 'Repeat it for these areas, each after a transition named after it; none: once, with the common filters';
+      holder.replaceChildren(...(field ? [field] : []));
+    };
+    holder.getValue = () => (field ? field.getValue?.() || [] : []);
+    holder.refresh(areaNames());
+    areaPickers.push(holder);
+    return holder;
+  }
+
   function itemRow(sectionKey, catalogueItem, saved) {
     const row = node('li', undefined, 'brt-item');
     row.dataset.key = catalogueItem.key;
     const head = node('div', undefined, 'brt-item-head');
     const enabled = check(catalogueItem.title, saved ? saved.enabled : sectionKey !== 'designs', 'brt-check brt-item-check');
-    head.append(handleButton('brt-item-handle', catalogueItem.title), enabled);
+    const areas = areaField(saved?.areas);
+    head.append(handleButton('brt-item-handle', catalogueItem.title), enabled, areas);
     row.append(head);
     const boxes = [];
     if (catalogueItem.components.length) {
@@ -491,7 +561,7 @@
       refresh();
     }
     row.collect = () => ({
-      key: catalogueItem.key, enabled: enabled.box.checked,
+      key: catalogueItem.key, enabled: enabled.box.checked, areas: areas.getValue(),
       // A PPT Design keeps its name and NR Mode, which find it again in another workspace.
       ...(sectionKey === 'designs' ? {label: catalogueItem.title, nr_mode: catalogueItem.nr_mode || ''}
         : {components: Object.fromEntries(boxes.map((box) => [box.value, box.checked]))}),
@@ -584,6 +654,7 @@
 
   function renderSections() {
     nrModeHandlers = [];
+    areaPickers = [];
     const list = $('brt-sections');
     list.replaceChildren(...definition.sections.map((section) => sectionCard(section)));
   }
@@ -596,6 +667,7 @@
       theme: reportTheme(),
       chart_pictures: $('brt-chart-pictures').checked,
       filters: collectFilters(),
+      areas: collectAreas(),
       sections: [...$('brt-sections').children].map((card) => card.collect()),
     };
   }
