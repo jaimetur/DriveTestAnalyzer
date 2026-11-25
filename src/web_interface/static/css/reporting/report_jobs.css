@@ -379,7 +379,9 @@ button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: under
 .rp-progress i { display: block; height: 100%; background: #234d9a; }
 .rp-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
 .rp-preview-action { padding: .25rem .7rem; border: 1px solid rgba(31, 95, 58, .45); border-radius: 999px; background: #fff; color: var(--rp-accent-dark); font: inherit;
-  font-size: .84rem; font-weight: 700; cursor: pointer; }
+  font-size: .84rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
+/* (Wide enough for Preview or Follow on one line beside or above the round actions.) */
+.rp-actions-cell { min-width: 6.6rem; }
 .rp-preview-action:hover { background: var(--rp-tint); }
 .rp-run-actions .icon-action { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; padding: 0; border: 1px solid var(--rp-line); border-radius: 999px;
   background: #fff; color: #475467; text-decoration: none; font-weight: 700; cursor: pointer; }
