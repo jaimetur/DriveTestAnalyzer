@@ -201,17 +201,31 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
     assert reliable.headers['content-disposition'].endswith('-nns-breakdown-most_reliable.xlsx"')
     book = load_workbook(BytesIO(response.content))
     assert book.sheetnames == ['Areas', 'GAP Totals', 'Sites', 'Scenarios', 'Projection', 'About']
-    # Three header rows: each campaign in a band of its own colour, its Tests then its Best Network and Most Reliable.
+    # Three header rows: each campaign in a band of its own colour, its Tests then the scoring chosen in the tab.
     areas = book['Areas']
     bands, parts, header = ([cell.value for cell in areas[row]] for row in (1, 2, 3))
     assert header[:6] == ['NR Mode', 'Region', 'Area', 'Kind', 'Size', 'Operator'] and [name for name in bands[6:] if name] == ['26-Q2', '26-Q3']
-    assert [name for name in parts[6:] if name] == ['Tests', 'Best Network', 'Most Reliable'] * 2
+    assert [name for name in parts[6:] if name] == ['Tests', 'Best Network'] * 2
+    # Each export holds only its scoring (Best Network or Most Reliable) in every sheet.
+    reliable_book = load_workbook(BytesIO(reliable.content))
+    assert [name for name in [cell.value for cell in reliable_book['Areas'][2]][6:] if name] == ['Tests', 'Most Reliable'] * 2
+    assert [cell.value for cell in book['Scenarios'][1]][5:] == ['Best Network', 'Tests']
+    assert [cell.value for cell in reliable_book['Scenarios'][1]][5:] == ['Most Reliable', 'Tests']
+    assert {row[6] for row in book['Projection'].iter_rows(min_row=4, values_only=True)} == {'Best Network'}
+    assert {row[6] for row in reliable_book['Projection'].iter_rows(min_row=4, values_only=True)} == {'Most Reliable'}
+    assert areas.cell(row=4, column=8).value != reliable_book['Areas'].cell(row=4, column=8).value
+    both = client.get(f"/scoring/saved-scorings/{saved['id']}/export/nns", params={'scoring': 'both'})
+    assert both.headers['content-disposition'].endswith('-nns-breakdown-both.xlsx"')
+    both_book = load_workbook(BytesIO(both.content))
+    assert [name for name in [cell.value for cell in both_book['Areas'][2]][6:] if name] == ['Tests', 'Best Network', 'Most Reliable'] * 2
+    assert [cell.value for cell in both_book['Scenarios'][1]][5:] == ['Best Network', 'Most Reliable', 'Tests']
+    assert client.get(f"/scoring/saved-scorings/{saved['id']}/export/scoring", params={'scoring': 'both'}).status_code == 400
     assert header[6:13] == ['Tests', 'Points', '#1 of the area', 'GAP to #1 of the area', 'Weight in its Region',
                             'Weighted GAP to #1 of the Region', 'Weighted GAP to #1 of all the Regions']
     # Each Region first (its own scoring), then its areas, then its adjustment.
     kinds = [row[3] for row in areas.iter_rows(min_row=4, values_only=True)]
     assert kinds[0] == 'Region' and 'Adjustment' in kinds and kinds.index('Adjustment') > kinds.index('City')
-    assert areas.cell(row=1, column=7).fill.fgColor.rgb != areas.cell(row=1, column=20).fill.fgColor.rgb
+    assert areas.cell(row=1, column=7).fill.fgColor.rgb != areas.cell(row=1, column=14).fill.fgColor.rgb
     assert areas.freeze_panes == 'G4' and areas.cell(row=4, column=7).value is not None
     totals = book['GAP Totals']
     assert [cell.value for cell in totals[3]][:10] == ['NR Mode', 'Region', 'Operator', 'Tests', 'Points', '#1', 'GAP to #1',

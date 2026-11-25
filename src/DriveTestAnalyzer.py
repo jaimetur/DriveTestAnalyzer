@@ -22479,7 +22479,8 @@ def scoring_saved_scoring_export(
             raise HTTPException(status_code=400, detail='The operators of the sections must be an object.')
         operator_choices = {str(section): [str(name) for name in names if str(name).strip()]
                             for section, names in decoded.items() if isinstance(names, list)}
-    if scoring not in {'best_network', 'most_reliable'}:
+    # The NNS Break-down workbook can also hold both scorings side by side (scoring=both).
+    if scoring not in {'best_network', 'most_reliable'} and not (export_kind == 'nns' and scoring == 'both'):
         raise HTTPException(status_code=400, detail='Scoring must be best_network or most_reliable.')
     # The PowerPoint and Word take the scorings and environments ticked in the export dialog; without them, every
     # scoring and environment of the Saved Scoring.
@@ -22549,14 +22550,15 @@ def scoring_saved_scoring_export(
         if selected_environment not in valid_environments:
             raise HTTPException(status_code=400, detail='The selected scoring environment is not available for this Saved Scoring.')
     if export_kind == 'nns':
-        # The NNS Break-down (ticket #195) as an Excel workbook: both scorings, every NR Mode and every site count; its
-        # name ends with the scoring chosen in the tab (best_network or most_reliable).
+        # The NNS Break-down (ticket #195) as an Excel workbook of the scoring chosen in the tab (best_network or
+        # most_reliable) or of both side by side (both), which its name ends with; every NR Mode and every site count.
         from src.modules.scoring.scoring_nns_breakdown import workbook as nns_workbook
         if not isinstance(result.get('nns_breakdown'), dict):
             raise HTTPException(status_code=409, detail='This Saved Scoring has no NNS Break-down: switch it on and calculate it.')
         name = re.sub(r'[^A-Za-z0-9._-]+', '-', str(saved_scoring.get('name') or f'saved-scoring-{filter_id}')).strip('-') or f'saved-scoring-{filter_id}'
         return logged_export(Response(
-            nns_workbook(result['nns_breakdown'], title=str(saved_scoring.get('name') or '')),
+            nns_workbook(result['nns_breakdown'], title=str(saved_scoring.get('name') or ''),
+                         scoring={'most_reliable': 'reliable', 'best_network': 'best'}.get(scoring)),
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             headers={'Content-Disposition': f'attachment; filename="{name}-nns-breakdown-{scoring}.xlsx"'}))
     if export_kind in {'scoring', 'gap'}:

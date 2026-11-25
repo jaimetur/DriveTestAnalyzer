@@ -1372,13 +1372,22 @@
     };
     controls.append(choice('Scoring', [['best', 'Best Network'], ['reliable', 'Most Reliable']], nnsScoring, value => { nnsScoring = value; }));
     if (modes.length > 1) controls.append(choice('NR Mode', modes.map(item => [item.nr_mode, item.nr_mode]), nnsMode, value => { nnsMode = value; }));
-    const exportLink = el('a', 'scoring-nns-export');
     // (Drawn before the rest of the result: its Saved Scoring is that of the payload.)
     const savedScoringId = savedScoringIdOf(payload?.saved_scoring || {}) || currentResultsSavedScoringId || '';
-    exportLink.href = `/scoring/saved-scorings/${encodeURIComponent(savedScoringId)}/export/nns?scoring=${nnsScoring === 'reliable' ? 'most_reliable' : 'best_network'}`;
-    exportLink.title = 'Both tables of every NR Mode, with both scorings and every site count, as an Excel workbook';
-    exportLink.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to Excel</span>';
-    controls.append(exportLink);
+    const excelIcon = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg>';
+    // The scoring chosen here on its own, or Best Network and Most Reliable side by side in one workbook.
+    const scoringName = nnsScoring === 'reliable' ? 'Most Reliable' : 'Best Network';
+    for (const [value, text, title] of [
+      [nnsScoring === 'reliable' ? 'most_reliable' : 'best_network', `Export ${scoringName} to Excel`,
+        `The ${scoringName} tables of every NR Mode, with every site count, as an Excel workbook`],
+      ['both', 'Export both scorings', 'Best Network and Most Reliable side by side, every NR Mode and every site count, as one Excel workbook'],
+    ]) {
+      const exportLink = el('a', 'scoring-nns-export');
+      exportLink.href = `/scoring/saved-scorings/${encodeURIComponent(savedScoringId)}/export/nns?scoring=${value}`;
+      exportLink.title = title;
+      exportLink.innerHTML = `${excelIcon}<span>${text}</span>`;
+      controls.append(exportLink);
+    }
     head.append(facts, controls);
     const points = value => value && Number.isFinite(Number(value.points)) ? value : null;
     const cell = (value, tests) => {

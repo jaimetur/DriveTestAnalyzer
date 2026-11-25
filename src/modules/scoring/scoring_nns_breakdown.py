@@ -630,10 +630,13 @@ def _value(points: Any) -> float | None:
     return round(float(points['points']), 2) if isinstance(points, dict) and points.get('points') is not None else None
 
 
-def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
-    """The NNS Break-down as an Excel workbook: Areas (each campaign's Best Network and Most Reliable points, tests and
-    GAPs to #1), GAP Totals (per Region and for all the Regions), Sites (the serving sites of each area), Scenarios (the
-    latest campaign by city size and scenario) and About."""
+def workbook(breakdown: dict[str, Any], title: str = '', scoring: str | None = None) -> bytes:
+    """The NNS Break-down as an Excel workbook: Areas (each campaign's points, tests and GAPs to #1), GAP Totals (per
+    Region and for all the Regions), Sites (the serving sites of each area), Scenarios (the latest campaign by city size
+    and scenario), Projection and About.
+
+    ``scoring`` (``best`` or ``reliable``, the scoring chosen in the tab) keeps only that scoring in every sheet; without
+    it the workbook holds Best Network and Most Reliable side by side."""
     from io import BytesIO
 
     from openpyxl import Workbook
@@ -664,7 +667,9 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
     modes = [mode for mode in breakdown.get('modes') or [] if isinstance(mode, dict)]
     campaigns = sort_campaigns(campaign for mode in modes for campaign in mode.get('campaigns') or [])
     label = lambda value: format_campaign(value) or value
-    scorings = (('best', 'Best Network'), ('reliable', 'Most Reliable'))
+    scorings = tuple(item for item in (('best', 'Best Network'), ('reliable', 'Most Reliable')) if scoring in (None, item[0]))
+    if not scorings:
+        raise ValueError(f'Unknown NNS Break-down scoring: {scoring}')
     # Each campaign under a band of its own colour, its Tests first, then its Best Network and its Most Reliable columns.
     # The colours of the tool: deep navy and teal shades, one per campaign; within a campaign Tests stay neutral, Best
     # Network takes a mid shade of it and Most Reliable a light one (its values on a faint tint too), with a strong
@@ -833,6 +838,8 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
                         if item['operator'].strip().casefold() == reference}
     for item in sorted(region_rows, key=lambda entry: (entry['nr_mode'], entry['region'] == '', entry['region'], entry['operator'],
                                                        entry['scoring'] != 'best')):
+        if item['scoring'] not in dict(scorings):
+            continue
         name, lines = dict(scorings)[item['scoring']], item['lines']
         ahead = region_reference.get((item['nr_mode'], item['region'], item['scoring'])) or [None] * len(years)
         label_region = item['region'] or 'All the chosen Regions'
@@ -886,17 +893,18 @@ def workbook(breakdown: dict[str, Any], title: str = '') -> bytes:
                      sum(planned.values()), row.get('not_in_grid', 0)])
     sheet('Sites', header, rows)
     order = {name: index for index, name in enumerate(breakdown.get('scenario_order') or [])}
-    rows = [[row['nr_mode'], label(row['campaign']), row['size'], row['scenario'], row['operator'], _value(row.get('best')),
-             _value(row.get('reliable')), row.get('tests')]
+    rows = [[row['nr_mode'], label(row['campaign']), row['size'], row['scenario'], row['operator'],
+             *(_value(row.get(key)) for key, _name in scorings), row.get('tests')]
             for row in sorted(breakdown.get('scenarios') or [], key=lambda item: (
                 item['nr_mode'], item['size'], order.get(item['scenario'], 999), item['operator']))]
-    sheet('Scenarios', ['NR Mode', 'Campaign', 'Size', 'Scenario', 'Operator', 'Best Network', 'Most Reliable', 'Tests'], rows)
+    sheet('Scenarios', ['NR Mode', 'Campaign', 'Size', 'Scenario', 'Operator', *(name for _key, name in scorings), 'Tests'], rows)
     request, grid = breakdown.get('request') or {}, breakdown.get('master_grid') or {}
     inventory = breakdown.get('inventory') or {}
     reference_label = breakdown.get('reference_operator') or 'the reference operator'
     # What the workbook holds: its settings, then each sheet, its columns by group, and where their values come from.
     about = [
         ['Settings', '', 'Saved Scoring', title],
+        ['Settings', '', 'Scoring', ' and '.join(name for _key, name in scorings)],
         ['Settings', '', 'Regions', ', '.join(request.get('regions') or []) or 'Every Region'],
         ['Settings', '', 'Connecting roads', 'Each road on its own' if request.get('roads') == 'each' else 'Grouped by Region (Roads, Highway)'],
         *[['Settings', '', f'{mode["nr_mode"]} campaigns', ', '.join(label(value) for value in mode.get('campaigns') or [])] for mode in modes],
