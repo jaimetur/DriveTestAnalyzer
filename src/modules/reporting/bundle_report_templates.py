@@ -1957,6 +1957,10 @@ class SectionGenerator:
             return scenario_options
 
         context_filters = {column: list(self.filters[name]) for name, column in SCORING_FILTERS.items() if self.filters[name]}
+        # Only what the section shows is calculated: Country Areas and Scoring Trends (also read by the Summary) and the
+        # Points Lost Map (the Points Lost and the Summary), which is otherwise drawn afterwards without waiting for it.
+        shown = {key for key, item in chosen.items() if any(item['components'].values())}
+        parts = {'country_areas': bool(shown & {'geographical_areas', 'summary'}), 'trends': bool(shown & {'trends', 'summary'})}
         report = {'theme': self.definition['theme'], 'all_operators': options['all_operators'],
                   # NSA vs SA: each NR Mode on its own, as the results of the page show it.
                   **({'nr_layout': options['nr_layout'], 'nr_charts': options['nr_charts']} if options.get('nsa_vs_sa') else {}),
@@ -1964,12 +1968,12 @@ class SectionGenerator:
             'name': report_title(self.definition), 'context_filters': context_filters,
             'main_cities': self.filters['main_cities'], 'aggregation_levels': ['Operator', 'Campaign'],
             'scorings': {kind: content(kind) for kind, _label in SCORINGS},
-            'area_summary': {**options['area_summary'], 'enabled': True},
+            'area_summary': {**options['area_summary'], 'enabled': True, **{part: False for part, needed in parts.items() if not needed}},
         }]}
         base = {'dataset_ids': dataset_ids, 'nr_mode': nr_mode, 'baseline_operator': options['baseline_operator'],
                 'scoring_profile_id': options['methodology'] or None,
                 # A Saved Scoring already calculated for these CDRs and filters (such as a Favourite Scoring) is used as it is.
-                'reuse_saved_scorings': True}
+                'reuse_saved_scorings': True, 'points_loss': bool(shown & {'points', 'summary'})}
         self.progress('Calculating Scoring & GAP Analysis')
         try:
             content_bytes, _filename, job = self.core.build_scoring_report_document(self.repository, base, report, self.user.username)
@@ -1999,7 +2003,7 @@ class SectionGenerator:
         saved = saved or job
         try:
             impact_options = scoring_impact.impact_options(self.repository, saved)
-        except (ValueError, KeyError) as exc:
+        except Exception as exc:  # noqa: BLE001 - the rest of the section stays.
             deck.lines.append(f'Skipped: Methodology Impact ({exc})')
             return
         mode = nr_mode if nr_mode in impact_options['nr_modes'] else impact_options['nr_modes'][0]
@@ -2213,12 +2217,18 @@ def _calls_signature(repository: Any) -> list[Any]:
     return signature
 
 
-def _saved_scorings_signature(repository: Any) -> list[Any]:
-    """What changes when a Saved Scoring is calculated again (the Scoring section uses their results)."""
+def _exclusions_signature(repository: Any) -> list[Any]:
+    """The Excluded Calls lists of Scoring (each with its calls and whether it is switched on), which change the scores.
+
+    (The Saved Scorings themselves are not part of the identity of a Scoring section: their results follow from the
+    CDRs, methodologies, maps and these lists, and every report and user calculating one would otherwise generate every
+    Scoring section again.)"""
+    from src.modules.scoring.scoring_exclusions import LISTS_TABLE
     try:
         with repository.connection() as connection:
-            return list(connection.execute(
-                'SELECT COUNT(*), MAX(updated_at), MAX(finished_at), SUM(calculation_count) FROM saved_scorings').fetchone())
+            if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (LISTS_TABLE,)).fetchone() is None:
+                return []
+            return [list(row) for row in connection.execute(f'SELECT * FROM {LISTS_TABLE} ORDER BY id').fetchall()]
     except sqlite3.Error:
         return []
 
@@ -2245,8 +2255,7 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
         inputs['designs'] = {item['key']: stored.get(item['key']) for item in section['items']}
     elif section['key'] == 'scoring':
         inputs['methodologies'] = repository.get_scoring_profiles()
-        # A Saved Scoring of the same selection is used as it is: calculating one again generates the section again.
-        inputs['saved_scorings'] = _saved_scorings_signature(repository)
+        inputs['excluded_calls'] = _exclusions_signature(repository)
     elif section['key'] == 'network_insights':
         inputs['analysis'] = core.network_insights_summary_key(generator.network_selection(section))
     elif section['key'] == 'non_qualified_calls':
@@ -2425,8 +2434,8 @@ def _repeated_section(definition: dict[str, Any], section: dict[str, Any], title
     areas = {area['name']: area for area in definition['areas']}
     runs = list(dict.fromkeys(name for item in section['items'] for name in (item.get('areas') or [''])))
     generated: dict[str, SectionDeck] = {}
-    keys: list[str | None] = []
     title = titles[section['key']]
+    keys: list[str | None] = []
     for name in runs:
         run_section = {**section, 'items': [item for item in section['items'] if name in (item.get('areas') or [''])]}
         run_definition = {**definition, 'filters': area_filters(definition['filters'], areas.get(name)), 'area': name}

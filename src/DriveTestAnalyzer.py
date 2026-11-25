@@ -22729,6 +22729,8 @@ def _scenario_area_summary(task_repository: Repository, scenario: dict[str, Any]
     campaigns = list(summary.get('campaigns') or [])
     if campaigns:
         request['campaigns'] = campaigns
+    # Country Areas or Scoring Trends a report does not show are not calculated.
+    request.update({part: False for part in ('country_areas', 'trends') if summary.get(part) is False})
     return request
 
 
@@ -22743,13 +22745,20 @@ def _completed_scenario_calculation(task_repository: Repository, base: dict[str,
         )
     except ValueError as exc:
         raise ValueError(f'Scenario "{scenario["name"]}": {exc}') from exc
+    # A report that shows no Points Lost (``base['points_loss']`` False) does not wait for the Points Lost Map: it is
+    # drawn afterwards as a job of the workspace, as the Scoring page draws it.
+    wait_for_map = base.get('points_loss', True) is not False
     if saved_scoring['status'] != 'completed' and not cached:
-        calculate_saved_scoring(task_repository, int(saved_scoring['id']))
+        if wait_for_map:
+            calculate_saved_scoring(task_repository, int(saved_scoring['id']))
+        else:
+            submit_points_loss, work_waiting = _points_loss_submitters(task_repository, int(saved_scoring['id']))
+            calculate_saved_scoring(task_repository, int(saved_scoring['id']), submit_points_loss, work_waiting)
     deadline = time_module.monotonic() + _SCENARIO_CALCULATION_WAIT_SECONDS
     while True:
         saved_scoring = get_saved_scoring(task_repository, int(saved_scoring['id']), include_result=True)
         points_loss = ((saved_scoring or {}).get('result') or {}).get('points_loss')
-        map_pending = isinstance(points_loss, dict) and points_loss.get('pending')
+        map_pending = wait_for_map and isinstance(points_loss, dict) and points_loss.get('pending')
         if (saved_scoring is None or saved_scoring['status'] == 'failed'
                 or (saved_scoring['status'] == 'completed' and not map_pending) or time_module.monotonic() > deadline):
             break

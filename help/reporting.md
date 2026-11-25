@@ -147,6 +147,8 @@ Ready, the report opens by itself in the [slide viewer](presentations.md#using-t
 - **Warnings** are listed above the slides, such as sections that could not be generated and those reused. A section that cannot be generated (for example Scoring without a campaign with Data, Voice and Speech CDRs) is left out and the others stay; a Design of PPT Designer or a CDR of CDR Analysis that cannot be generated is left out of its section, whose cover names it.
 - **LibreOffice** is needed for the preview; without it the dialog says so and the files are downloaded from History.
 
+**Only what is shown is calculated.** A Scoring & GAP Analysis section (and each of its repetitions for an [area](#areas)) calculates Country Areas and the Scoring Trends only when it shows them (or the Summary, which reads them), and does not wait for the Points Lost Map unless it shows the Points Lost or the Summary: that map is drawn afterwards as a job of the workspace, as the Scoring page draws it.
+
 **Reuse generated sections** (checked by default, above the list of reports) keeps each section generated for the next generations, by hand and on a schedule alike. A section is reused while the application has not been updated and its options, the common filters and the data it reads have not changed: the CDRs, the Operator and Vendor Maps, the Main Cities and, per section, the Designs, the methodologies and the Saved Scorings calculated, the inventory of the analysis, the follow-up of the calls or the CDRs the Campaigns of CDR Analysis choose.
 
 - A Saved Scoring calculated again makes the Scoring & GAP Analysis section be generated again by itself.

@@ -1153,15 +1153,20 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
     assert export()['reused'] == [] and calls[-1] == ['2026-Q2']
 
 
-def test_the_scoring_section_is_generated_again_when_a_saved_scoring_is_calculated_again(client, monkeypatch):
+def test_the_scoring_section_is_kept_while_its_inputs_stay_and_generated_again_when_the_excluded_calls_change(client, monkeypatch):
+    # Ticket #202: calculating Saved Scorings (the report itself, or any user) does not change the identity of a Scoring
+    # section, so the next report reuses it; the Excluded Calls lists, which change the scores, do.
     login(client)
     definition = bundle_report_templates.normalize_definition({})
     scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
-    signatures = iter([[1, '2026-10-19T10:00:00', '2026-10-19T10:00:00', 1], [1, '2026-10-19T11:00:00', '2026-10-19T11:00:00', 2]])
-    monkeypatch.setattr(bundle_report_templates, '_saved_scorings_signature', lambda repository: next(signatures))
     before = bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None)
-    after = bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None)
-    assert before != after
+    with core.repository.connection() as connection:
+        connection.execute("CREATE TABLE IF NOT EXISTS saved_scorings_probe (id INTEGER)")
+    assert bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None) == before
+    lists = iter([[[1, 'u', 'List', '', '', '[]', 1, 3, 'h1']], [[1, 'u', 'List', '', '', '[]', 0, 3, 'h1']]])
+    monkeypatch.setattr(bundle_report_templates, '_exclusions_signature', lambda repository: next(lists))
+    first = bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None)
+    assert first != bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None)
 
 
 def test_an_update_of_the_application_generates_the_sections_again(client, monkeypatch):
@@ -1469,3 +1474,25 @@ def test_slides_written_by_hand_open_and_close_the_report_and_travel_with_it(cli
     assert bundle_report_templates.report_slides_content(core.repository, stored['sha256']) is None
     bundle_report_templates.import_entries(core.repository, [entry], 'super', bundle_report_templates.workspace_designs(core.repository))
     assert bundle_report_templates.report_slides_content(core.repository, stored['sha256']) == summary
+
+
+def test_a_scoring_section_calculates_only_what_it_shows(client, monkeypatch, tmp_path):
+    # Ticket #202: a section (or a repetition for an area) without Country Areas, Scoring Trends, Summary or Points Lost
+    # does not calculate them, nor waits for the Points Lost Map.
+    from types import SimpleNamespace
+
+    asked = []
+    monkeypatch.setattr(bundle_report_templates, 'complete_campaign_cdrs', lambda repository, nr_mode, campaigns: ([1, 2, 3], []))
+    monkeypatch.setattr(bundle_report_templates, 'resolve_campaign_filter', lambda repository, nr_mode, campaigns: ['UK_Q3_2026'])
+    fake_core = SimpleNamespace(build_scoring_report_document=lambda repository, base, report, username: asked.append((base, report)) or (b'deck', 'x.pptx', {}))
+    definition = bundle_report_templates.normalize_definition({})
+    section = next(item for item in definition['sections'] if item['key'] == 'scoring')
+    for shown, parts, points_loss in ((['charts'], {'country_areas': False, 'trends': False}, False),
+                                      (['charts', 'trends', 'points'], {'country_areas': False}, True),
+                                      (['summary'], {}, True)):
+        chosen = {**section, 'items': [{**item, 'enabled': item['key'] in shown} for item in section['items'] if item['key'] in shown]}
+        bundle_report_templates.SectionGenerator(fake_core, core.repository, SimpleNamespace(username='super'), definition, tmp_path).scoring(chosen)
+        base, report = asked[-1]
+        area = report['scenarios'][0]['area_summary']
+        assert {part: area[part] for part in ('country_areas', 'trends') if part in area} == parts
+        assert base['points_loss'] is points_loss
