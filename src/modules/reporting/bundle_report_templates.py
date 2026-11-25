@@ -105,6 +105,10 @@ COMBINED_ENVIRONMENT = 'all'
 # of the common filters (see build_report).
 MAX_AREAS = 30
 AREA_FIELDS = ('regions', 'clusters', 'cities')
+# The generated comments each PPT Design of a report writes into its PPT (see PPT Designer, Auto comments): none, on the
+# slides without comments, in place of the generated ones or in place of every comment.
+DESIGN_COMMENTS = {'off': 'Off', 'empty': 'On slides without comments', 'generated': 'Replace generated comments',
+                   'all': 'Replace every comment'}
 FILTER_FIELDS = ('operators', 'operator_vendors', 'vendor_operators', 'vendors', 'regions', 'clusters', 'cities')
 FILTER_LABELS = {'operators': 'Operators', 'operator_vendors': 'Operator_Vendor', 'vendor_operators': 'Vendor_Operator',
                  'vendors': 'Vendors', 'regions': 'Regions', 'clusters': 'Clusters', 'cities': 'Cities'}
@@ -198,6 +202,8 @@ def _module_options(section: str) -> dict[str, Any]:
     if section == 'non_qualified_calls':
         return {'granularity': 'week', 'open_only': False, 'include_suggestions': True, 'show_not_classified': False,
                 'show_empty': False}
+    if section == 'designs':
+        return {'auto_comments': 'off'}
     if section == 'dataset_analysis':
         # The metrics of each CDR type (none: every metric, also future ones), the Global Comparison (Auto) and the
         # Global CDF Comparison, as a CDR Analysis artifact of a Reporting Job.
@@ -263,6 +269,8 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
             'include_suggestions': bool(raw.get('include_suggestions', True)),
             'show_not_classified': bool(raw.get('show_not_classified')), 'show_empty': bool(raw.get('show_empty')),
         })
+    elif section == 'designs':
+        options['auto_comments'] = raw['auto_comments'] if raw.get('auto_comments') in DESIGN_COMMENTS else 'off'
     elif section == 'dataset_analysis':
         kinds, aggregations, cdf_groupings = _cdr_analysis_choices()
         metrics = raw.get('metrics') if isinstance(raw.get('metrics'), dict) else {}
@@ -482,7 +490,9 @@ def _option_lines(section: dict[str, Any], design_names: dict[str, str] | None,
     options = section['options']
     if section['key'] == 'designs':
         names = [item.get('label') or (design_names or {}).get(item['key'], item['key']) for item in section['items']]
-        return [f"PPT Designs: {', '.join(names)}"]
+        comments = options.get('auto_comments', 'off')
+        return [f"PPT Designs: {', '.join(names)}",
+                *([f'Generated comments: {DESIGN_COMMENTS[comments]}'] if comments != 'off' else [])]
     if section['key'] == 'scoring':
         scorings = ', '.join(label for key, label in SCORINGS if key in options['scorings'])
         environments = ', '.join('All Environments' if name == COMBINED_ENVIRONMENT else name for name in options['environments'])
@@ -743,7 +753,7 @@ DEFINITION_LABELS = {
     'overshoot_km': 'Overshooting beyond (km)', 'grid_metres': 'Map grid (m)', 'granularity': 'Progress periods',
     'open_only': 'Open calls only', 'include_suggestions': 'Count suggested root causes',
     'show_not_classified': 'Show Not classified calls', 'show_empty': 'Show calls without a value in the phases',
-    'aggregation': 'Global Comparison', 'cdf_grouping': 'Global CDF Comparison',
+    'aggregation': 'Global Comparison', 'cdf_grouping': 'Global CDF Comparison', 'auto_comments': 'Generated comments',
 }
 
 
@@ -770,6 +780,8 @@ def _told_options(section: str, options: dict[str, Any]) -> dict[str, Any]:
                      'group': [NI_GROUPINGS.get(key, key) for key in options['group']]})
     elif section == 'non_qualified_calls':
         told['granularity'] = NQ_GRANULARITIES.get(options['granularity'], options['granularity'])
+    elif section == 'designs':
+        told['auto_comments'] = DESIGN_COMMENTS.get(options.get('auto_comments', 'off'), 'Off')
     elif section == 'dataset_analysis':
         kinds, aggregations, cdf_groupings = _cdr_analysis_choices()
         told.update({'metrics': {kinds.get(key, key): values for key, values in options['metrics'].items()},
@@ -1774,9 +1786,12 @@ class SectionGenerator:
                                and self.filters[field_name]), None)
                 if chosen:
                     parameter_values[parameter['id']] = chosen
-            if parameter_values != (design.get('parameter_values') or {}):
+            if parameter_values != (design.get('parameter_values') or {}) or self.definition.get('area'):
+                # (Repeated for an area, its saved comments, written for its own selection, stay out too.)
                 definition.update(parameter_values=parameter_values, slide_comments={}, slide_comment_meta={})
-            job_id = tools.queue_export(item['key'], self.user, definition, theme=self.definition.get('theme'))
+            comments = section['options'].get('auto_comments', 'off')
+            job_id = tools.queue_export(item['key'], self.user, definition, theme=self.definition.get('theme'),
+                                        **({'auto_comments': comments} if comments != 'off' else {}))
             deadline = time.monotonic() + DESIGN_TIMEOUT_SECONDS
             # A PPT Design that fails leaves the others in the section, which names it on its cover.
             problem = ''
@@ -2113,6 +2128,8 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
     of the application, generates it again."""
     inputs: dict[str, Any] = {
         'version': SECTION_CACHE_VERSION, 'code': code_identity(), 'section': section, 'filters': definition['filters'],
+        # (A repetition for an area leaves the saved comments of the PPT Designs out.)
+        'area': definition.get('area') or '',
         # The theme of the report colours every section that supports themes.
         'theme': definition.get('theme'),
         'datasets': [dict(row) for row in repository.list_datasets()],
@@ -2308,7 +2325,7 @@ def _repeated_section(definition: dict[str, Any], section: dict[str, Any], title
     title = titles[section['key']]
     for name in runs:
         run_section = {**section, 'items': [item for item in section['items'] if name in (item.get('areas') or [''])]}
-        run_definition = {**definition, 'filters': area_filters(definition['filters'], areas.get(name))}
+        run_definition = {**definition, 'filters': area_filters(definition['filters'], areas.get(name)), 'area': name}
         try:
             deck, key = generate(run_definition, run_section, name)
         except Exception as exc:  # An area that fails leaves the others in the section.
@@ -2565,7 +2582,7 @@ def install_bundle_report_template_routes(core: Any) -> None:
             'scorings': [{'value': key, 'label': label} for key, label in SCORINGS],
             'network_technologies': NI_TECHNOLOGIES, 'network_groupings': NI_GROUPINGS,
             'nq_granularities': NQ_GRANULARITIES,
-            'nr_layouts': list(NR_LAYOUT_LABELS.items()), 'nr_charts': list(NR_CHARTS_LABELS.items()),
+            'nr_layouts': list(NR_LAYOUT_LABELS.items()), 'nr_charts': list(NR_CHARTS_LABELS.items()), 'design_comments': DESIGN_COMMENTS,
             'area_summary_breakdowns': list(AREA_SUMMARY_BREAKDOWNS), 'area_summary_time_splits': list(AREA_SUMMARY_TIME_SPLITS),
             'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
         }

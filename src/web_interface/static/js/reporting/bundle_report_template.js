@@ -510,6 +510,19 @@
     return holder;
   }
 
+  // The generated comments each PPT Design writes into its PPT (Auto comments of PPT Designer).
+  function designsOptions(saved) {
+    const box = node('div', undefined, 'brt-options brt-option-grid');
+    const comments = selectField('Generated comments', Object.entries(brtOptions.design_comments || {off: 'Off'}), saved.auto_comments || 'off');
+    comments.title = 'Comments written from the charts of each PPT Design into this report (with the comment writer of PPT Designer): '
+      + 'on the slides without comments, in place of the generated ones or in place of every comment. A PPT Design repeated for an area '
+      + 'leaves its saved comments out.';
+    comments.input.addEventListener('change', changed);
+    box.append(comments);
+    box.collect = () => ({auto_comments: comments.input.value});
+    return box;
+  }
+
   function itemRow(sectionKey, catalogueItem, saved) {
     const row = node('li', undefined, 'brt-item');
     row.dataset.key = catalogueItem.key;
@@ -602,7 +615,8 @@
     const optionsBox = saved.key === 'scoring' ? scoringOptions(saved.options)
       : saved.key === 'network_insights' ? networkOptions(saved.options)
         : saved.key === 'non_qualified_calls' ? callsOptions(saved.options)
-          : saved.key === 'dataset_analysis' ? cdrOptions(saved.options) : null;
+          : saved.key === 'dataset_analysis' ? cdrOptions(saved.options)
+            : saved.key === 'designs' ? designsOptions(saved.options) : null;
     if (optionsBox?.scopeFields) scope.append(...optionsBox.scopeFields);
     if (optionsBox?.nrMode) {
       sectionMode = optionsBox.nrMode;

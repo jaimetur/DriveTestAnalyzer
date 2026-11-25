@@ -106,6 +106,8 @@ Each module has its own, at the top of its card and in amber so they stand out (
   - **Country Areas:** the **Breakdown** (Region by default, Cluster, City or None) and the **Cities on their own** (London by default, or the **Main Cities** of the workspace at each generation) of the Country Areas and the National & Country Areas Trends;
   - **Scoring Trends:** their **Campaigns** (**All available campaigns** by default, Latest campaign, Latest 2, 3 or 4 campaigns, Previous campaign or chosen campaigns; none, **Same as the module**, takes the campaigns of the module), used for the Scoring Trend and the National & Country Areas Trends, and their **Time split**.
 
+**PPT Designer:** **Generated comments** (Off by default) writes [generated comments](ppt-designer.md#generated-comments) from the charts of each PPT Design into the report, with the comment writer of PPT Designer: **On slides without comments**, **Replace generated comments** or **Replace every comment**, as the Auto comments of Generate PPT. The PPT Designs keep their own comments. A PPT Design repeated for an [area](#areas) leaves its saved comments out, since they were written for its own selection.
+
 **Network Insights:** Technology, Split by, the LTE and NR coverage and interference thresholds, the overshooting distance, the map grid and the Environments.
 
 **Non-Qualified Calls:** the period of the progress timeline, every call or open calls only, whether the Root Cause Analysis counts the suggested root causes, and whether its charts show the Not classified calls and the Lifecycle the calls without a value.

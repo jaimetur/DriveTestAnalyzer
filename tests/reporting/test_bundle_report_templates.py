@@ -91,7 +91,8 @@ def test_definitions_keep_the_order_and_options_of_every_section():
         section = bundle_report_templates.normalize_definition({'sections': [{'key': 'network_insights', 'options': {'campaigns': saved}}]})
         assert section['sections'][0]['options']['campaigns'] == kept
     scoring = next(section for section in defaults['sections'] if section['key'] == 'scoring')
-    assert [item['key'] for item in scoring['items']] == ['summary', 'charts', 'tables', 'geographical_areas', 'trends', 'gap', 'points']
+    assert [item['key'] for item in scoring['items']] == ['summary', 'charts', 'tables', 'geographical_areas', 'trends', 'gap', 'points',
+                                                         'impact']
     assert all(all(item['components'].values()) for item in scoring['items'])
     assert scoring['options']['scorings'] == ['best_network'] and scoring['options']['environments'] == ['all']
     # Saved order first, then what the report did not have yet; unknown keys are dropped. A report saved when the

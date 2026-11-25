@@ -268,6 +268,35 @@ def test_bundle_report_templates_give_the_parameters_of_a_design_the_values_of_t
         assert (queued[-1]['parameter_values'], queued[-1]['slide_comments']) == (values, comments)
 
 
+def test_report_designs_write_generated_comments_and_leave_saved_ones_out_when_repeated_for_an_area(tmp_path):
+    # Ticket #202: the Generated comments of the PPT Designer section reach the export of each PPT Design, and a PPT
+    # Design repeated for an area leaves its saved comments (written for its own selection) out.
+    from types import SimpleNamespace
+    from src.modules.reporting.bundle_report_templates import SectionGenerator, normalize_definition, section_lines
+
+    queued = []
+    output = tmp_path / 'deck.pptx'
+    output.write_bytes(b'pptx')
+    stored = {'name': 'City', 'nr_mode': 'NSA', 'template': 'City', 'filters': {}, 'slide_comments': {'s1': [{'text': 'Saved'}]}}
+    tools = SimpleNamespace(
+        list_designs=lambda _repository: {'city': stored}, parameters=lambda _repository, _raw: [],
+        queue_export=lambda key, _user, definition, theme=None, **extra: queued.append((definition, extra)) or 1,
+        job=lambda _repository, _job_id: {'status': 'ready', 'output_path': str(output), 'progress': 100, 'last_error': ''},
+    )
+    definition = normalize_definition({'filters': {'nr_mode': 'NSA'}, 'sections': [
+        {'key': 'designs', 'enabled': True, 'items': [{'key': 'city', 'enabled': True}],
+         'options': {'campaigns': [], 'auto_comments': 'empty'}}]})
+    section = next(item for item in definition['sections'] if item['key'] == 'designs')
+    assert section['options']['auto_comments'] == 'empty'
+    assert 'Generated comments: On slides without comments' in section_lines(section)
+    for area, comments in (('', stored['slide_comments']), ('London', {})):
+        SectionGenerator(SimpleNamespace(design_reporting=tools), SimpleNamespace(list_main_cities=lambda: []), 'super',
+                         {**definition, 'area': area}, tmp_path).designs(section)
+        assert queued[-1][0]['slide_comments'] == comments and queued[-1][1] == {'auto_comments': 'empty'}
+    saved = normalize_definition({'sections': [{'key': 'designs', 'options': {'auto_comments': 'nope'}}]})
+    assert next(item for item in saved['sections'] if item['key'] == 'designs')['options']['auto_comments'] == 'off'
+
+
 def entry_of(**fields):
     from dataclasses import replace
 
