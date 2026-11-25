@@ -1,0 +1,20 @@
+{
+  "name": "Quarterly BNP Report - Vendor Split",
+  "template": "Quarterly BNP Report - Vendor Split",
+  "nr_mode": "NSA",
+  "sa_campaigns": [],
+  "scope": "multivendor",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "slide_comments": {},
+  "filters": {
+    "Campaign": [
+      "@latest-2-campaigns"
+    ],
+    "City": [
+      "@main-cities"
+    ]
+  }
+}

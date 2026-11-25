@@ -1,0 +1,19 @@
+{
+  "name": "Quarterly BNP Report - SA vs NSA",
+  "template": "Quarterly BNP Report - SA vs NSA",
+  "nr_mode": "NSA+SA",
+  "sa_campaigns": [
+    "@latest-campaign"
+  ],
+  "scope": "single",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "slide_comments": {},
+  "filters": {
+    "Campaign": [
+      "@latest-campaign"
+    ]
+  }
+}

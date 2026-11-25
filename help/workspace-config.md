@@ -242,6 +242,12 @@ The fields are listed on the left in the order they are worked out: a field can 
 | `>`, `>=`, `<`, `<=` | compares numbers | `[Mean_Data_Rate] > 100` |
 | `IS EMPTY`, `IS NOT EMPTY` | has no value, has one | `[Failure_Category] IS EMPTY` |
 
+**Shipped fields.** A new workspace starts with **Call_Family**, **Test_Family**, **Test_Result_Group**, **RAT_Group** and **NR_Mode_from_RAT**, and every workspace receives once those shipped later, which the Quarterly BNP Report templates use (one deleted is not given again):
+
+- **LTE_PCell_Band** (Data): the band of the first LTE PCell of the test (`B1`, `B3`, `B7`, `B20`…), from `LTE_Band_Combination`.
+- **NR_PCell_Band** (Data) and **NR_Call_Band** (Voice): the band of the first NR PCell (`n78`, `n1`, `n28`…), from `NR_DL_PCell_Band` and `NR_BAND_A`.
+- **LTE_Carriers** and **NR_Carriers** (Data): the most LTE or NR carriers aggregated during the test (`1CC` to `5CC`), from `LTE_NR_DL_Carriers_Timeline`.
+
 Text comparisons ignore case. A value with spaces or symbols is quoted (`'NR SA'`, `\'` for a quote). In `MATCHES '(^|/)NR(/|$)'`, `(^|/)` is the start of the text or a `/`, and `(/|$)` a `/` or the end: it finds `NR` as one item of a list such as `NR/LTE` or `LTE/NR/GSM`, but not inside `LTE-5GNR`.
 
 ### Saving and updates

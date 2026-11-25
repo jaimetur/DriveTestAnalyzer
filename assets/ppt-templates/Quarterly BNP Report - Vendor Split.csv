@@ -1,0 +1,35 @@
+Slide,Slide Tittle,Slide Subtittle,Layout,Dynamic Rows Field,Dynamic Columns Field,Chart Tittle,Source Dataset,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position,Legend Format,Label Position,Label Format,Axis X Range,Axis Y Range,Exclude Null/Empty,Exclude Zero
+1,Final CDR Analysis – Vendor split,{Cities} · {Campaigns},Transition,,,,,,Transition Slide,,,,,,,,,,,,
+2,Multivendor samples – {Cities},{Cities} · {NR Mode},Title + 1 rows + 1 columns + comments down,,,Samples of each vendor (FDTT DL),CDR-Data,Vendor,100% Stacked Vertical Bars,Test_Name = FDTT http DL MT,,Operator × Campaign,Vendor,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+3,FDTT DL technology – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 1 columns + comments down,,,RAT of the FDTT DL tests,CDR-Data,RAT_Group,100% Stacked Vertical Bars,Test_Name = FDTT http DL MT,,Operator × Campaign,RAT_Group,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+4,DL bandwidth and carriers – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,NR DL PCell bandwidth,CDR-Data,NR_DL_PCell_Bandwidth,CDF Line,Test_Name = FDTT http DL MT,Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+4,DL bandwidth and carriers – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,Number of NR carriers,CDR-Data,NR_Carriers,100% Stacked Vertical Bars,"Test_Name = FDTT http DL MT;
+NR_Carriers != (blank)",,Operator × Campaign,NR_Carriers,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+5,Data success ratio – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 1 columns + comments down,,,Success ratio per type of test,CDR-Data,Test_Result_Group,100% Stacked Vertical Bars,"Type_of_Test IN (httpBrowser, httpTransfer, VideoStreaming, Interactivity)",Type_of_Test,Operator × Campaign,Test_Result_Group,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+6,FDFS DL throughput and transfer time – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDFS DL throughput CDF,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+6,FDFS DL throughput and transfer time – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDFS DL average transfer time,CDR-Data,Transfer_Duration,Average Vertical Bars,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST)",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+7,FDFS UL throughput and transfer time – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDFS UL throughput CDF,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP UL ST, FDFS HTTPS UL ST)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+7,FDFS UL throughput and transfer time – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDFS UL average transfer time,CDR-Data,Transfer_Duration,Average Vertical Bars,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP UL ST, FDFS HTTPS UL ST)",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+8,FDTT DL throughput and below samples – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDTT DL throughput CDF,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name = FDTT http DL MT",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+8,FDTT DL throughput and below samples – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDTT DL throughput below,CDR-Data,Mean_Data_Rate,Distribution Stacked Vertical Bars,"Test_Result = Completed;
+Test_Name = FDTT http DL MT;
+Buckets < 2,5,20,100",Operator,Campaign × Rate Bucket,Buckets,Right,,,,,,,
+9,FDTT UL throughput and below samples – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDTT UL throughput CDF,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name = FDTT UDP UL ST",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+9,FDTT UL throughput and below samples – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDTT UL throughput below,CDR-Data,Mean_Data_Rate,Distribution Stacked Vertical Bars,"Test_Result = Completed;
+Test_Name = FDTT UDP UL ST;
+Buckets < 1,3,10,20",Operator,Campaign × Rate Bucket,Buckets,Right,,,,,,,
+10,FDTT DL – LTE & NR PDSCH throughput – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,LTE PCell PDSCH throughput,CDR-Data,LTE_DL_PCell_PDSCH_Throughput_Avg,CDF Line,Test_Name = FDTT http DL MT,Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+10,FDTT DL – LTE & NR PDSCH throughput – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,NR PCell PDSCH throughput,CDR-Data,NR_DL_PCell_PDSCH_Throughput_Avg,CDF Line,Test_Name = FDTT http DL MT,Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+11,FDTT DL – 5G resource allocation – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,NR DL resource blocks,CDR-Data,NR_DL_RBs_Avg,CDF Line,Test_Name = FDTT http DL MT,Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+11,FDTT DL – 5G resource allocation – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,NR DL MIMO layers,CDR-Data,NR_DL_Max_MIMO_Layers,100% Stacked Vertical Bars,"Test_Name = FDTT http DL MT;
+NR_DL_Max_MIMO_Layers != (blank)",,Operator × Campaign,NR_DL_Max_MIMO_Layers,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+12,Interactivity RTT – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,Interactivity RTT CDF,CDR-Data,Interactivity_RTT_Median,CDF Line,"Test_Result = Completed;
+Type_of_Test = Interactivity",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+12,Interactivity RTT – Vendor split – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,Interactivity RTT median,CDR-Data,Interactivity_RTT_Median,Median Vertical Bars,"Test_Result = Completed;
+Type_of_Test = Interactivity",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,

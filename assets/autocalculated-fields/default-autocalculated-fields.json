@@ -1,160 +1,367 @@
 [
-  {
-    "name": "Call_Family",
-    "sources": [
-      "cdr-voice",
-      "cdr-speech"
-    ],
-    "default": "CALL",
-    "default_from": "",
-    "expression": "",
-    "rules": [
-      {
-        "when": "[Session_Type] CONTAINS MultiRAB",
-        "value": "MultiRAB"
-      },
-      {
-        "when": "[Session_Type] CONTAINS WhatsApp",
-        "value": "WhatsApp"
-      },
-      {
-        "when": "[Session_Type] = CALL",
-        "value": "VoLTE"
-      }
-    ]
-  },
-  {
-    "name": "Test_Family",
-    "sources": [
-      "cdr-data"
-    ],
-    "default": "",
-    "default_from": "[Type_of_Test] OR [Test_Type]",
-    "expression": "",
-    "rules": [
-      {
-        "when": "[Test_Name] CONTAINS YouTube",
-        "value": "YouTube"
-      },
-      {
-        "when": "[Test_Name] CONTAINS FDFS",
-        "value": "FDFS"
-      },
-      {
-        "when": "[Test_Name] CONTAINS FDTT",
-        "value": "FDTT"
-      }
-    ]
-  },
-  {
-    "name": "Test_Result_Group",
-    "sources": [
-      "cdr-data",
-      "cdr-voice",
-      "cdr-speech"
-    ],
-    "default": "",
-    "default_from": "",
-    "expression": "",
-    "rules": [
-      {
-        "when": "[Test_Result] OR [Call_Status] OR [status] IN (Completed, 'Visible Completed')",
-        "value": "Success"
-      },
-      {
-        "when": "[Test_Result] OR [Call_Status] OR [status] IN (Cutoff, Failed, Dropped)",
-        "value": "Failure"
-      }
-    ]
-  },
-  {
-    "name": "RAT_Group",
-    "sources": [
-      "cdr-data",
-      "cdr-voice",
-      "cdr-speech"
-    ],
-    "default": "",
-    "default_from": "[RAT] OR [RAT_A]",
-    "expression": "",
-    "rules": [
-      {
-        "when": "[RAT] OR [RAT_A] IN ('NR SA', NE-DC, '5G NR', NR)",
-        "value": "NR SA"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] IN (VoNR, VoNR/NR)",
-        "value": "VoNR"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS VoNR",
-        "value": "VoNR Mixed"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS EPSFB",
-        "value": "EPSFB"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS ('NR SA', NE-DC) OR [RAT] OR [RAT_A] MATCHES '(^|/)NR(/|$)'",
-        "value": "NR SA Mixed"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] IN (EN-DC, LTE-5GNR)",
-        "value": "EN-DC"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS (EN-DC, LTE-5GNR)",
-        "value": "ENDC Mixed"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] IN (VoLTE, LTE/VoLTE)",
-        "value": "VoLTE"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS VoLTE",
-        "value": "VoLTE Mixed"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS CSFB",
-        "value": "CSFB"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] = LTE",
-        "value": "LTE"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS LTE",
-        "value": "LTE Mixed"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS (GSM, UMTS)",
-        "value": "2G/3G"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS ('No Service', No_Service)",
-        "value": "No Service"
-      }
-    ]
-  },
-  {
-    "name": "NR_Mode_from_RAT",
-    "sources": [
-      "cdr-data",
-      "cdr-voice",
-      "cdr-speech"
-    ],
-    "default": "Others",
-    "default_from": "",
-    "expression": "",
-    "rules": [
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS ('NR SA', NE-DC, VoNR, EPSFB, '5G NR') OR [RAT] OR [RAT_A] MATCHES '(^|/)NR(/|$)'",
-        "value": "SA"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] CONTAINS (EN-DC, LTE-5GNR)",
-        "value": "NSA"
-      }
-    ]
-  }
+ {
+  "name": "Call_Family",
+  "sources": [
+   "cdr-voice",
+   "cdr-speech"
+  ],
+  "default": "CALL",
+  "default_from": "",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[Session_Type] CONTAINS MultiRAB",
+    "value": "MultiRAB"
+   },
+   {
+    "when": "[Session_Type] CONTAINS WhatsApp",
+    "value": "WhatsApp"
+   },
+   {
+    "when": "[Session_Type] = CALL",
+    "value": "VoLTE"
+   }
+  ]
+ },
+ {
+  "name": "Test_Family",
+  "sources": [
+   "cdr-data"
+  ],
+  "default": "",
+  "default_from": "[Type_of_Test] OR [Test_Type]",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[Test_Name] CONTAINS YouTube",
+    "value": "YouTube"
+   },
+   {
+    "when": "[Test_Name] CONTAINS FDFS",
+    "value": "FDFS"
+   },
+   {
+    "when": "[Test_Name] CONTAINS FDTT",
+    "value": "FDTT"
+   }
+  ]
+ },
+ {
+  "name": "Test_Result_Group",
+  "sources": [
+   "cdr-data",
+   "cdr-voice",
+   "cdr-speech"
+  ],
+  "default": "",
+  "default_from": "",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[Test_Result] OR [Call_Status] OR [status] IN (Completed, 'Visible Completed')",
+    "value": "Success"
+   },
+   {
+    "when": "[Test_Result] OR [Call_Status] OR [status] IN (Cutoff, Failed, Dropped)",
+    "value": "Failure"
+   }
+  ]
+ },
+ {
+  "name": "RAT_Group",
+  "sources": [
+   "cdr-data",
+   "cdr-voice",
+   "cdr-speech"
+  ],
+  "default": "",
+  "default_from": "[RAT] OR [RAT_A]",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[RAT] OR [RAT_A] IN ('NR SA', NE-DC, '5G NR', NR)",
+    "value": "NR SA"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] IN (VoNR, VoNR/NR)",
+    "value": "VoNR"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS VoNR",
+    "value": "VoNR Mixed"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS EPSFB",
+    "value": "EPSFB"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS ('NR SA', NE-DC) OR [RAT] OR [RAT_A] MATCHES '(^|/)NR(/|$)'",
+    "value": "NR SA Mixed"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] IN (EN-DC, LTE-5GNR)",
+    "value": "EN-DC"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS (EN-DC, LTE-5GNR)",
+    "value": "ENDC Mixed"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] IN (VoLTE, LTE/VoLTE)",
+    "value": "VoLTE"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS VoLTE",
+    "value": "VoLTE Mixed"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS CSFB",
+    "value": "CSFB"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] = LTE",
+    "value": "LTE"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS LTE",
+    "value": "LTE Mixed"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS (GSM, UMTS)",
+    "value": "2G/3G"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS ('No Service', No_Service)",
+    "value": "No Service"
+   }
+  ]
+ },
+ {
+  "name": "NR_Mode_from_RAT",
+  "sources": [
+   "cdr-data",
+   "cdr-voice",
+   "cdr-speech"
+  ],
+  "default": "Others",
+  "default_from": "",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS ('NR SA', NE-DC, VoNR, EPSFB, '5G NR') OR [RAT] OR [RAT_A] MATCHES '(^|/)NR(/|$)'",
+    "value": "SA"
+   },
+   {
+    "when": "[RAT] OR [RAT_A] CONTAINS (EN-DC, LTE-5GNR)",
+    "value": "NSA"
+   }
+  ]
+ },
+ {
+  "name": "LTE_PCell_Band",
+  "sources": [
+   "cdr-data"
+  ],
+  "default": "",
+  "default_from": "",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 1[\\]/]'",
+    "value": "B1"
+   },
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 3[\\]/]'",
+    "value": "B3"
+   },
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 7[\\]/]'",
+    "value": "B7"
+   },
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 8[\\]/]'",
+    "value": "B8"
+   },
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 20[\\]/]'",
+    "value": "B20"
+   },
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 28[\\]/]'",
+    "value": "B28"
+   },
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 32[\\]/]'",
+    "value": "B32"
+   },
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 38[\\]/]'",
+    "value": "B38"
+   },
+   {
+    "when": "[LTE_Band_Combination] MATCHES '^\\[LTE E-UTRA 40[\\]/]'",
+    "value": "B40"
+   }
+  ]
+ },
+ {
+  "name": "NR_PCell_Band",
+  "sources": [
+   "cdr-data"
+  ],
+  "default": "",
+  "default_from": "",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 1[\\]/]'",
+    "value": "n1"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 3[\\]/]'",
+    "value": "n3"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 7[\\]/]'",
+    "value": "n7"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 8[\\]/]'",
+    "value": "n8"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 20[\\]/]'",
+    "value": "n20"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 28[\\]/]'",
+    "value": "n28"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 38[\\]/]'",
+    "value": "n38"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 40[\\]/]'",
+    "value": "n40"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 77[\\]/]'",
+    "value": "n77"
+   },
+   {
+    "when": "[NR_DL_PCell_Band] MATCHES '^\\[NR BAND 78[\\]/]'",
+    "value": "n78"
+   }
+  ]
+ },
+ {
+  "name": "NR_Call_Band",
+  "sources": [
+   "cdr-voice"
+  ],
+  "default": "",
+  "default_from": "",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 1[\\]/]'",
+    "value": "n1"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 3[\\]/]'",
+    "value": "n3"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 7[\\]/]'",
+    "value": "n7"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 8[\\]/]'",
+    "value": "n8"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 20[\\]/]'",
+    "value": "n20"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 28[\\]/]'",
+    "value": "n28"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 38[\\]/]'",
+    "value": "n38"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 40[\\]/]'",
+    "value": "n40"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 77[\\]/]'",
+    "value": "n77"
+   },
+   {
+    "when": "[NR_BAND_A] MATCHES '^\\[NR BAND 78[\\]/]'",
+    "value": "n78"
+   }
+  ]
+ },
+ {
+  "name": "LTE_Carriers",
+  "sources": [
+   "cdr-data"
+  ],
+  "default": "",
+  "default_from": "",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'LTE 5CC'",
+    "value": "5CC"
+   },
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'LTE 4CC'",
+    "value": "4CC"
+   },
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'LTE 3CC'",
+    "value": "3CC"
+   },
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'LTE 2CC'",
+    "value": "2CC"
+   },
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'LTE 1CC'",
+    "value": "1CC"
+   }
+  ]
+ },
+ {
+  "name": "NR_Carriers",
+  "sources": [
+   "cdr-data"
+  ],
+  "default": "",
+  "default_from": "",
+  "expression": "",
+  "rules": [
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'NR 4CC'",
+    "value": "4CC"
+   },
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'NR 3CC'",
+    "value": "3CC"
+   },
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'NR 2CC'",
+    "value": "2CC"
+   },
+   {
+    "when": "[LTE_NR_DL_Carriers_Timeline] CONTAINS 'NR 1CC'",
+    "value": "1CC"
+   }
+  ]
+ }
 ]

@@ -877,6 +877,16 @@ Every workspace receives once the example template **DT Analyzer - All Supported
 - **What they draw:** every chart type on the workspace CDRs, at most two columns a slide (wider frames would stretch the charts), each with the measure and shelves it suits: the DL throughput CDF of the latest two campaigns, NR MCS against NR CQI for Scatter, the hour of the day for Lines, Dual Lines, Areas and Bars and Line, and NSA CDRs for the charts comparing the campaigns of one NR Mode (`NR Mode IN (NSA)`: CDF Line, Bullet Graph, Symbol Map and KPI cards). Charts split by Region leave out tests of no Region (`Region != (blank)`).
 - Deleted, it is not added again. A workspace that received it as **All Chart Types** (Design **NSA - All Chart Types**) or **DT Analyzer - All Chart Types** has them replaced in place when unchanged (App Event `starter_examples_replaced`); changed ones stay beside the new ones.
 
+**Quarterly BNP Report templates.** Every workspace also receives once the three templates of the chapters of a quarterly benchmarking report, each with its Design, made to be repeated for areas in a report of [Reporting](reporting.md#areas) (their titles write the area with `{Cities}`, and they split NSA and SA with `NR Mode IN (NSA)` / `NR Mode IN (SA)`, never with campaign names, so they follow every new campaign):
+
+| Template and Design | NR Mode · Scope | Slides |
+| --- | --- | --- |
+| **Quarterly BNP Report - City** | NSA & SA · Operator Comparison | Voice & Speech: voice failures and Completed Call Ratio, SA call technology and VoNR bands, the idle share of VoNR call setups, CST of calls and WhatsApp, POLQA < 1.6, POLQA of calls and WhatsApp, disturbed and impaired calls. Data: RAT of the FDTT DL tests, LTE and NR PCell bands, carriers and bandwidth (NSA and SA), data success ratio, FDFS DL/UL and FDTT DL/UL in NSA and SA, below samples, Interactivity RTT and packet error ratio |
+| **Quarterly BNP Report - Vendor Split** | NSA · Multivendor Comparison, Main Cities | Samples of each vendor, FDTT DL technology, NR bandwidth and carriers, data success ratio, FDFS DL/UL, FDTT DL/UL with below samples, LTE and NR PDSCH throughput, NR resource blocks and MIMO layers, Interactivity RTT |
+| **Quarterly BNP Report - SA vs NSA** | NSA & SA · Operator Comparison | FDTT DL throughput and technology, NR resource blocks and PCell bandwidth, FDFS DL/UL and Interactivity RTT, each operator per NR Mode |
+
+The bands and carriers come from the Auto-calculated Fields **LTE_PCell_Band**, **NR_PCell_Band**, **NR_Call_Band**, **LTE_Carriers** and **NR_Carriers** (see [Auto-calculated Fields](workspace-config.md#auto-calculated-fields)). Deleted, they are not added again.
+
 **Common rules:**
 
 - Choose a KPI and at least one Rows or Columns Split dimension. `CDF Line` draws one curve per complete aggregation combination; count charts keep empty combinations where needed so comparisons stay aligned.

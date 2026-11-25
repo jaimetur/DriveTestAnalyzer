@@ -1,0 +1,15 @@
+Slide,Slide Tittle,Slide Subtittle,Layout,Dynamic Rows Field,Dynamic Columns Field,Chart Tittle,Source Dataset,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position,Legend Format,Label Position,Label Format,Axis X Range,Axis Y Range,Exclude Null/Empty,Exclude Zero
+1,SA vs NSA performance,{Cities} · {Campaigns},Transition,,,,,,Transition Slide,,,,,,,,,,,,
+2,FDTT DL throughput – SA vs NSA – {Cities},{Cities} · {NR Mode},Title + 1 rows + 1 columns + comments down,,,FDTT DL throughput per NR Mode,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name = FDTT http DL MT",Operator,NR Mode,"Operator, NR Mode",Bottom,,,,,,,
+3,FDTT DL technology – SA vs NSA – {Cities},{Cities} · {NR Mode},Title + 1 rows + 1 columns + comments down,,,RAT of the FDTT DL tests per NR Mode,CDR-Data,RAT_Group,100% Stacked Vertical Bars,Test_Name = FDTT http DL MT,,Operator × NR Mode,RAT_Group,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+4,NR DL PRB allocation – SA vs NSA – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,NR DL resource blocks per NR Mode,CDR-Data,NR_DL_RBs_Avg,CDF Line,Test_Name = FDTT http DL MT,Operator,NR Mode,"Operator, NR Mode",Bottom,,,,,,Yes,Yes
+4,NR DL PRB allocation – SA vs NSA – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,NR DL PCell bandwidth per NR Mode,CDR-Data,NR_DL_PCell_Bandwidth,CDF Line,Test_Name = FDTT http DL MT,Operator,NR Mode,"Operator, NR Mode",Bottom,,,,,,Yes,Yes
+5,FDFS DL and UL – SA vs NSA – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDFS DL throughput per NR Mode,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST)",Operator,NR Mode,"Operator, NR Mode",Bottom,,,,,,,
+5,FDFS DL and UL – SA vs NSA – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,FDFS UL throughput per NR Mode,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP UL ST, FDFS HTTPS UL ST)",Operator,NR Mode,"Operator, NR Mode",Bottom,,,,,,,
+6,Interactivity – SA vs NSA – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,Interactivity RTT per NR Mode,CDR-Data,Interactivity_RTT_Median,CDF Line,"Test_Result = Completed;
+Type_of_Test = Interactivity",Operator,NR Mode,"Operator, NR Mode",Bottom,,,,,,,
+6,Interactivity – SA vs NSA – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,Interactivity RTT median per NR Mode,CDR-Data,Interactivity_RTT_Median,Median Vertical Bars,"Test_Result = Completed;
+Type_of_Test = Interactivity",,Operator × NR Mode,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,

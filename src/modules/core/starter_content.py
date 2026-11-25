@@ -11,12 +11,14 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
 - ``assets/ppt-designs/*.json``: PPT Designs, which use those templates, each reading the CDRs of its NR Mode
   (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and PPT Designs shipped
-  later (``LATER_EXAMPLES``: the NSA & SA comparison DT Analyzer - FDFS DL (NSA & SA) and DT Analyzer - All Supported Chart Types, an
-  example of every chart type drawn on the NSA and SA CDRs of the workspace) reach every existing workspace once, and an example
+  later (``LATER_EXAMPLES``: the NSA & SA comparison DT Analyzer - FDFS DL (NSA & SA), DT Analyzer - All Supported Chart Types, an
+  example of every chart type drawn on the NSA and SA CDRs of the workspace, and the three chapters of the Quarterly BNP
+  Report) reach every existing workspace once, and an example
   shipped before that a workspace keeps as it was shipped is replaced in place by the one that followed it
   (``SUPERSEDED_EXAMPLES``);
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
-  workspace starts with, which the templates use;
+  workspace starts with, which the templates use; those shipped later (after ``FIELDS_SHIPPED_BEFORE``) reach every
+  existing workspace once;
 - ``assets/scoring-report-configurations/*.json``: saved Scoring report configurations (``name`` and
   ``configuration``);
 - ``assets/query-builder-queries/*.json``: saved Query Builder queries (``name``, ``description`` and
@@ -55,7 +57,13 @@ BASE_METHODOLOGY = 'netcheck-2026'
 # The Report Templates shipped after workspaces were set up, which reach each of them once with their PPT Designs (those
 # of ``assets/ppt-designs`` that use them); a workspace that deleted them is not given them again.
 LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
-LATER_EXAMPLES = ('DT Analyzer - FDFS DL (NSA & SA)', 'DT Analyzer - All Supported Chart Types')
+LATER_EXAMPLES = ('DT Analyzer - FDFS DL (NSA & SA)', 'DT Analyzer - All Supported Chart Types',
+                  # v0.12.8: the chapters of the Quarterly BNP Report (ticket #202).
+                  'Quarterly BNP Report - City', 'Quarterly BNP Report - Vendor Split', 'Quarterly BNP Report - SA vs NSA')
+# The shipped Auto-calculated Fields each workspace was given, so a field shipped later reaches it once (one it deleted
+# is not given again). Workspaces set up before this record received these.
+FIELDS_STATE_KEY = 'starter_fields_offered'
+FIELDS_SHIPPED_BEFORE = ('Call_Family', 'Test_Family', 'Test_Result_Group', 'RAT_Group', 'NR_Mode_from_RAT')
 # Starter examples shipped before under another name or with another content, each with the example that follows it
 # now, the SHA-256 of its template and its PPT Designs as they were shipped. A workspace that still has one as it was
 # shipped (template and PPT Designs unchanged) has it replaced in place by the example that follows it, keeping their
@@ -276,6 +284,28 @@ def _seed_calculated_dimensions(repository: Any) -> int:
     return len(missing)
 
 
+def _seed_later_fields(repository: Any) -> int:
+    """Add once the shipped Auto-calculated Fields a workspace already set up was not given yet (such as those of the
+    Quarterly BNP Report templates); the CDRs get them when the workspace materializes them in the background."""
+    if repository.get_workspace_state('calculated_dimensions_initialized') != '1':
+        return 0
+    path = ASSETS / 'autocalculated-fields' / 'default-autocalculated-fields.json'
+    shipped = json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
+    stored = repository.get_workspace_state(FIELDS_STATE_KEY)
+    offered = {column_identity(name) for name in (json.loads(stored) if stored else FIELDS_SHIPPED_BEFORE)}
+    pending = [item for item in shipped if column_identity(item.get('name', '')) not in offered]
+    if not pending:
+        return 0
+    current = repository.list_calculated_dimensions()
+    known = {column_identity(item.get('name', '')) for item in current}
+    missing = [item for item in pending if column_identity(item.get('name', '')) not in known]
+    if missing:
+        from src.modules.cdr_analysis.cdr_reporting import calculated_dimensions_json, parse_calculated_dimensions
+        repository.replace_calculated_dimensions(calculated_dimensions_json(parse_calculated_dimensions([*current, *missing])))
+    repository.set_workspace_state(FIELDS_STATE_KEY, json.dumps(sorted({*offered, *(column_identity(item.get('name', '')) for item in shipped)})))
+    return len(missing)
+
+
 def _shipped_report_configurations() -> dict[str, dict[str, Any]]:
     configurations = {}
     for path in _json_files(ASSETS / 'scoring-report-configurations'):
@@ -351,7 +381,7 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
         if replaced and hasattr(repository, 'try_add_log'):
             repository.try_add_log(username, 'starter_examples_replaced', json.dumps(replaced))
         added = {'methodologies': _seed_methodologies(repository), 'examples_replaced': len(replaced),
-                 'examples': _seed_later_examples(repository, username)}
+                 'examples': _seed_later_examples(repository, username), 'auto_calculated_fields': _seed_later_fields(repository)}
         added = {key: value for key, value in added.items() if value}
         if not added:
             return None
@@ -371,6 +401,10 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
     added['bundle_report_template_favourites'] = _seed_bundle_report_template_favourites(repository, username)
     # The later examples came with the templates and PPT Designs above.
     repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(LATER_EXAMPLES)))
+    shipped_fields = ASSETS / 'autocalculated-fields' / 'default-autocalculated-fields.json'
+    if shipped_fields.exists():
+        repository.set_workspace_state(FIELDS_STATE_KEY, json.dumps(sorted(
+            column_identity(item.get('name', '')) for item in json.loads(shipped_fields.read_text(encoding='utf-8')))))
     repository.set_workspace_state(STATE_KEY, '1')
     if any(added.values()) and hasattr(repository, 'try_add_log'):
         repository.try_add_log(username, 'starter_content_added', json.dumps(added))

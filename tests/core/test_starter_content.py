@@ -27,7 +27,8 @@ def test_the_shipped_content_names_no_operator_or_vendor():
     assert {path.stem for path in templates} == {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)',
                                                  'DT Analyzer - Tableau Dashboards', 'DT Analyzer - Tableau Charts',
                                                  'DT Analyzer - Tableau Charts - Only Maps', 'DT Analyzer - FDFS DL (NSA & SA)',
-                                                 'DT Analyzer - All Supported Chart Types'}
+                                                 'DT Analyzer - All Supported Chart Types', 'Quarterly BNP Report - City',
+                                                 'Quarterly BNP Report - Vendor Split', 'Quarterly BNP Report - SA vs NSA'}
     for path in templates:
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8'))))
         # No template filters an Operator, nor Vendors by their operator (3_Ericsson); the Tableau templates of the UK
@@ -45,10 +46,15 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         (f'{nr_mode} - {template}', template, nr_mode) for nr_mode in ('NSA', 'SA') for template in (
             'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)')
     } | {(f'DT Analyzer - {name}', f'DT Analyzer - {name}', 'NSA+SA') for name in (
-        'Tableau Dashboards', 'Tableau Charts', 'FDFS DL (NSA & SA)', 'All Supported Chart Types')}
+        'Tableau Dashboards', 'Tableau Charts', 'FDFS DL (NSA & SA)', 'All Supported Chart Types')} | {
+        # The chapters of the Quarterly BNP Report (ticket #202), each named after its template.
+        ('Quarterly BNP Report - City', 'Quarterly BNP Report - City', 'NSA+SA'),
+        ('Quarterly BNP Report - Vendor Split', 'Quarterly BNP Report - Vendor Split', 'NSA'),
+        ('Quarterly BNP Report - SA vs NSA', 'Quarterly BNP Report - SA vs NSA', 'NSA+SA')}
     assert not any({'technology', 'template_technology'} & set(item) for item in designs)
     # The (Main Cities) Designs use the Main Cities of each workspace.
-    assert all(item['filters']['City'] == ['@main-cities'] for item in designs if item['name'].endswith('(Main Cities)'))
+    assert all(item['filters']['City'] == ['@main-cities'] for item in designs
+               if item['name'].endswith('(Main Cities)') or item['name'] == 'Quarterly BNP Report - Vendor Split')
     for item in designs:
         assert 'datasets' not in item and not any(
             field.replace(' ', '_').casefold() in {'operator', 'vendor', 'operator_vendor', 'vendor_operator'}
@@ -399,3 +405,38 @@ def test_the_earlier_nsa_and_sa_example_is_replaced_in_place_when_it_is_as_it_wa
         'name': FDFS, 'template': FDFS, 'nr_mode': 'NSA+SA', 'sa_campaigns': ['@latest-campaign'], 'template_uid': 'uid-of-before'}
     assert earlier not in repository.report_template_uids()
     assert starter_content.seed_starter_content(repository) is None
+
+
+def test_auto_calculated_fields_shipped_later_reach_an_existing_workspace_once(client):
+    # Ticket #202: the fields of the Quarterly BNP Report templates reach a workspace set up before them once; one
+    # deleted afterwards is not given again.
+    import src.DriveTestAnalyzer as app_module
+
+    repository = app_module.repository
+    shipped = json.loads((ASSETS / 'autocalculated-fields' / 'default-autocalculated-fields.json').read_text(encoding='utf-8'))
+    before = [item for item in shipped if item['name'] in starter_content.FIELDS_SHIPPED_BEFORE]
+    repository.replace_calculated_dimensions(before)
+    repository.set_workspace_state('calculated_dimensions_initialized', '1')
+    repository.set_workspace_state(starter_content.FIELDS_STATE_KEY, '')
+    assert starter_content._seed_later_fields(repository) == len(shipped) - len(before)
+    names = [item['name'] for item in repository.list_calculated_dimensions()]
+    assert {'LTE_PCell_Band', 'NR_PCell_Band', 'NR_Call_Band', 'LTE_Carriers', 'NR_Carriers'} <= set(names)
+    repository.replace_calculated_dimensions([item for item in repository.list_calculated_dimensions() if item['name'] != 'NR_Carriers'])
+    assert starter_content._seed_later_fields(repository) == 0
+    assert 'NR_Carriers' not in [item['name'] for item in repository.list_calculated_dimensions()]
+
+
+def test_the_quarterly_bnp_report_templates_use_only_fields_of_the_cdrs_or_shipped_fields():
+    from src.modules.cdr_analysis.cdr_reporting import parse_catalog_csv
+
+    shipped = {item['name'] for item in json.loads((ASSETS / 'autocalculated-fields' / 'default-autocalculated-fields.json').read_text(encoding='utf-8'))}
+    for name in ('Quarterly BNP Report - City', 'Quarterly BNP Report - Vendor Split', 'Quarterly BNP Report - SA vs NSA'):
+        assert name in starter_content.LATER_EXAMPLES
+        entries = parse_catalog_csv((ASSETS / 'ppt-templates' / f'{name}.csv').read_bytes())
+        # NSA and SA are split by NR Mode, never by campaign names that later campaigns would not match.
+        assert not any('Campaign IN' in entry.filters or 'Campaign =' in entry.filters for entry in entries)
+        design = next(json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-designs').glob('*.json')
+                      if json.loads(path.read_text(encoding='utf-8'))['template'] == name)
+        assert design['name'] == name
+        used = {entry.kpi for entry in entries if entry.kpi in {'LTE_PCell_Band', 'NR_PCell_Band', 'NR_Call_Band', 'LTE_Carriers', 'NR_Carriers'}}
+        assert used <= shipped

@@ -1,0 +1,118 @@
+Slide,Slide Tittle,Slide Subtittle,Layout,Dynamic Rows Field,Dynamic Columns Field,Chart Tittle,Source Dataset,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position,Legend Format,Label Position,Label Format,Axis X Range,Axis Y Range,Exclude Null/Empty,Exclude Zero
+1,Final CDR Analysis – {Cities},Voice & Speech · {Campaigns},Transition,,,,,,Transition Slide,,,,,,,,,,,,
+2,Voice failures – {Cities},{Cities} · {NR Mode},Title + 2 rows + 1 columns + comments right,,,Voice failures per type of session,CDR-Voice,Call_Status,Count Stacked Horizontal Bars,"Call_Status IN (Failed, Dropped);
+Call_Family IN (VoLTE, MultiRAB, WhatsApp)",Call_Family,Operator × Campaign,Call_Status,Right,,,,,,,
+2,Voice failures – {Cities},{Cities} · {NR Mode},Title + 2 rows + 1 columns + comments right,,,Completed Call Ratio,CDR-Voice,Call_Status,100% Stacked Vertical Bars,"Call_Status IN (Completed, Dropped, Failed);
+Call_Family IN (VoLTE, MultiRAB, WhatsApp)",Call_Family,Operator × Campaign,Call_Status,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+3,Voice technology and bands – {Cities} SA,{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,Call technology (SA),CDR-Voice,L1_call_Mode_A,Pie,"NR Mode IN (SA);
+Call_Family IN (VoLTE, MultiRAB)",Operator,,L1_call_Mode_A,Right,,,,,,,
+3,Voice technology and bands – {Cities} SA,{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,VoNR bands (SA),CDR-Voice,NR_Call_Band,Pie,"NR Mode IN (SA);
+L1_call_Mode_A = VoNR;
+NR_Call_Band != (blank)",Operator,,NR_Call_Band,Right,,,,,,,
+4,CST – Idle share VoNR – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,RRC state at call setup (SA),CDR-Voice,RRC_State_A,100% Stacked Vertical Bars,"NR Mode IN (SA);
+RRC_State_A IN (Idle, Connected);
+Call_Family IN (VoLTE, MultiRAB)",,Operator × Campaign,RRC_State_A,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+4,CST – Idle share VoNR – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,CST per RRC state (SA),CDR-Voice,Call_Setup_Time,CDF Line,"NR Mode IN (SA);
+RRC_State_A IN (Idle, Connected);
+Call_Family IN (VoLTE, MultiRAB)",Operator,RRC_State_A,"Operator, RRC_State_A",Bottom,,,,,,,
+5,CST – Call – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,CST CDF (VoLTE & Multi-RAB),CDR-Voice,Call_Setup_Time,CDF Line,"Call_Family IN (VoLTE, MultiRAB)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+5,CST – Call – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,CST median (VoLTE & Multi-RAB),CDR-Voice,Call_Setup_Time,Median Vertical Bars,"Call_Family IN (VoLTE, MultiRAB)",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+6,CST – WhatsApp – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,CST CDF (WhatsApp),CDR-Voice,Call_Setup_Time,CDF Line,Call_Family = WhatsApp,Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+6,CST – WhatsApp – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,CST median (WhatsApp),CDR-Voice,Call_Setup_Time,Median Vertical Bars,Call_Family = WhatsApp,,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+7,POLQA < 1.6 – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,POLQA < 1.6 (VoLTE & Multi-RAB),CDR-Speech,LQ,Threshold Stacked Vertical Bars,"Call_Status = Completed;
+Call_Family IN (VoLTE, MultiRAB);
+Threshold = 1.6",,Operator × Campaign,Threshold,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+7,POLQA < 1.6 – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,POLQA < 1.6 (WhatsApp),CDR-Speech,LQ,Threshold Stacked Vertical Bars,"Call_Status = Completed;
+Call_Family = WhatsApp;
+Threshold = 1.6",,Operator × Campaign,Threshold,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+8,POLQA Call – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,POLQA MOS CDF (VoLTE & Multi-RAB),CDR-Speech,LQ,CDF Line,"Call_Status = Completed;
+Call_Family IN (VoLTE, MultiRAB)",Operator,Campaign,"Operator, Campaign",Bottom,,,,"[1.4,]",,,
+8,POLQA Call – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,POLQA average MOS (VoLTE & Multi-RAB),CDR-Speech,LQ,Average Vertical Bars,"Call_Status = Completed;
+Call_Family IN (VoLTE, MultiRAB)",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+9,POLQA WhatsApp – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,POLQA MOS CDF (WhatsApp),CDR-Speech,LQ,CDF Line,"Call_Status = Completed;
+Call_Family = WhatsApp",Operator,Campaign,"Operator, Campaign",Bottom,,,,"[1.4,]",,,
+9,POLQA WhatsApp – {Cities},{Cities} · {NR Mode},Title + 1 rows + 2 columns + comments down,,,POLQA average MOS (WhatsApp),CDR-Speech,LQ,Average Vertical Bars,"Call_Status = Completed;
+Call_Family = WhatsApp",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+10,Disturbed and impaired – {Cities},{Cities} · {NR Mode},Title + 1 rows + 1 columns + comments down,,,Disturbed and impaired calls,CDR-Voice,Disturbed_and_Impaired_Call,100% Stacked Vertical Bars,"Call_Status = Completed;
+Call_Family IN (VoLTE, MultiRAB, WhatsApp)",Call_Family,Operator × Campaign,Disturbed_and_Impaired_Call,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+11,Final CDR Analysis – {Cities},Data · {Campaigns},Transition,,,,,,Transition Slide,,,,,,,,,,,,
+12,Technology usage – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 1 rows + 1 columns + comments down,,,RAT of the FDTT DL tests,CDR-Data,RAT_Group,100% Stacked Vertical Bars,Test_Name = FDTT http DL MT,,Operator × Campaign,RAT_Group,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+13,Frequency band usage – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,LTE PCell band,CDR-Data,LTE_PCell_Band,Pie,"Test_Name = FDTT http DL MT;
+LTE_PCell_Band != (blank)",Operator,,LTE_PCell_Band,Right,,,,,,,
+13,Frequency band usage – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,NR PCell band (NSA),CDR-Data,NR_PCell_Band,Pie,"Test_Name = FDTT http DL MT;
+NR Mode IN (NSA);
+NR_PCell_Band != (blank)",Operator,,NR_PCell_Band,Right,,,,,,,
+13,Frequency band usage – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,NR PCell band (SA),CDR-Data,NR_PCell_Band,Pie,"Test_Name = FDTT http DL MT;
+NR Mode IN (SA);
+NR_PCell_Band != (blank)",Operator,,NR_PCell_Band,Right,,,,,,,
+14,Carriers and bandwidth (NSA) – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 2 rows + 2 columns + comments right,,,NR DL PCell bandwidth (NSA),CDR-Data,NR_DL_PCell_Bandwidth,CDF Line,"Test_Name = FDTT http DL MT;
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+14,Carriers and bandwidth (NSA) – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 2 rows + 2 columns + comments right,,,LTE DL bandwidth (NSA),CDR-Data,LTE_DL_Test_Bandwidth_Avg,CDF Line,"Test_Name = FDTT http DL MT;
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+14,Carriers and bandwidth (NSA) – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 2 rows + 2 columns + comments right,,,Number of NR carriers (NSA),CDR-Data,NR_Carriers,100% Stacked Vertical Bars,"Test_Name = FDTT http DL MT;
+NR Mode IN (NSA);
+NR_Carriers != (blank)",,Operator × Campaign,NR_Carriers,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+14,Carriers and bandwidth (NSA) – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 2 rows + 2 columns + comments right,,,Number of LTE carriers (NSA),CDR-Data,LTE_Carriers,100% Stacked Vertical Bars,"Test_Name = FDTT http DL MT;
+NR Mode IN (NSA);
+LTE_Carriers != (blank)",,Operator × Campaign,LTE_Carriers,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+15,Carriers and bandwidth (SA) – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 2 rows + 2 columns + comments right,,,NR DL PCell bandwidth (SA),CDR-Data,NR_DL_PCell_Bandwidth,CDF Line,"Test_Name = FDTT http DL MT;
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+15,Carriers and bandwidth (SA) – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 2 rows + 2 columns + comments right,,,LTE DL bandwidth (SA),CDR-Data,LTE_DL_Test_Bandwidth_Avg,CDF Line,"Test_Name = FDTT http DL MT;
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+15,Carriers and bandwidth (SA) – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 2 rows + 2 columns + comments right,,,Number of NR carriers (SA),CDR-Data,NR_Carriers,100% Stacked Vertical Bars,"Test_Name = FDTT http DL MT;
+NR Mode IN (SA);
+NR_Carriers != (blank)",,Operator × Campaign,NR_Carriers,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+15,Carriers and bandwidth (SA) – FDTT DL – {Cities},{Cities} · {NR Mode},Title + 2 rows + 2 columns + comments right,,,Number of LTE carriers (SA),CDR-Data,LTE_Carriers,100% Stacked Vertical Bars,"Test_Name = FDTT http DL MT;
+NR Mode IN (SA);
+LTE_Carriers != (blank)",,Operator × Campaign,LTE_Carriers,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+16,Data success ratio – {Cities},{Cities} · {NR Mode},Title + 1 rows + 1 columns + comments down,,,Success ratio per type of test,CDR-Data,Test_Result_Group,100% Stacked Vertical Bars,"Type_of_Test IN (httpBrowser, httpTransfer, VideoStreaming, Interactivity)",Type_of_Test,Operator × Campaign,Test_Result_Group,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+17,FDFS DL throughput and transfer time (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDFS DL throughput CDF (NSA),CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST);
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+17,FDFS DL throughput and transfer time (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDFS DL throughput CDF (SA),CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST);
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+17,FDFS DL throughput and transfer time (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDFS DL average transfer time,CDR-Data,Transfer_Duration,Average Vertical Bars,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST)",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+18,FDFS UL throughput and transfer time (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDFS UL throughput CDF (NSA),CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP UL ST, FDFS HTTPS UL ST);
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+18,FDFS UL throughput and transfer time (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDFS UL throughput CDF (SA),CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP UL ST, FDFS HTTPS UL ST);
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+18,FDFS UL throughput and transfer time (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDFS UL average transfer time,CDR-Data,Transfer_Duration,Average Vertical Bars,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP UL ST, FDFS HTTPS UL ST)",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+19,FDTT DL throughput and below samples (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDTT DL throughput CDF (NSA),CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name = FDTT http DL MT;
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+19,FDTT DL throughput and below samples (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDTT DL throughput CDF (SA),CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name = FDTT http DL MT;
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+19,FDTT DL throughput and below samples (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDTT DL throughput below,CDR-Data,Mean_Data_Rate,Distribution Stacked Vertical Bars,"Test_Result = Completed;
+Test_Name = FDTT http DL MT;
+Buckets < 2,5,20,100",Operator,Campaign × Rate Bucket,Buckets,Right,,,,,,,
+20,FDTT UL throughput and below samples (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDTT UL throughput CDF (NSA),CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name = FDTT UDP UL ST;
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+20,FDTT UL throughput and below samples (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDTT UL throughput CDF (SA),CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name = FDTT UDP UL ST;
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+20,FDTT UL throughput and below samples (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,FDTT UL throughput below,CDR-Data,Mean_Data_Rate,Distribution Stacked Vertical Bars,"Test_Result = Completed;
+Test_Name = FDTT UDP UL ST;
+Buckets < 1,3,10,20",Operator,Campaign × Rate Bucket,Buckets,Right,,,,,,,
+21,Interactivity RTT (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,Interactivity RTT CDF (NSA),CDR-Data,Interactivity_RTT_Median,CDF Line,"Test_Result = Completed;
+Type_of_Test = Interactivity;
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+21,Interactivity RTT (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,Interactivity RTT CDF (SA),CDR-Data,Interactivity_RTT_Median,CDF Line,"Test_Result = Completed;
+Type_of_Test = Interactivity;
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+21,Interactivity RTT (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,Interactivity RTT per campaign,CDR-Data,Interactivity_RTT_Median,Median Vertical Bars,"Test_Result = Completed;
+Type_of_Test = Interactivity",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
+22,Interactivity packet error ratio (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,Interactivity packet error ratio CDF (NSA),CDR-Data,Packet_Error_Ratio,CDF Line,"Test_Result = Completed;
+Type_of_Test = Interactivity;
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+22,Interactivity packet error ratio (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,Interactivity packet error ratio CDF (SA),CDR-Data,Packet_Error_Ratio,CDF Line,"Test_Result = Completed;
+Type_of_Test = Interactivity;
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,Yes,Yes
+22,Interactivity packet error ratio (NSA & SA) – {Cities},{Cities} · {NR Mode},Title + 1 rows + 3 columns + comments down,,,Interactivity packet error ratio per campaign,CDR-Data,Packet_Error_Ratio,Average Vertical Bars,"Test_Result = Completed;
+Type_of_Test = Interactivity",,Operator × Campaign,Operator,Right,,,"[""#FFFFFF"",""Arial"",""Large""]",,,,
