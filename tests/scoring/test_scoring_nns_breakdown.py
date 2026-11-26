@@ -220,7 +220,7 @@ def test_a_saved_scoring_with_the_nns_breakdown_scores_each_area_and_exports_it(
     assert [name for name in [cell.value for cell in both_book['Areas'][2]][6:] if name] == ['Tests', 'Best Network', 'Most Reliable'] * 2
     assert [cell.value for cell in both_book['Scenarios'][1]][5:] == ['Best Network', 'Most Reliable', 'Tests']
     assert client.get(f"/scoring/saved-scorings/{saved['id']}/export/scoring", params={'scoring': 'both'}).status_code == 400
-    assert header[6:13] == ['Tests', 'Points', '#1 of the area', 'GAP to #1 of the area', 'Weight in its Region',
+    assert header[6:14] == ['Tests', 'Points', 'Position', '#1 of the area', 'GAP to #1 of the area', 'Weight in its Region',
                             'Weighted GAP to #1 of the Region', 'Weighted GAP to #1 of all the Regions']
     # Each Region first (its own scoring), then its areas, then its adjustment.
     kinds = [row[3] for row in areas.iter_rows(min_row=4, values_only=True)]
@@ -331,3 +331,27 @@ def test_the_projection_of_a_region_adds_what_its_areas_add_weighted_as_the_meth
     # Half of the sites become NNS in FY27: Reading adds 0.6 x 0.5 x 40, the roads 0.4 x 0.5 x 100.
     assert vf['sites'] == [860.0, 860.0 + 0.6 * 20 + 0.4 * 50] and vf['sites_share'] == [0.0, 0.5]
     assert rows[('Vendor A', 'EE')]['lines']['sites'] == [940.0, 949.4]
+
+
+def test_the_areas_sheet_shows_the_position_of_each_operator_beside_its_points():
+    def area(operator, first, second):
+        return {'nr_mode': 'NSA', 'region': 'North', 'area': 'Leeds', 'kind': nb.CITY_KIND, 'size': 'Big Cities',
+                'operator': operator, 'campaigns': {'26-Q2': {'tests': 10, 'best': {'points': first}},
+                                                    '26-Q3': {'tests': 10, 'best': {'points': second}}}}
+    breakdown = {'modes': [{'nr_mode': 'NSA', 'campaigns': ['26-Q2', '26-Q3']}],
+                 'areas': [area('EE', 900, 880), area('VF', 880, 915.531), area('O2', 900, 915.529)],
+                 'gap_totals': [{'nr_mode': 'NSA', 'region': 'North', 'operator': name,
+                                 'campaigns': {'26-Q3': {'tests': 10, 'best': {'points': points}}}}
+                                for name, points in (('EE', 700), ('VF', 750), ('O2', 720))]}
+    sheet = load_workbook(BytesIO(nb.workbook(breakdown, scoring='best')))['Areas']
+    header = [cell.value for cell in sheet[3]]
+    assert header[6:9] == ['Tests', 'Points', 'Position']
+    rows = list(sheet.iter_rows(min_row=4, values_only=True))
+    region = {row[5]: row for row in rows if row[3] == 'Region'}
+    cities = {row[5]: row for row in rows if row[3] == nb.CITY_KIND}
+    # 26-Q2: EE and O2 share #1 and VF is 3rd; 26-Q3 rounded as shown, VF and O2 share #1.
+    assert {name: row[8] for name, row in cities.items()} == {'EE': 1, 'O2': 1, 'VF': 3}
+    second = header.index('Position', 9)
+    assert {name: row[second] for name, row in cities.items()} == {'EE': 3, 'O2': 1, 'VF': 1}
+    assert {name: row[second] for name, row in region.items()} == {'VF': 1, 'O2': 2, 'EE': 3}
+    assert all(row[8] is None and row[second] is None for row in rows if row[3] == 'Adjustment')

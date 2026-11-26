@@ -764,7 +764,7 @@ def workbook(breakdown: dict[str, Any], title: str = '', scoring: str | None = N
             worksheet.column_dimensions[get_column_letter(index)].width = min(40, max(9, width + 2))
         return worksheet
 
-    area_columns = ['Points', '#1 of the area', 'GAP to #1 of the area', 'Weight in its Region',
+    area_columns = ['Points', 'Position', '#1 of the area', 'GAP to #1 of the area', 'Weight in its Region',
                     'Weighted GAP to #1 of the Region', 'Weighted GAP to #1 of all the Regions']
     area_parts = lambda: [('Tests', ['Tests']), *[(name, list(area_columns)) for _key, name in scorings]]
     totals = [row for row in breakdown.get('gap_totals') or [] if isinstance(row, dict)]
@@ -775,6 +775,28 @@ def workbook(breakdown: dict[str, Any], title: str = '', scoring: str | None = N
                                                                      item['size'], item['area'], item['operator']))
     regions = sorted({(row['nr_mode'], row['region']) for row in [*area_rows, *totals]}, key=lambda item: (item[0], item[1] == '', item[1]))
 
+    def positions(items: list[dict[str, Any]], place) -> dict[tuple, int]:
+        """The position of each operator by its points in each place (``place(item)``), campaign and scoring: 1 for the
+        most points, operators with the same points share it (1, 1, 3)."""
+        found: dict[tuple, list[float]] = {}
+        for item in items:
+            for campaign, entry in (item.get('campaigns') or {}).items():
+                for key, _name in scorings:
+                    points = _value((entry or {}).get(key))
+                    if points is not None:
+                        found.setdefault((*place(item), campaign, key), []).append(round(points, 2))
+        ranked = {}
+        for item in items:
+            for campaign, entry in (item.get('campaigns') or {}).items():
+                for key, _name in scorings:
+                    points = _value((entry or {}).get(key))
+                    if points is not None:
+                        others = found[(*place(item), campaign, key)]
+                        ranked[(*place(item), item['operator'], campaign, key)] = 1 + sum(value > round(points, 2) for value in others)
+        return ranked
+    area_positions = positions(area_rows, lambda item: (item['nr_mode'], item['region'], item['area']))
+    total_positions = positions(totals, lambda item: (item['nr_mode'], item['region']))
+
     def total_values(total: dict[str, Any], adjustment: bool) -> list[Any]:
         values = []
         for campaign in campaigns:
@@ -784,9 +806,10 @@ def workbook(breakdown: dict[str, Any], title: str = '', scoring: str | None = N
                 scored = entry.get(key) or {}
                 if adjustment:
                     column = scored.get('adjustment')
-                    values += [None, None, None, None, column if total['region'] else None, None if total['region'] else column]
+                    values += [None, None, None, None, None, column if total['region'] else None, None if total['region'] else column]
                 else:
-                    values += [scored.get('points'), scored.get('leader'), scored.get('gap'), 1 if total['region'] else None, None, None]
+                    values += [scored.get('points'),
+                               total_positions.get((total['nr_mode'], total['region'], total['operator'], campaign, key)), scored.get('leader'), scored.get('gap'), 1 if total['region'] else None, None, None]
         return values
     for nr_mode, region in regions:
         name = region or 'All the chosen Regions'
@@ -801,7 +824,8 @@ def workbook(breakdown: dict[str, Any], title: str = '', scoring: str | None = N
                 values.append(scored.get('tests') if scored else None)
                 for key, _name in scorings:
                     points = scored.get(key) or {}
-                    values += [_value(points), points.get('leader'), points.get('gap'), points.get('weight_region'),
+                    values += [_value(points),
+                               area_positions.get((row['nr_mode'], row['region'], row['area'], row['operator'], campaign, key)), points.get('leader'), points.get('gap'), points.get('weight_region'),
                                points.get('gap_region'), points.get('gap_all')]
             rows.append(values)
         for total in sorted(of_region, key=lambda item: item['operator']):
@@ -920,6 +944,9 @@ def workbook(breakdown: dict[str, Any], title: str = '', scoring: str | None = N
         ['Areas', 'Best Network / Most Reliable', 'Points',
          'The points of the area with the methodology of the campaign, scaled to the full points when the area is measured '
          'in one environment only (as each area of Country Areas). Region rows: the points of the whole Region.'],
+        ['Areas', 'Best Network / Most Reliable', 'Position',
+         'The position of the operator in the area by its points in the campaign (1 for the most points; operators with '
+         'the same points share it). Region rows: its position in the whole Region.'],
         ['Areas', 'Best Network / Most Reliable', '#1 of the area, GAP to #1 of the area',
          'The operator with the most points in the area, and the points of the operator minus those of that #1.'],
         ['Areas', 'Best Network / Most Reliable', 'Weight in its Region',

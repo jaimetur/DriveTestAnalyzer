@@ -689,7 +689,7 @@ The NNS Break-down tab scores each city and the connecting roads over several ca
 - **Export to Excel:** every table of every NR Mode as an Excel workbook; **About** tells every column of every sheet and where it comes from.
   - **Export Best Network / Most Reliable to Excel:** only the scoring chosen in the tab, in every sheet (`-nns-breakdown-best_network.xlsx` or `-nns-breakdown-most_reliable.xlsx`).
   - **Export both scorings:** Best Network and Most Reliable side by side in one workbook (`-nns-breakdown-both.xlsx`).
-  - **Areas:** each Region with its own scoring, then its areas, then its **Adjustment** row; each campaign under a band of its own colour with its tests, then its Best Network and its Most Reliable points, #1 and GAP to #1 of the area, weight in its Region and weighted GAPs to the #1 of the Region and of all the Regions. Filtered to a Region, its weighted GAPs plus its adjustment are its GAP in Country Areas.
+  - **Areas:** each Region with its own scoring, then its areas, then its **Adjustment** row; each campaign under a band of its own colour with its tests, then its Best Network and its Most Reliable points, position of the operator in the area (1 for the most points), #1 and GAP to #1 of the area, weight in its Region and weighted GAPs to the #1 of the Region and of all the Regions. Filtered to a Region, its weighted GAPs plus its adjustment are its GAP in Country Areas.
   - **GAP Totals:** each Region and all the chosen Regions per campaign and scoring: points, #1, GAP to #1, weighted GAP of its areas, adjustment and weighted points of its areas.
   - **Sites:** every capacity, scenario and planned financial year.
   - **Scenarios:** the latest campaign by city size and scenario.
