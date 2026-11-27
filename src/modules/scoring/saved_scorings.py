@@ -29,7 +29,7 @@ from src.modules.scoring.scoring_area_summary import (
     whole_country_filters,
     detach_area_summary, normalize_area_summary_request, resolve_main_cities, with_breakdown_cities,
 )
-from src.modules.scoring.scoring_test_filters import TEST_FILTER_FIELDS, TEST_FILTERS, filters_kind
+from src.modules.scoring.scoring_test_filters import TEST_FILTER_FIELDS, TEST_FILTERS, filters_kind, row_filter
 from src.modules.scoring.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.scoring.scoring_nns_breakdown import KEY as NNS_KEY, VERSION as NNS_VERSION, requested as requested_nns_breakdown
 from src.modules.cdr.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
@@ -72,7 +72,7 @@ SCORING_CONTEXT_FILTER_COLUMNS = {
     'Vendor_Operator': ('Operator_Vendor',),
     'Vendor': ('Vendor',),
     'Campaign': ('Campaign',),
-    # Test Name filters the Data CDRs only (see scoring_test_filters).
+    # Test Name filters the Data CDRs only, Test joins the Test Type and Test Name (see scoring_test_filters).
     **{field: spec['columns'] for field, spec in TEST_FILTERS.items()},
 }
 # Filters added after saved results existed only take part in their identity when used.
@@ -141,7 +141,7 @@ def _normalize_context_filters(context_filters: dict[str, list[str]] | None) -> 
     if context_filters is None:
         return normalized
     if not isinstance(context_filters, dict):
-        raise ValueError('Scoring context filters must be an object keyed by Region, Cluster, City, Operator, Operator_Vendor, Vendor, Campaign, Test_Name or Test_Type.')
+        raise ValueError('Scoring context filters must be an object keyed by Region, Cluster, City, Operator, Operator_Vendor, Vendor, Campaign, Test, Test_Name or Test_Type.')
 
     fields_by_identity = {column_identity(field): field for field in SCORING_CONTEXT_FILTER_FIELDS}
     values_by_field: dict[str, dict[str, str]] = {field: {} for field in SCORING_CONTEXT_FILTER_FIELDS}
@@ -2181,10 +2181,11 @@ def _load_source_frames(
             if not filters_kind(field, str(source['metadata']['kind'])):
                 # (Test Name names the Data tests only: the calls and speech samples are scored whatever it holds.)
                 continue
-            resolved_filter_column = next((
-                resolved for candidate in SCORING_CONTEXT_FILTER_COLUMNS[field]
-                if (resolved := resolve_column_name(columns, candidate)) is not None
-            ), None)
+            resolved_filter_column = row_filter(repository, dataset_id, str(source['metadata']['kind']), field) \
+                if field in TEST_FILTERS else next((
+                    resolved for candidate in SCORING_CONTEXT_FILTER_COLUMNS[field]
+                    if (resolved := resolve_column_name(columns, candidate)) is not None
+                ), None)
             if resolved_filter_column is None:
                 if ValueSet(values).includes:
                     missing_filter_fields.append(field)

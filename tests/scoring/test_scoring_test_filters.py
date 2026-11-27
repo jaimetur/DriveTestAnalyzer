@@ -58,7 +58,8 @@ def test_test_name_and_test_type_leave_tests_out_of_the_scoring(repository, scor
 def test_the_test_filters_list_every_test_of_the_cdrs_and_are_kept_by_the_panel(repository):
     ids = _sources(repository)
     cdrs = [{'id': dataset_id, 'kind': kind} for dataset_id, kind in zip(ids, TESTS)]
-    assert scoring_test_filter_options(repository, cdrs) == {
+    options = scoring_test_filter_options(repository, cdrs)
+    assert {field: options[field] for field in ('Test_Name', 'Test_Type')} == {
         'Test_Name': ['Ping 40', 'Ping 800', 'YouTube'],
         'Test_Type': ['CALL', 'ICMP Ping', 'MultiRAB CALL', 'VideoStreaming', 'WhatsApp CALL']}
     # The panel keeps them only when used, and the exports say which tests were left out.
@@ -68,3 +69,35 @@ def test_the_test_filters_list_every_test_of_the_cdrs_and_are_kept_by_the_panel(
     assert 'Test_Name' not in normalize_panel_filters({'Operator': []}, ['Operator', 'Campaign'], warnings)
     labels = _canonical_scope_filter_labels({'Operator': [], 'Test_Name': ['-Ping 40', '-Ping 800'], 'Test_Type': ['CALL']})
     assert labels[-2:] == ['Test Name: All except Ping 40, Ping 800', 'Test Type: CALL']
+
+
+def test_test_joins_the_type_and_the_name_so_one_of_two_tests_of_the_same_name_is_left_out(repository, scoring_engine):
+    _engine, calls = scoring_engine
+    tests = {
+        # TikTok is a video test and tiktok a browsing one: Test Name (whatever the case) leaves both out, Test one of them.
+        'data': {'Test_Name': ['TikTok', 'tiktok', 'YouTube', 'Ping 40'],
+                 'Type_of_Test': ['VideoStreaming', 'httpBrowser', 'VideoStreaming', 'ICMP Ping']},
+        'voice': TESTS['voice'], 'speech': TESTS['speech'],
+    }
+    ids = []
+    for kind, columns in tests.items():
+        dataset_id = add_dataset(repository, f'Joined_NSA_{kind.title()}.csv', kind=kind)
+        frame = pd.DataFrame({'Operator': ['EE'] * 4, 'Region': ['North'] * 4, 'City': ['Leeds'] * 4,
+                              'Campaign': ['2026-Q2'] * 4, 'Dataset_Kind': [kind] * 4, 'score': [1.0, 2.0, 3.0, 4.0], **columns})
+        repository.replace_dataset_rows(dataset_id, frame)
+        repository.update_dataset_profile(dataset_id, row_count=len(frame), column_count=len(frame.columns))
+        ids.append(dataset_id)
+    cdrs = [{'id': dataset_id, 'kind': kind} for dataset_id, kind in zip(ids, tests)]
+    assert scoring_test_filter_options(repository, cdrs)['Test'] == [
+        'CALL', 'httpBrowser › tiktok', 'ICMP Ping › Ping 40', 'MultiRAB CALL', 'VideoStreaming › TikTok',
+        'VideoStreaming › YouTube', 'WhatsApp CALL']
+    assert _scored(repository, calls, ids, {'Test_Name': ['-TikTok']})['data'] == [3.0, 4.0]
+    # Only the video TikTok, and the WhatsApp calls (by their Test Type: their Test_Name is no test of theirs).
+    assert _scored(repository, calls, ids, {'Test': ['-VideoStreaming › TikTok', '-WhatsApp CALL']}) == {
+        'data': [2.0, 3.0, 4.0], 'voice': [1.0, 2.0, 3.0], 'speech': [1.0, 2.0, 3.0]}
+    # A whole Test Type as a pattern, and only some tests.
+    assert _scored(repository, calls, ids, {'Test': ['-VideoStreaming › *']})['data'] == [2.0, 4.0]
+    assert _scored(repository, calls, ids, {'Test': ['ICMP Ping › Ping 40', 'CALL']}) == {
+        'data': [4.0], 'voice': [2.0, 3.0], 'speech': [2.0, 3.0]}
+    assert _canonical_scope_filter_labels({'Operator': [], 'Test': ['-VideoStreaming › TikTok']})[-1] == \
+        'Test: All except VideoStreaming › TikTok'

@@ -1800,7 +1800,7 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
     return copy_values(raw, wanted, types), len(raw)
 
 
-_TEXT_VALUES: dict[tuple[str, str, int, str, int], list[str]] = {}
+_TEXT_VALUES: dict[tuple[Any, ...], list[Any]] = {}
 _TEXT_VALUES_LOCK = Lock()
 
 
@@ -1826,6 +1826,35 @@ def distinct_texts(database_path: Any, kind: str, dataset_id: int, column: str) 
         rows = duck.execute(f"SELECT DISTINCT {text} FROM read_parquet({_sql_text(cdr_parts(root, kind, dataset_id))}) "
                             f"WHERE {quote(column)} IS NOT NULL AND {text} <> ''").fetchall()
     values = sorted((str(row[0]) for row in rows), key=lambda value: (value.casefold(), value))
+    with _TEXT_VALUES_LOCK:
+        if len(_TEXT_VALUES) > 2048:
+            _TEXT_VALUES.clear()
+        _TEXT_VALUES[key] = values
+    return list(values)
+
+
+def distinct_combinations(database_path: Any, kind: str, dataset_id: int, columns: list[str]) -> list[tuple[str, ...]] | None:
+    """The distinct combinations of text columns of the copy of a CDR (each value trimmed, '' for none), kept until the
+    copy changes; None when the copy is not ready or does not keep every column as text."""
+    import duckdb
+
+    root = store_root(database_path)
+    path = manifest_file(root, kind, dataset_id)
+    manifest = read_manifest(path)
+    types = dict(manifest['columns']) if manifest else {}
+    if manifest is None or not cdr_folder(root, kind, dataset_id).is_dir() or any(types.get(column) != 'VARCHAR' for column in columns):
+        return None
+    try:
+        key = ('combinations', str(root), kind, int(dataset_id), tuple(columns), path.stat().st_mtime_ns)
+    except OSError:
+        return None
+    with _TEXT_VALUES_LOCK:
+        if key in _TEXT_VALUES:
+            return list(_TEXT_VALUES[key])
+    texts = ', '.join(f"TRIM(COALESCE({quote(column)}, ''))" for column in columns)
+    with duckdb.connect(config={'threads': 2, 'memory_limit': '1GB'}) as duck:
+        rows = duck.execute(f"SELECT DISTINCT {texts} FROM read_parquet({_sql_text(cdr_parts(root, kind, dataset_id))})").fetchall()
+    values = sorted((tuple(str(value) for value in row) for row in rows), key=lambda row: tuple(item.casefold() for item in row))
     with _TEXT_VALUES_LOCK:
         if len(_TEXT_VALUES) > 2048:
             _TEXT_VALUES.clear()

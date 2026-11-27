@@ -357,8 +357,10 @@
   const filterCatalogueKeys = new Map([...catalogueKeyByLevel, ['Operator_Vendor', 'operator_vendors'], ['Vendor_Operator', 'vendor_operators']]);
   // Test Name and Test Type (ticket #207) are not levels: they come last. Their lists can leave the ticked tests out
   // (Exclude), saved as exclusions (-Ping 40) so the tests that appear later are scored too.
-  const testFilterKeys = ['Test_Name', 'Test_Type'];
-  const testFilterLabels = {Test_Name: 'Test Name', Test_Type: 'Test Type'};
+  const testFilterKeys = ['Test', 'Test_Name', 'Test_Type'];
+  const testFilterLabels = {Test: 'Test', Test_Name: 'Test Name', Test_Type: 'Test Type'};
+  // Test joins the Test Type and the Test Name (VideoStreaming › TikTok): its list groups them by Test Type.
+  const TEST_SEPARATOR = ' › ';
 
   const contextFilterKeys = hierarchy => [...hierarchy.flatMap(key => (key === 'Vendor' ? ['Operator_Vendor', 'Vendor_Operator', 'Vendor'] : [key])),
     ...testFilterKeys];
@@ -827,6 +829,16 @@
             select.append(option);
           }
         }
+        const testGroups = new Map();
+        const testGroup = value => {
+          const label = value.includes(TEST_SEPARATOR) ? value.split(TEST_SEPARATOR)[0] : 'Calls and speech samples';
+          if (!testGroups.has(label)) {
+            const group = document.createElement('optgroup');
+            group.label = label;
+            testGroups.set(label, group);
+          }
+          return testGroups.get(label);
+        };
         for (const [index, entry] of nextOptions.entries()) {
           const option = document.createElement('option');
           option.value = entry.value;
@@ -838,8 +850,11 @@
             option.dataset.operatorColor = entry.color;
             option.style.color = entry.color;
           }
-          select.append(option);
+          (key === 'Test' ? testGroup(entry.value) : select).append(option);
         }
+        // (The groups of Test in the order of their Test Types, the calls and speech samples last.)
+        [...testGroups.entries()].sort(([left], [right]) => (left === 'Calls and speech samples') - (right === 'Calls and speech samples')
+          || left.localeCompare(right, undefined, {sensitivity: 'base'})).forEach(([, group]) => select.append(group));
       }
       const available = new Set(nextOptions.map(entry => identity(entry.value)));
       select.dataset.scoringRememberedValues = JSON.stringify(allSelected ? [] : [...selectedValues].filter(value => !available.has(value)));

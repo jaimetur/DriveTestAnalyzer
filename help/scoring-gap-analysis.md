@@ -155,7 +155,7 @@ When the workspace has NSA and SA CDRs, **NR Mode** also offers **NSA vs SA**: t
 
 ### Set filters, Break down by and reference
 
-1. **Filters:** restrict **Operators**, **Vendors**, **Regions**, **Clusters** or **Cities** if needed, or leave tests out with **Test Name** and **Test Type** (see [Filters and Break down by](#filters-and-break-down-by)).
+1. **Filters:** restrict **Operators**, **Vendors**, **Regions**, **Clusters** or **Cities** if needed, or leave tests out with **Test**, **Test Name** and **Test Type** (see [Filters and Break down by](#filters-and-break-down-by)).
 2. **Break down by:** choose the levels Operator, Vendor, Region, **Cluster**, City and Campaign, in the order of the [aggregation hierarchy](#aggregation-hierarchy). **Operator** is always included and **Campaign** is checked initially; Cluster needs CDRs with a `Cluster` column, from the source CDR or a Cluster mapping.
 3. **Country Areas & Scoring Trends** (always included, see below).
 4. **GAP reference operator** and **Scoring Methodology**, in **Scoring Setup** (see below).
@@ -299,7 +299,7 @@ Find a Favourite Scoring without reading every card. Open it with **Favourite Sc
 
 ### What is remembered?
 
-- **For each user, in every browser:** CDRs, NR Mode, methodology, filters (Cluster, Operator_Vendor, Vendor_Operator, Test Name and Test Type included), Break down by, Scoring Trends and GAP reference, saved automatically per workspace. One user's selection never changes another's; a user without one starts from the default (Latest campaign).
+- **For each user, in every browser:** CDRs, NR Mode, methodology, filters (Cluster, Operator_Vendor, Vendor_Operator, Test, Test Name and Test Type included), Break down by, Scoring Trends and GAP reference, saved automatically per workspace. One user's selection never changes another's; a user without one starts from the default (Latest campaign).
 - **Within the browser session:** result tab, environment, scoring, display controls, comparison selection and scroll position.
 - **In each Saved Scoring:** its selection, name, star, uses and calculations, and the source metadata, rules, grouping, result and warnings of its last calculation.
 - **Automatic refreshes** do not overwrite edits to the controls; **removed or unready inputs** produce a notice when a selection is restored.
@@ -320,14 +320,15 @@ Filters choose which test rows are scored; Break down by chooses how the results
 > [!TIP]
 > Select **Campaign** when you want a separate column or bar for each campaign. Filtering two campaigns alone does not separate their results.
 
-### Test Name and Test Type
+### Test, Test Name and Test Type
 
-Two filters, last in **Context filters**, leave tests out of a scoring (for example the tests the provider reports as problematic) without changing the CDRs.
+Three filters, last in **Context filters**, leave tests out of a scoring (for example the tests the provider reports as problematic) without changing the CDRs.
 
+- **Test:** the Test Type and the Test Name of each test joined (**VideoStreaming › TikTok**), grouped by Test Type, each group with its own **Select All**. Two tests of the same name in different types (TikTok in VideoStreaming, tiktok in httpBrowser) are told apart, so only one of them can be left out; the calls and speech samples by their Test Type (**Calls and speech samples**: CALL, MultiRAB CALL, WhatsApp CALL).
 - **Test Name:** the name of the **Data** tests (`Test_Name`: Ping 40, YouTube, FDTT HTTP DL MT…). The calls and speech samples are scored whatever it holds (their `Test_Name` is the data session of a MultiRAB call).
 - **Test Type:** the type of every test (`Type_of_Test`, else `Session_Type`): httpBrowser, httpTransfer, ICMP Ping… of the Data tests; CALL, MultiRAB CALL, WhatsApp CALL of the calls and speech samples.
 - **Exclude:** choose **Exclude** at the top of the list and tick the tests to leave out; the other tests, also those of later campaigns, are scored. **Include** scores only the ticked ones.
-- **Patterns:** type `Ping*` and add it to take every test whose name starts with Ping.
+- **Patterns:** type `Ping*` and add it to take every test whose name starts with Ping (in **Test**, `VideoStreaming › *` takes every video test).
 - **Lists:** every test of the CDRs of the NR Mode; they do not narrow the other filters, nor these them.
 - **Where it shows:** a slate label on the card of the Saved Scoring (**Without Ping 40, Ping 800**), the Context filters summary (**All except …**) and the filters of the exports. A Saved Scoring keeps them only when used, and the Country Areas, Scoring Trends, Points Lost and NNS Break-down of the scoring leave the same tests out.
 

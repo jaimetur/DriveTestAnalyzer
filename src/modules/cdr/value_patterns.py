@@ -16,6 +16,10 @@ from typing import Any, Callable, Iterable
 import pandas as pd
 
 _EXCLUSION = re.compile(r'^\s*(?:-|not\s+)', re.IGNORECASE)
+# A filter on the values of several columns joined (``combined:Type_of_Test|Test_Name`` takes ``VideoStreaming › TikTok``;
+# a row with the later columns empty, the value of the first one alone).
+COMBINED_FILTER_PREFIX = 'combined:'
+COMBINED_FILTER_SEPARATOR = ' › '
 
 
 def is_exclusion(value: Any) -> bool:

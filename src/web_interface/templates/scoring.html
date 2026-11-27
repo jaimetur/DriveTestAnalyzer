@@ -2334,15 +2334,15 @@
           </label>
           {% endfor %}{% endfor %}
           {# Tests left out of the scoring (or the only ones scored) without changing the CDRs (ticket #207). #}
-          {% for field, label, title in [('Test_Name', 'Test Name', 'The name of the Data test (Ping 40, YouTube…): the calls and speech samples are scored whatever it holds'), ('Test_Type', 'Test Type', 'The type of each test: httpBrowser, httpTransfer, ICMP Ping… of the Data tests; CALL, MultiRAB CALL, WhatsApp CALL of the calls and speech samples')] %}
+          {% for field, label, title in [('Test', 'Test', 'The Test Type and the Test Name of each test (VideoStreaming › TikTok), grouped by Test Type: a name of two tests of different types is chosen in one of them only; the calls and speech samples by their Test Type'), ('Test_Name', 'Test Name', 'The name of the Data test (Ping 40, YouTube…): the calls and speech samples are scored whatever it holds'), ('Test_Type', 'Test Type', 'The type of each test: httpBrowser, httpTransfer, ICMP Ping… of the Data tests; CALL, MultiRAB CALL, WhatsApp CALL of the calls and speech samples')] %}
           <label data-scoring-config-key="context_filters.{{ field }}" title="{{ title }}">{{ label }}
-            <select multiple size="1" data-scoring-context-filter="{{ field }}" data-scoring-test-filter data-multiselect-exclude data-multiselect-patterns data-multiselect-auto-close="1000" data-multiselect-empty-label="All tests" aria-label="Filter by {{ label }}">
+            <select multiple size="1" data-scoring-context-filter="{{ field }}" data-scoring-test-filter data-multiselect-exclude data-multiselect-patterns{% if field == 'Test' %} data-multiselect-groups="true"{% endif %} data-multiselect-auto-close="1000" data-multiselect-empty-label="All tests" aria-label="Filter by {{ label }}">
               <option value="" disabled>No values</option>
             </select>
           </label>
           {% endfor %}
         </div>
-        <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list. <strong>Test Name</strong> (Data tests only) and <strong>Test Type</strong> list every test of the NR Mode: choose <strong>Exclude</strong> in their list to leave the ticked tests out of the scoring.</p>
+        <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list. <strong>Test</strong> (Test Type › Test Name), <strong>Test Name</strong> (Data tests only) and <strong>Test Type</strong> list every test of the NR Mode: choose <strong>Exclude</strong> in their list to leave the ticked tests out of the scoring.</p>
         {# How to score some Vendors of one operator: Vendor alone applies to every operator. #}
         <div class="scoring-start-tip scoring-vendor-tip" role="note">
           <strong class="scoring-start-tip-title">Vendors of one operator</strong>

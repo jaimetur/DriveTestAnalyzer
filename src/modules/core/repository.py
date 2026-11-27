@@ -37,6 +37,7 @@ from src.modules.core.module_labels import MAIN_MODULES, MODULE_LABELS_STATE_KEY
 from src.modules.ppt_designer.ppt_naming import MODULE_KEYS as FORMER_MODULE_KEYS, migrate_application_database as migrate_ppt_designer_application_database
 from src.modules.reporting.report_layouts import csv_with_slide_ids, normalize_catalog_layouts, rename_template_vendor_fields
 from src.modules.core.runtime_config import ignore_event_time_filtering
+from src.modules.cdr.value_patterns import COMBINED_FILTER_PREFIX, COMBINED_FILTER_SEPARATOR, sql_condition
 
 
 DATABASE_BLANK_FILTER = '__database_blank__'
@@ -5669,6 +5670,23 @@ class Repository:
         # The columns the WHERE reads, for a read of the columnar copy of the CDR.
         filter_columns: list[str] = []
         for key, value in filters.items():
+            if str(key).startswith(COMBINED_FILTER_PREFIX):
+                # Values of several columns joined (Test Type › Test Name): a value of the first column alone when the
+                # others are empty.
+                names = [self._resolve_dataset_row_column_name(existing_columns, name)
+                         for name in str(key)[len(COMBINED_FILTER_PREFIX):].split('|')]
+                values = value if isinstance(value, (list, tuple, set)) else [value]
+                normalized_values = [str(item).strip().lower() for item in values if str(item).strip()]
+                if not names or names[0] is None or not normalized_values:
+                    continue
+                parts = [f"LOWER(TRIM(COALESCE(CAST({self._quote_identifier(name)} AS TEXT), '')))" for name in names if name]
+                expression = parts[0] + ''.join(
+                    f" || CASE WHEN {part} = '' THEN '' ELSE '{COMBINED_FILTER_SEPARATOR}' || {part} END" for part in parts[1:])
+                clause, clause_params = sql_condition(f'({expression})', normalized_values)
+                where_clauses.append(clause)
+                params.extend(clause_params)
+                filter_columns.extend(name for name in names if name)
+                continue
             resolved_key = self._resolve_dataset_row_column_name(existing_columns, vendor_filter_column(key))
             if key in {'aggregation', 'extra_filters', 'date_from', 'date_to'} or value in (None, '') or not resolved_key:
                 continue
