@@ -13,6 +13,10 @@ complete the cells the Multivendor Mappings do not have. Every source gives ever
 Multivendor Mappings only the Operators chosen for them receive a Vendor: the others keep their name, as an Operator that
 no source serves (O2, whose inventory covers only the cells Vodafone hosts for it).
 
+The technology of the CDR decides which cells it reads: an NSA CDR is served by its LTE anchor, so only LTE (and 3G/2G)
+cells are looked up, never NR cells (the 4G sheet of a Multivendor Mapping); an SA CDR reads the NR cells first and an
+LTE cell only for a cell no NR row has (a fallback to LTE). NR cell identities can be the same numbers as LTE ones.
+
 Besides ``Operator_Vendor`` and ``Vendor`` (the same Vendor at all its cells, else Ericsson (Mixed) or Mixed
 (non-Ericsson)), each sample receives the owner network, host network, site, eMOCN scenario and distance of the cell
 that served its start, and the date of the snapshot it came from; and, from all its cells as the Vendor (the same at
@@ -33,6 +37,7 @@ import numpy as np
 import pandas as pd
 
 from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
+from src.modules.cdr.nr_mode import dataset_nr_mode
 from src.modules.cdr_analysis.cdr_reporting import (
     VENDOR_UNKNOWN, _first_existing, _normalise_operator, _split_global_cells, _vendor_from_ends, _vendor_prefix, _with_vendor_columns,
     operator_key,
@@ -45,8 +50,9 @@ from src.modules.network.network_inventory import (
 
 SERVING_NETWORKS_STATE_KEY = 'network_serving_networks'
 # Raise when the mapping rule changes, so the CDRs mapped before show that they need mapping again (3: the RAN Vendor
-# and the site type of the samples, ticket #85; 4: the cells a sample changed to count too, not only the first and last).
-SERVING_ENGINE_VERSION = 4
+# and the site type of the samples, ticket #85; 4: the cells a sample changed to count too, not only the first and last;
+# 5: NSA CDRs read only non-NR cells and SA CDRs NR cells first, ticket #210).
+SERVING_ENGINE_VERSION = 5
 DEFAULT_MAX_DISTANCE_KM = 30.0
 # The networks whose cells serve the subscribers of each network family, in order of preference: Vodafone and
 # Three share their RAN through eMOCN, and Lebara subscribers use the Vodafone network.
@@ -301,12 +307,13 @@ def serving_endpoints(frame: pd.DataFrame, dataset_kind: str, profile: CdrFieldP
 def match_serving_cells(
     endpoints: pd.DataFrame, operators: pd.Series, candidates: pd.DataFrame, snapshot_ranks: dict[int, int],
     snapshot_dates: dict[int, str], config: dict[str, Any] | None, max_distance_km: float,
-    excluded: Iterable[tuple[str, int]] = (), complements: Iterable[int] = (),
+    excluded: Iterable[tuple[str, int]] = (), complements: Iterable[int] = (), nr_mode: str | None = None,
 ) -> pd.DataFrame:
     """The inventory cell chosen for every serving cell of a sample: an allowed network (own first), the preferred
     snapshot, then the nearest cell; cells beyond ``max_distance_km`` of a located sample are never chosen, nor those of a
     snapshot that does not apply to the Operator (``excluded``: its Operator and dataset ID pairs). A snapshot of
-    ``complements`` gives a cell only when no other has it, in any allowed network."""
+    ``complements`` gives a cell only when no other has it, in any allowed network. ``nr_mode``: NSA reads no NR cell
+    (its cells are the LTE anchor), SA reads an NR cell before any other of the same identity (see the module)."""
     columns = ['row', 'end', 'cell', 'vendor', 'network', 'host_network', 'site_id', 'emocn', 'distance_km', 'snapshot_date']
     if endpoints.empty or candidates.empty:
         return pd.DataFrame(columns=columns)
@@ -320,6 +327,8 @@ def match_serving_cells(
                .merge(allowed, on='operator')
                .merge(candidates.rename(columns={'cell_identity': 'cell', 'latitude': 'cell_latitude', 'longitude': 'cell_longitude'}),
                       on=['cell', 'network_family']))
+    if nr_mode == 'NSA' and 'technology' in matched.columns:
+        matched = matched.loc[matched['technology'].ne('NR')]
     excluded = set(excluded)
     if excluded:
         matched = matched.loc[[pair not in excluded for pair in zip(matched['operator'], matched['dataset_id'])]]
@@ -332,7 +341,10 @@ def match_serving_cells(
     matched['snapshot_date'] = matched['dataset_id'].map(snapshot_dates)
     matched['sort_distance'] = matched['distance_km'].fillna(np.inf)
     matched['complement'] = matched['dataset_id'].isin(set(complements))
-    matched = matched.sort_values(['row', 'end', 'complement', 'family_rank', 'snapshot_rank', 'sort_distance'], kind='stable')
+    # SA: an NR cell before an LTE cell of the same identity, whatever the source (the LTE one only for a fallback).
+    matched['other_technology'] = matched['technology'].ne('NR') if nr_mode == 'SA' and 'technology' in matched.columns else False
+    matched = matched.sort_values(['row', 'end', 'other_technology', 'complement', 'family_rank', 'snapshot_rank', 'sort_distance'],
+                                  kind='stable')
     return matched.drop_duplicates(['row', 'end', 'cell'])[columns].reset_index(drop=True)
 
 
@@ -346,9 +358,10 @@ def serving_input_columns(columns: Iterable[str], dataset_kind: str, profile: Cd
 
 def assign_serving_vendors(
     frame: pd.DataFrame, dataset_kind: str, repository: Any, inventory_dataset_ids: Iterable[int], *,
-    file_name: str = '', config: dict[str, Any] | None = None,
+    file_name: str = '', config: dict[str, Any] | None = None, nr_mode: object = None,
 ) -> pd.DataFrame:
-    """Operator_Vendor, Vendor and the serving-cell fields of every sample from the selected inventory snapshots."""
+    """Operator_Vendor, Vendor and the serving-cell fields of every sample from the selected inventory snapshots.
+    ``nr_mode``: the NR Mode of the CDR (NSA or SA, else from its file name), which decides the technology of its cells."""
     operator_column = _first_existing(frame, ['operator', 'Operator'])
     if not operator_column:
         raise ValueError('The CDR must contain Operator to map Vendors.')
@@ -377,7 +390,8 @@ def assign_serving_vendors(
     candidates = _candidate_cells(repository, list(ranks), wanted, sorted(set(endpoints['cell'])))
     matches = match_serving_cells(endpoints, operators, candidates, ranks, dates, config,
                                   float(config.get('max_distance_km') or DEFAULT_MAX_DISTANCE_KM),
-                                  complements=complement_snapshots(snapshots))
+                                  complements=complement_snapshots(snapshots),
+                                  nr_mode=dataset_nr_mode(dataset_kind, nr_mode, file_name))
     first = matches.loc[matches['end'] == 'first'].set_index('row')
     last = matches.loc[matches['end'] == 'last'].set_index('row')
     # The cells a sample changed to, those without a match too: like an end without a cell, they keep it from one Vendor.

@@ -5349,8 +5349,10 @@ def inventory_can_map_vendors(dataset_id: int, task_repository: Repository | Non
 def assign_inventory_vendors(
     df: pd.DataFrame, dataset_kind: str, vodafone_mapping_dataset_id: int | None, three_mapping_dataset_id: int | None,
     inventory_dataset_ids: Iterable[Any], task_repository: Repository | None = None, file_name: str = '',
+    nr_mode: object = None,
 ) -> pd.DataFrame:
     """Assign Vendor from the cells that served each sample, in the selected Multivendor Mappings and Network Inventories.
+    ``nr_mode``: the NR Mode of the CDR (NSA reads LTE cells, SA NR cells first).
 
     Every selected inventory is a snapshot of the network; each sample's cells are looked up among the networks
     allowed to serve its Operator (Workspace Config → Serving Networks), see ``serving_cells``.
@@ -5359,7 +5361,7 @@ def assign_inventory_vendors(
 
     task_repository = task_repository or repository
     snapshot_ids = [int(value) for value in (vodafone_mapping_dataset_id, three_mapping_dataset_id, *inventory_dataset_ids) if value]
-    return assign_serving_vendors(df, dataset_kind, task_repository, snapshot_ids, file_name=file_name)
+    return assign_serving_vendors(df, dataset_kind, task_repository, snapshot_ids, file_name=file_name, nr_mode=nr_mode)
 
 
 def assign_polygon_vendors(
@@ -5550,6 +5552,7 @@ def rebuild_dataset_artifacts(
                 int(vodafone_mapping['id']) if vodafone_mapping else None,
                 int(three_mapping['id']) if three_mapping else None,
                 inventory_ids, task_repository, file_name=dataset_path.name,
+                nr_mode=(task_repository.get_dataset(dataset_id) or {'nr_mode': None})['nr_mode'],
             )
             auto_vendor_mapping_applied = True
             inventory_vendor_signature = vendor_mapping_signature(task_repository, inventory_ids=inventory_ids)
@@ -5913,7 +5916,7 @@ def map_vendor_in_copy(
         *inputs, *(column for column in available if column_identity(column) in identities or column == metric)])))
     mapped = assign_inventory_vendors(
         frame[inputs], dataset_kind, vodafone_mapping_dataset_id, three_mapping_dataset_id, inventory_dataset_ids,
-        task_repository, file_name=str(dataset.get('file_name') or ''),
+        task_repository, file_name=str(dataset.get('file_name') or ''), nr_mode=dataset.get('nr_mode'),
     )
     task_repository.update_dataset_profile(dataset_id, progress=75, processing_step='Writing mapped CDR rows')
     ensure_not_stopped(dataset_id, task_repository)
@@ -6099,6 +6102,7 @@ def process_vendor_mapping(
                     ) if vendor_polygon_ids else assign_inventory_vendors(
                         _reporting_frame(dataset_id, task_repository), str(dataset.get('dataset_kind') or ''),
                         vodafone_id, three_id, inventory_ids, task_repository, file_name=str(dataset.get('file_name') or ''),
+                        nr_mode=dataset.get('nr_mode'),
                     )
                     task_repository.update_dataset_profile(dataset_id, progress=75, processing_step='Writing mapped CDR rows')
                     ensure_not_stopped(dataset_id, task_repository)
@@ -23899,6 +23903,10 @@ def update_dataset_nr_mode(
         from src.modules.cdr import cdr_store
 
         repository.update_dataset_profile(dataset_id, nr_mode=nr_mode)
+        if dataset['vendor_mapping_applied']:
+            # The NR Mode decides which cells map its Vendor (LTE for NSA, NR first for SA, ticket #210): mapped
+            # under the other one, it shows that it needs mapping again.
+            _record_vendor_mapping_signature(repository, dataset_id, None)
         # The columnar copy keeps the NR Mode of its rows: where it is the only store of the CDR, its NR Mode column is
         # rewritten (a table that holds the rows is copied again, see cdr_store.change_cdr).
         cdr_store.change_cdr(repository, dataset_id, lambda: cdr_store.change_copy_columns(repository, dataset_id, nr_mode=True) or None,

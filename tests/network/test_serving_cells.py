@@ -88,6 +88,28 @@ def test_serving_networks_defaults_csv_and_snapshot_preference():
     assert sc.cdr_reference_date(pd.DataFrame({'x': [1]}), '20260623 Final Data CDR.xlsx') == date(2026, 6, 23)
 
 
+def test_nsa_cdrs_read_lte_cells_and_sa_cdrs_nr_cells_first():
+    # Ticket #210: NR cell identities can be the same numbers as LTE ones. Cell 10 is LTE in the mapping (farther) and
+    # NR (nearer); cell 20 is only NR, cell 30 only LTE (a fallback to LTE of an SA sample), in a complementing source.
+    endpoints = pd.DataFrame({'row': [0, 1, 2], 'end': 'first', 'cell': ['10', '20', '30'],
+                              'longitude': [0.0, 0.0, 0.0], 'latitude': [51.0, 51.0, 51.0]})
+    cells = pd.DataFrame({'dataset_id': [3, 3, 3, 1], 'cell_identity': ['10', '10', '20', '30'], 'technology': ['LTE', 'NR', 'NR', 'LTE'],
+                          'network': 'Vodafone', 'network_family': 'vodafone', 'host_network': '', 'vendor': ['Ericsson', 'Samsung', 'Huawei', 'Nokia'],
+                          'site_id': '', 'emocn': '', 'latitude': [51.1, 51.01, 51.0, 51.0], 'longitude': 0.0})
+    operators = pd.Series(['Vodafone UK'] * 3)
+    dates = {1: '2026-08-20', 3: '2026-10-05'}
+
+    def vendors(nr_mode):
+        matched = sc.match_serving_cells(endpoints, operators, cells, {3: 0, 1: 1}, dates, None, 30.0, (), {1}, nr_mode=nr_mode)
+        return dict(zip(matched['cell'], matched['vendor'], strict=True))
+    # NSA: the LTE anchor only, never an NR cell of the same number, however near.
+    assert vendors('NSA') == {'10': 'Ericsson', '30': 'Nokia'}
+    # SA: the NR cell first, an LTE cell only when no NR row has it.
+    assert vendors('SA') == {'10': 'Samsung', '20': 'Huawei', '30': 'Nokia'}
+    # Without an NR Mode (not a CDR), the nearest cell as before.
+    assert vendors(None) == {'10': 'Samsung', '20': 'Huawei', '30': 'Nokia'}
+
+
 def test_serving_endpoints_place_the_cells_a_sample_changed_to_along_its_way():
     frame = pd.DataFrame({'Cell_ID_A': ['[1]->[2]->[3]->[2]->[1]', '[4]', '[5]->[6]'], 'Call_Start_Longitude_A': [0.0] * 3, 'Call_Start_Latitude_A': [50.0] * 3,
                           'Call_End_Longitude_A': [4.0] * 3, 'Call_End_Latitude_A': [54.0] * 3})
@@ -113,8 +135,8 @@ def test_samples_take_the_vendor_of_their_serving_cell_from_the_closest_snapshot
         'Vodafone_Ericsson',
         # 3 is served by a Vodafone cell (eMOCN); its two ends have different vendors.
         '3_Ericsson (Mixed)',
-        # Vodafone SA is served by the NR cell of H3G.
-        'Vodafone SA_Samsung',
+        # An NSA CDR (as its name, none here, tells) reads no NR cell: the NR cell of H3G does not serve its SA terminal.
+        'Vodafone SA_Unknown',
         # No snapshot holds EE cells: the colliding identity is not EE's.
         'EE - All',
         # The cell is 280 km away from the sample: not its serving cell, and no other cell served it.
@@ -123,9 +145,13 @@ def test_samples_take_the_vendor_of_their_serving_cell_from_the_closest_snapshot
         'O2 (UK) - All',
     ]
     assert june['Operator_Vendor'].tolist()[0] == 'Vodafone_Huawei'
-    assert september['Serving_Network'].tolist()[:3] == ['Vodafone', 'Vodafone', 'H3G']
+    # In an SA CDR, Vodafone SA is served by the NR cell of H3G, and the LTE cells serve the others as before.
+    sa = sc.assign_serving_vendors(_cdr('2026-09-10'), 'data', core.repository, [older, newer], nr_mode='SA')
+    assert sa['Operator_Vendor'].tolist() == [*september['Operator_Vendor'].tolist()[:2], 'Vodafone SA_Samsung',
+                                              *september['Operator_Vendor'].tolist()[3:]]
+    assert sa['Serving_Network'].tolist()[:3] == ['Vodafone', 'Vodafone', 'H3G']
+    assert sa['Serving_Site_ID'].tolist()[:3] == ['S1', 'S1', 'S3']
     assert september['Serving_Host_Network'].tolist()[:2] == ['Vodafone', 'Vodafone']
-    assert september['Serving_Site_ID'].tolist()[:3] == ['S1', 'S1', 'S3']
     assert september['Serving_eMOCN_Scenario'].tolist()[0] == 'NNS'
     assert september['Serving_Inventory_Snapshot'].tolist()[0] == '2026-09-17' and june['Serving_Inventory_Snapshot'][0] == '2026-08-20'
     assert september['Serving_Distance_km'][0] == 0 and pd.isna(september['Serving_Distance_km'][4])

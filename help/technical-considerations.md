@@ -168,6 +168,7 @@ Every selected source (Multivendor Mappings and Network Inventories, Cell Config
 
 - only among the cells of the networks that can serve the sample's Operator, its own network first (Workspace Config → Serving Networks; by default Vodafone and Three serve each other through eMOCN, Lebara is served by both and every other Operator by its own network);
 - only among the Multivendor Mappings that apply to the sample's Operator (the Operators of each one) and the other selected sources;
+- by the NR Mode of the CDR: an NSA CDR only among the LTE (and 3G/2G) cells, never the NR cells (its cells are the LTE anchor of EN-DC); an SA CDR among the NR cells first and the LTE cells only for a cell no NR row has (a fallback to LTE), since NR cell identities (gNodeB × 16384 + cell) can be the same numbers as LTE ones (eNodeB × 256 + cell);
 - in the snapshot whose date is closest to the CDR's measurements (the median start time of its samples, else the date in its file name), the newest on a tie; beside a Multivendor Mapping, every other source (VFUK and 3UK too), whatever its date, only completes the cells the mappings do not have, in any network that can serve the Operator;
 - ignoring cells farther from the sample's position than the maximum serving distance (30 km by default), since a global cell identity only identifies a cell within its Operator; a cell the sample changed to is placed along the way from its start to its end.
 
