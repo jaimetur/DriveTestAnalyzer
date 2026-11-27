@@ -354,6 +354,8 @@
   .saved-scoring-scope[data-dimension="city"] { border-color: #b06d00; background: #b06d00; }
   .saved-scoring-scope[data-dimension="operator"] { border-color: #2458a6; background: #2458a6; }
   .saved-scoring-scope[data-dimension="vendor"] { border-color: #6941a5; background: #6941a5; }
+  /* The tests it leaves out (Test Name, Test Type) in slate. */
+  .saved-scoring-scope[data-dimension="test"] { border-color: #475569; background: #475569; }
   /* Beside it, its NR Mode as an outlined tab, in the colours of the NR Modes of the results (NSA vs SA in both). */
   .saved-scoring-tabs { display: flex; align-items: flex-end; gap: .3rem; width: fit-content; max-width: calc(100% - 1.6rem); margin-left: .8rem; }
   .saved-scoring-tabs > .saved-scoring-scope { min-width: 0; max-width: none; margin-left: 0; }
@@ -2331,8 +2333,16 @@
             </select>
           </label>
           {% endfor %}{% endfor %}
+          {# Tests left out of the scoring (or the only ones scored) without changing the CDRs (ticket #207). #}
+          {% for field, label, title in [('Test_Name', 'Test Name', 'The name of the Data test (Ping 40, YouTube…): the calls and speech samples are scored whatever it holds'), ('Test_Type', 'Test Type', 'The type of each test: httpBrowser, httpTransfer, ICMP Ping… of the Data tests; CALL, MultiRAB CALL, WhatsApp CALL of the calls and speech samples')] %}
+          <label data-scoring-config-key="context_filters.{{ field }}" title="{{ title }}">{{ label }}
+            <select multiple size="1" data-scoring-context-filter="{{ field }}" data-scoring-test-filter data-multiselect-exclude data-multiselect-patterns data-multiselect-auto-close="1000" data-multiselect-empty-label="All tests" aria-label="Filter by {{ label }}">
+              <option value="" disabled>No values</option>
+            </select>
+          </label>
+          {% endfor %}
         </div>
-        <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list.</p>
+        <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list. <strong>Test Name</strong> (Data tests only) and <strong>Test Type</strong> list every test of the NR Mode: choose <strong>Exclude</strong> in their list to leave the ticked tests out of the scoring.</p>
         {# How to score some Vendors of one operator: Vendor alone applies to every operator. #}
         <div class="scoring-start-tip scoring-vendor-tip" role="note">
           <strong class="scoring-start-tip-title">Vendors of one operator</strong>

@@ -17,14 +17,16 @@ from src.modules.cdr.nr_mode import NSA_VS_SA, SAME_OPERATOR_NSA, normalize_nr_m
 from src.modules.core.repository import Repository
 from src.modules.scoring.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.scoring.scoring_config import load_aggregation_hierarchy
+from src.modules.scoring.scoring_test_filters import TEST_FILTER_FIELDS, scoring_test_filter_options
 
 
 SCORING_SELECTION_STATE_KEY = 'scoring_calculation_selection_v1'
 SCORING_SELECTION_FORMAT = 'drivetest-analyzer-scoring-selection'
 SCORING_SELECTION_VERSION = 1
-SCORING_CONTEXT_FILTER_FIELDS = ('Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign')
+SCORING_CONTEXT_FILTER_FIELDS = ('Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign',
+                                 *TEST_FILTER_FIELDS)
 # Filters that are not aggregation levels: saved selections only list them when used.
-SCORING_OPTIONAL_CONTEXT_FILTERS = frozenset({'Cluster', 'Operator_Vendor', 'Vendor_Operator'})
+SCORING_OPTIONAL_CONTEXT_FILTERS = frozenset({'Cluster', 'Operator_Vendor', 'Vendor_Operator', *TEST_FILTER_FIELDS})
 MAX_TRACKED_CLIENTS = 64
 
 
@@ -194,6 +196,8 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
     fields = fields or ['Campaign', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Region', 'Cluster', 'City']
     candidate_ids = [row['id'] for row in candidates]
     options = cascading_options(repository, candidate_ids, filters, fields)
+    # Test Name and Test Type list the values of every CDR of the NR Mode (they do not cascade).
+    options.update(scoring_test_filter_options(repository, candidates))
     without_tests: list[str] = []
     in_progress_values: list[str] = []
     if 'Campaign' in fields:
@@ -270,8 +274,9 @@ def _normalize_context_filters(
         warnings.append('Saved context filters were invalid and have been cleared.')
         return normalized
     supported = {column_identity(field): field for field in SCORING_CONTEXT_FILTER_FIELDS}
-    # Cluster, Operator_Vendor and Vendor_Operator filter the samples without being aggregation levels.
-    allowed_fields = {column_identity(field) for field in hierarchy} | {'cluster', 'operatorvendor', 'vendoroperator'}
+    # Cluster, Operator_Vendor, Vendor_Operator, Test Name and Test Type filter the samples without being aggregation levels.
+    allowed_fields = ({column_identity(field) for field in hierarchy} | {'cluster', 'operatorvendor', 'vendoroperator'}
+                      | {column_identity(field) for field in TEST_FILTER_FIELDS})
     values_by_field: dict[str, dict[str, str]] = {field: {} for field in SCORING_CONTEXT_FILTER_FIELDS}
     stale_fields = False
     for raw_field, raw_values in raw_filters.items():

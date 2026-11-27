@@ -29,6 +29,7 @@ from src.modules.scoring.scoring_area_summary import (
     whole_country_filters,
     detach_area_summary, normalize_area_summary_request, resolve_main_cities, with_breakdown_cities,
 )
+from src.modules.scoring.scoring_test_filters import TEST_FILTER_FIELDS, TEST_FILTERS, filters_kind
 from src.modules.scoring.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.scoring.scoring_nns_breakdown import KEY as NNS_KEY, VERSION as NNS_VERSION, requested as requested_nns_breakdown
 from src.modules.cdr.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
@@ -59,7 +60,8 @@ AGGREGATION_CONTRACT_VERSION = 2
 # The Geographical Areas of a result: those of the Breakdown and Separate cities of its Geographical Areas & Scoring
 # Trends, on the whole country.
 GEOGRAPHICAL_AREAS_VERSION = 2
-SCORING_CONTEXT_FILTER_FIELDS = ('Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign')
+SCORING_CONTEXT_FILTER_FIELDS = ('Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign',
+                                 *TEST_FILTER_FIELDS)
 SCORING_CONTEXT_FILTER_COLUMNS = {
     'Region': ('Region', 'g_level_2'),
     'Cluster': ('Cluster',),
@@ -70,9 +72,11 @@ SCORING_CONTEXT_FILTER_COLUMNS = {
     'Vendor_Operator': ('Operator_Vendor',),
     'Vendor': ('Vendor',),
     'Campaign': ('Campaign',),
+    # Test Name filters the Data CDRs only (see scoring_test_filters).
+    **{field: spec['columns'] for field, spec in TEST_FILTERS.items()},
 }
 # Filters added after saved results existed only take part in their identity when used.
-SCORING_OPTIONAL_CONTEXT_FILTERS = frozenset({'Cluster', 'Operator_Vendor', 'Vendor_Operator'})
+SCORING_OPTIONAL_CONTEXT_FILTERS = frozenset({'Cluster', 'Operator_Vendor', 'Vendor_Operator', *TEST_FILTER_FIELDS})
 
 
 def _scoring_engine():
@@ -137,7 +141,7 @@ def _normalize_context_filters(context_filters: dict[str, list[str]] | None) -> 
     if context_filters is None:
         return normalized
     if not isinstance(context_filters, dict):
-        raise ValueError('Scoring context filters must be an object keyed by Region, Cluster, City, Operator, Operator_Vendor, Vendor or Campaign.')
+        raise ValueError('Scoring context filters must be an object keyed by Region, Cluster, City, Operator, Operator_Vendor, Vendor, Campaign, Test_Name or Test_Type.')
 
     fields_by_identity = {column_identity(field): field for field in SCORING_CONTEXT_FILTER_FIELDS}
     values_by_field: dict[str, dict[str, str]] = {field: {} for field in SCORING_CONTEXT_FILTER_FIELDS}
@@ -2174,6 +2178,9 @@ def _load_source_frames(
         dataset_filters: dict[str, list[str]] = {}
         missing_filter_fields = []
         for field, values in active_filters.items():
+            if not filters_kind(field, str(source['metadata']['kind'])):
+                # (Test Name names the Data tests only: the calls and speech samples are scored whatever it holds.)
+                continue
             resolved_filter_column = next((
                 resolved for candidate in SCORING_CONTEXT_FILTER_COLUMNS[field]
                 if (resolved := resolve_column_name(columns, candidate)) is not None

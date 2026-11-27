@@ -155,7 +155,7 @@ When the workspace has NSA and SA CDRs, **NR Mode** also offers **NSA vs SA**: t
 
 ### Set filters, Break down by and reference
 
-1. **Filters:** restrict **Operators**, **Vendors**, **Regions**, **Clusters** or **Cities** if needed (see [Filters and Break down by](#filters-and-break-down-by)).
+1. **Filters:** restrict **Operators**, **Vendors**, **Regions**, **Clusters** or **Cities** if needed, or leave tests out with **Test Name** and **Test Type** (see [Filters and Break down by](#filters-and-break-down-by)).
 2. **Break down by:** choose the levels Operator, Vendor, Region, **Cluster**, City and Campaign, in the order of the [aggregation hierarchy](#aggregation-hierarchy). **Operator** is always included and **Campaign** is checked initially; Cluster needs CDRs with a `Cluster` column, from the source CDR or a Cluster mapping.
 3. **Country Areas & Scoring Trends** (always included, see below).
 4. **GAP reference operator** and **Scoring Methodology**, in **Scoring Setup** (see below).
@@ -243,7 +243,7 @@ The **Manage Favourite Scorings** panel, below the results, lists every Favourit
 - **Use newer CDRs** (with how many have them): updates and calculates them again in the background, while the one shown stays open.
 - **Delete** (with the count; not for readers): after one confirmation, deletes them and their results, keeping their CDRs and the Scoring History; each is recorded in App Events.
 
-**Folded cards** show the name with **Use Filter** (**In Use** for the one shown), the blue box of its filters, labels of its filtered fields besides Campaign and NR Mode (the Region, Cluster or City, such as **London** or **Vendor A**, or **Nationwide**; then the Operator or Vendor, such as **-Three** for every operator but Three; Region pink, Cluster green, City amber, Operator blue, Vendor purple, Nationwide slate) and an outlined NR Mode tab (**NSA** blue, **SA** pink, **NSA vs SA** both, also on the Showing card). A click unfolds or folds a card; unfolded cards stay so while the page is open.
+**Folded cards** show the name with **Use Filter** (**In Use** for the one shown), the blue box of its filters, labels of its filtered fields besides Campaign and NR Mode (the Region, Cluster or City, such as **London** or **Vendor A**, or **Nationwide**; then the Operator or Vendor, such as **-Three** for every operator but Three; then the tests it leaves out, such as **Without Ping 40**; Region pink, Cluster green, City amber, Operator blue, Vendor purple, Nationwide and tests slate) and an outlined NR Mode tab (**NSA** blue, **SA** pink, **NSA vs SA** both, also on the Showing card). A click unfolds or folds a card; unfolded cards stay so while the page is open.
 
 **Unfolded, each card shows:**
 
@@ -299,7 +299,7 @@ Find a Favourite Scoring without reading every card. Open it with **Favourite Sc
 
 ### What is remembered?
 
-- **For each user, in every browser:** CDRs, NR Mode, methodology, filters (Cluster, Operator_Vendor and Vendor_Operator included), Break down by, Scoring Trends and GAP reference, saved automatically per workspace. One user's selection never changes another's; a user without one starts from the default (Latest campaign).
+- **For each user, in every browser:** CDRs, NR Mode, methodology, filters (Cluster, Operator_Vendor, Vendor_Operator, Test Name and Test Type included), Break down by, Scoring Trends and GAP reference, saved automatically per workspace. One user's selection never changes another's; a user without one starts from the default (Latest campaign).
 - **Within the browser session:** result tab, environment, scoring, display controls, comparison selection and scroll position.
 - **In each Saved Scoring:** its selection, name, star, uses and calculations, and the source metadata, rules, grouping, result and warnings of its last calculation.
 - **Automatic refreshes** do not overwrite edits to the controls; **removed or unready inputs** produce a notice when a selection is restored.
@@ -319,6 +319,17 @@ Filters choose which test rows are scored; Break down by chooses how the results
 
 > [!TIP]
 > Select **Campaign** when you want a separate column or bar for each campaign. Filtering two campaigns alone does not separate their results.
+
+### Test Name and Test Type
+
+Two filters, last in **Context filters**, leave tests out of a scoring (for example the tests the provider reports as problematic) without changing the CDRs.
+
+- **Test Name:** the name of the **Data** tests (`Test_Name`: Ping 40, YouTube, FDTT HTTP DL MT…). The calls and speech samples are scored whatever it holds (their `Test_Name` is the data session of a MultiRAB call).
+- **Test Type:** the type of every test (`Type_of_Test`, else `Session_Type`): httpBrowser, httpTransfer, ICMP Ping… of the Data tests; CALL, MultiRAB CALL, WhatsApp CALL of the calls and speech samples.
+- **Exclude:** choose **Exclude** at the top of the list and tick the tests to leave out; the other tests, also those of later campaigns, are scored. **Include** scores only the ticked ones.
+- **Patterns:** type `Ping*` and add it to take every test whose name starts with Ping.
+- **Lists:** every test of the CDRs of the NR Mode; they do not narrow the other filters, nor these them.
+- **Where it shows:** a slate label on the card of the Saved Scoring (**Without Ping 40, Ping 800**), the Context filters summary (**All except …**) and the filters of the exports. A Saved Scoring keeps them only when used, and the Country Areas, Scoring Trends, Points Lost and NNS Break-down of the scoring leave the same tests out.
 
 ### Vendor filtering
 

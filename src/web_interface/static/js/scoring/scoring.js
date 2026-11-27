@@ -355,7 +355,30 @@
   let currentHierarchy = [...(validHierarchy(scoringConfig.aggregation_hierarchy) || defaultHierarchy)];
   // Operator_Vendor and Vendor_Operator precede Vendor; they filter but are not aggregation levels.
   const filterCatalogueKeys = new Map([...catalogueKeyByLevel, ['Operator_Vendor', 'operator_vendors'], ['Vendor_Operator', 'vendor_operators']]);
-  const contextFilterKeys = hierarchy => hierarchy.flatMap(key => (key === 'Vendor' ? ['Operator_Vendor', 'Vendor_Operator', 'Vendor'] : [key]));
+  // Test Name and Test Type (ticket #207) are not levels: they come last. Their lists can leave the ticked tests out
+  // (Exclude), saved as exclusions (-Ping 40) so the tests that appear later are scored too.
+  const testFilterKeys = ['Test_Name', 'Test_Type'];
+  const testFilterLabels = {Test_Name: 'Test Name', Test_Type: 'Test Type'};
+
+  const contextFilterKeys = hierarchy => [...hierarchy.flatMap(key => (key === 'Vendor' ? ['Operator_Vendor', 'Vendor_Operator', 'Vendor'] : [key])),
+    ...testFilterKeys];
+
+  const exclusionPrefix = /^\s*(?:-|not\s+)/i;
+  const excludedValue = value => String(value ?? '').replace(exclusionPrefix, '').trim();
+  const isExclusionValue = value => exclusionPrefix.test(String(value ?? '')) && Boolean(excludedValue(value));
+
+  const isExcludingFilter = select => select?.dataset.multiselectExcluding === 'true';
+  // The values of a filter that can leave values out, as its list shows them: only exclusions tick what they leave out,
+  // in Exclude.
+  function applyFilterMode(select, values) {
+    if (!select || !('multiselectExclude' in select.dataset)) return values;
+    const excluding = values.length > 0 && values.every(isExclusionValue);
+    if (excluding) select.dataset.multiselectExcluding = 'true';
+    else delete select.dataset.multiselectExcluding;
+    return excluding ? values.map(excludedValue) : values;
+  }
+  // The values ticked in a list in Exclude, as exclusions.
+  const asExclusions = values => values.map(value => (isExclusionValue(value) ? value : `-${value}`));
   let contextFilterDefinitions = contextFilterKeys(currentHierarchy)
     .map(key => ({key, catalogueKey: filterCatalogueKeys.get(key)}));
   const contextFilterSelects = new Map(contextFilterDefinitions.map(({key}) => [
@@ -613,7 +636,8 @@
     || `scoring-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // Every context filter of the panel: the selection is saved, compared and restored with all of them (Cluster,
   // Operator_Vendor and Vendor_Operator included, restored before Vendor so their pairing does not change it).
-  const selectionFieldOrder = ['Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign'];
+  const selectionFieldOrder = ['Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign',
+    ...testFilterKeys];
 
   const valueOf = (object, keys, fallback = '') => {
     if (!object || typeof object !== 'object') return fallback;
@@ -1202,6 +1226,7 @@
         .filter(option => !option.disabled && option.value && !isCampaignPreset(option.value))
         .map(option => String(option.value)) : [];
       const available = select ? [...select.options].filter(option => !option.disabled && option.value && !isCampaignPreset(option.value)) : [];
+      if (isExcludingFilter(select)) return [key, asExclusions(values)];
       // Every value checked is no restriction, but for a list made with the values of a restored selection.
       return [key, key !== 'Vendor' && available.length && values.length === available.length && !select.dataset.scoringRestoredList
         ? [] : values];
@@ -1739,7 +1764,7 @@
         const select = contextFilterSelects.get(key);
         if (!select) continue;
         const requested = filters[key] ?? filters[key.toLowerCase()] ?? [];
-        const requestedValues = uniqueCatalogueValues(Array.isArray(requested) ? requested : [requested]);
+        const requestedValues = applyFilterMode(select, uniqueCatalogueValues(Array.isArray(requested) ? requested : [requested]));
         const available = new Set([...select.options].filter(option => !option.disabled).map(option => option.value.toLocaleLowerCase()));
         const unavailable = requestedValues.filter(value => !available.has(value.toLocaleLowerCase()));
         if (unavailable.length) {
@@ -1825,7 +1850,7 @@
     const filters = contextFilters && typeof contextFilters === 'object' ? contextFilters : {};
     restoredContextValues = new Map([...contextFilterSelects.keys()].map(key => {
       const requested = filters[key] ?? filters[key.toLowerCase()] ?? [];
-      return [key, uniqueCatalogueValues(Array.isArray(requested) ? requested : [requested])];
+      return [key, applyFilterMode(contextFilterSelects.get(key), uniqueCatalogueValues(Array.isArray(requested) ? requested : [requested]))];
     }));
   }
 
@@ -1866,6 +1891,7 @@
       if (preset) { filters[key] = [preset]; continue; }
       const enabled = [...select.options].filter(option => !option.disabled && option.value && !isCampaignPreset(option.value));
       const values = enabled.filter(option => option.selected).map(option => String(option.value));
+      if (isExcludingFilter(select)) { filters[key] = asExclusions(values); continue; }
       // Every value checked is no restriction, but for a list made with the values of a restored selection.
       filters[key] = values.length && values.length === enabled.length && !select.dataset.scoringRestoredList ? [] : values;
     }
@@ -2502,8 +2528,16 @@
       .filter(item => item.values.length)
       .map(({level, values}) => ({dimension: level.toLowerCase(), text: values.join(', '), title: `${level}: ${values.join(', ')}`}));
     const areas = filtered(['Region', 'Cluster', 'City']);
+    // The tests it leaves out (Without Ping 40) or the only ones it scores.
+    const tests = testFilterKeys.map(key => ({key, values: savedSavedScoringValues(savedScoring, key)})).filter(item => item.values.length)
+      .map(({key, values}) => {
+        const leftOut = values.every(isExclusionValue);
+        const shown = leftOut ? values.map(excludedValue) : values;
+        return {dimension: 'test', text: `${leftOut ? 'Without ' : ''}${shown.join(', ')}`,
+          title: `${testFilterLabels[key]}: ${leftOut ? 'every test but ' : ''}${shown.join(', ')}`};
+      });
     return [...(areas.length ? areas : [{dimension: 'all', text: 'Nationwide', title: 'No Region, Cluster or City is filtered'}]),
-      ...filtered(['Operator', 'Vendor'])];
+      ...filtered(['Operator', 'Vendor']), ...tests];
   }
 
   function campaignLabels(value) {
@@ -13279,7 +13313,11 @@
     const campaigns = configOptionTexts(contextFilterSelects.get('Campaign'));
     const areas = ['Region', 'Cluster', 'City'].flatMap(key => configOptionTexts(contextFilterSelects.get(key)));
     const others = selectionFieldOrder.filter(key => !['Region', 'Cluster', 'City', 'Campaign'].includes(key))
-      .map(key => [key, configOptionTexts(contextFilterSelects.get(key)).join(', ')]);
+      .map(key => {
+        const select = contextFilterSelects.get(key);
+        const texts = configOptionTexts(select).join(', ');
+        return [testFilterLabels[key] || key, texts && isExcludingFilter(select) ? `All except ${texts}` : texts];
+      });
     const cdrs = usedDatasetIds().length;
     const context = [['NR Mode', configSelectText(nrFilter)],
       ['Campaign', campaigns.length ? campaigns.join(', ') : (contextFilterSelects.get('Campaign')?.dataset.multiselectEmptyLabel || 'All complete campaigns')],

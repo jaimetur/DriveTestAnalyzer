@@ -42,6 +42,8 @@ from src.modules.scoring.scoring_summary_slides import (
     add_sites_slides, add_standings_slides, add_stretch_slides, latest_campaign_items,
 )
 from src.modules.scoring.scoring_area_summary import build_area_summary, whole_country_filters
+from src.modules.scoring.scoring_test_filters import TEST_FILTERS
+from src.modules.cdr.value_patterns import excluded, is_exclusion
 from src.modules.scoring.scoring_config import BEST_NETWORK_SCORING, MOST_RELIABLE_SCORING, SCORING_LABELS
 from src.modules.scoring.scoring_insights import operator_styles
 from src.modules.scoring.scoring_export_panels import (
@@ -605,10 +607,18 @@ def _canonical_scope_filter_labels(payload: Any, fields: tuple[str, ...] = _SCOP
     normalized = {str(key).strip().casefold(): value for key, value in payload.items()}
     if payload and not any(field.casefold() in normalized for field in fields):
         return None
-    return [
+    labels = [
         f'{field}: {_filter_value(normalized.get(field.casefold(), [])) or "All"}'
         for field in fields
     ]
+    # The tests left out (Test Name: All except Ping 40) or the only ones scored, when used (ticket #207).
+    for field, spec in TEST_FILTERS.items():
+        values = [str(value).strip() for value in normalized.get(field.casefold()) or [] if str(value).strip()]
+        if values:
+            left_out = all(is_exclusion(value) for value in values)
+            shown = ', '.join(excluded(value) if left_out else value for value in values)
+            labels.append(f"{spec['label']}: {'All except ' if left_out else ''}{shown}")
+    return labels
 
 
 def _context_filter_labels(job: dict[str, Any]) -> list[str]:

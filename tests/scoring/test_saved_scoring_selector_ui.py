@@ -205,6 +205,9 @@ def test_card_label_names_the_only_field_a_saved_scoring_filters():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     snippets = [
         _constant_source(script, 'valueOf'),
+        # The labels of the test filters and how an exclusion reads (each constant on a line of its own).
+        *(next(line for line in script.splitlines() if line.startswith(f'  const {name} = '))
+          for name in ('testFilterKeys', 'testFilterLabels', 'exclusionPrefix', 'excludedValue', 'isExclusionValue')),
         _function_source(script, 'uniqueCatalogueValues'),
         _function_source(script, 'scoringVendorName'),
         _function_source(script, 'firstValue'),
@@ -230,6 +233,8 @@ vm.runInContext(payload.snippets.join('\n') + `
     // The operators or vendors after the areas (Nationwide without them).
     savedScoringScopes({context_filters: {...empty, Operator: ['-Three']}}),
     savedScoringScopes({context_filters: {...empty, Operator: ['-Three'], City: ['London']}}),
+    // Then the tests it leaves out, or the only ones it scores (ticket #207).
+    savedScoringScopes({context_filters: {...empty, Test_Name: ['-Ping 40', '-Ping 800'], Test_Type: ['CALL']}}),
   ];`, context);
 process.stdout.write(JSON.stringify(context.scopes));
 """
@@ -238,10 +243,12 @@ process.stdout.write(JSON.stringify(context.scopes));
         [['all', 'Nationwide']], [['city', 'London']], [['region', 'Vendor A']], [['city', 'Leeds, London']],
         [['region', 'Vendor A'], ['city', 'London']], [['all', 'Nationwide']],
         [['all', 'Nationwide'], ['operator', '-Three']], [['city', 'London'], ['operator', '-Three']],
+        [['all', 'Nationwide'], ['test', 'Without Ping 40, Ping 800'], ['test', 'CALL']],
     ]
     assert scopes[2][0]['title'] == 'Region: Vendor A'
+    assert scopes[8][1]['title'] == 'Test Name: every test but Ping 40, Ping 800'
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
-    for dimension in ('all', 'region', 'cluster', 'city', 'operator', 'vendor'):
+    for dimension in ('all', 'region', 'cluster', 'city', 'operator', 'vendor', 'test'):
         assert f'.saved-scoring-scope[data-dimension="{dimension}"]' in template
     # The selected card folds and unfolds with Details, without opening the dropdown.
     assert "const details = event.target.closest('[data-saved-scoring-details]');" in script

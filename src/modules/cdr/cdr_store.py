@@ -1800,6 +1800,39 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
     return copy_values(raw, wanted, types), len(raw)
 
 
+_TEXT_VALUES: dict[tuple[str, str, int, str, int], list[str]] = {}
+_TEXT_VALUES_LOCK = Lock()
+
+
+def distinct_texts(database_path: Any, kind: str, dataset_id: int, column: str) -> list[str] | None:
+    """The distinct values of a text column of the copy of a CDR (trimmed, without empty ones, in alphabetical order),
+    kept until the copy changes; None when the copy is not ready or does not keep the column as text."""
+    import duckdb
+
+    root = store_root(database_path)
+    path = manifest_file(root, kind, dataset_id)
+    manifest = read_manifest(path)
+    if manifest is None or not cdr_folder(root, kind, dataset_id).is_dir() or dict(manifest['columns']).get(column) != 'VARCHAR':
+        return None
+    try:
+        key = (str(root), kind, int(dataset_id), column, path.stat().st_mtime_ns)
+    except OSError:
+        return None
+    with _TEXT_VALUES_LOCK:
+        if key in _TEXT_VALUES:
+            return list(_TEXT_VALUES[key])
+    text = f'TRIM({quote(column)})'
+    with duckdb.connect(config={'threads': 2, 'memory_limit': '1GB'}) as duck:
+        rows = duck.execute(f"SELECT DISTINCT {text} FROM read_parquet({_sql_text(cdr_parts(root, kind, dataset_id))}) "
+                            f"WHERE {quote(column)} IS NOT NULL AND {text} <> ''").fetchall()
+    values = sorted((str(row[0]) for row in rows), key=lambda value: (value.casefold(), value))
+    with _TEXT_VALUES_LOCK:
+        if len(_TEXT_VALUES) > 2048:
+            _TEXT_VALUES.clear()
+        _TEXT_VALUES[key] = values
+    return list(values)
+
+
 def stored_parts(columns: list[str], types: dict[str, str]) -> list[str]:
     """The columns of a copy that hold ``columns``: each, and its integer and real companions."""
     parts = []
