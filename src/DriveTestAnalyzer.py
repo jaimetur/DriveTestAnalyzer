@@ -3483,6 +3483,9 @@ async def lifespan(_: FastAPI):
     APP_SHUTTING_DOWN.clear()
     # The storage paths of the deployment, before a workspace points them at its own folders.
     DEPLOYMENT_STORAGE_PATHS.update({name: getattr(settings, name) for name in DEPLOYMENT_STORAGE_PATH_NAMES})
+    # kill -USR1 <pid> writes what every thread is doing (see thread_dump), to find what blocks the server.
+    from src.modules.core import thread_dump
+    thread_dump.install(settings.data_dir)
     with QUERY_BUILDER_EXECUTIONS_LOCK:
         QUERY_BUILDER_JOBS.clear()
     ensure_directories([

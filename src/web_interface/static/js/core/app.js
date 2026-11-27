@@ -4658,6 +4658,29 @@ function setupPersistentPanelState(root = document) {
   });
 }
 
+// The wheel over the list of a dropdown scrolls only the list: at its top or bottom, or when it has nothing to scroll
+// (no values), the page or the dialog behind it does not move.
+function keepWheelInList(list) {
+  list.addEventListener('wheel', (event) => {
+    if (event.ctrlKey || !event.deltaY) return;
+    // A part of the list that scrolls on its own (a long help text) scrolls first.
+    for (let node = event.target; node && node !== list; node = node.parentElement) {
+      if (node.scrollHeight > node.clientHeight + 1 && ['auto', 'scroll'].includes(getComputedStyle(node).overflowY)) {
+        const up = event.deltaY < 0;
+        if ((up && node.scrollTop > 0) || (!up && node.scrollTop + node.clientHeight < node.scrollHeight - 1)) return;
+      }
+    }
+    const up = event.deltaY < 0;
+    const room = up ? list.scrollTop : list.scrollHeight - list.clientHeight - list.scrollTop;
+    if (room <= 1) event.preventDefault();
+    else if (Math.abs(event.deltaY) > room) {
+      // The last stretch of the list, not beyond it.
+      event.preventDefault();
+      list.scrollTop += up ? -room : room;
+    }
+  }, {passive: false});
+}
+
 function setupSearchableSingleSelects() {
   document.querySelectorAll('select[data-searchable-select]:not([multiple])').forEach((select) => {
     if (select.dataset.searchableReady === '1') return;
@@ -4714,6 +4737,7 @@ function setupSearchableSingleSelects() {
     const menu = document.createElement('div');
     menu.className = 'searchable-select-menu';
     menu.hidden = true;
+    keepWheelInList(menu);
     const optionsContainer = richSlides ? document.createElement('div') : menu;
     if (richSlides) {
       optionsContainer.className = 'ds-slide-picker-options';
@@ -5214,6 +5238,7 @@ function setupCustomMultiSelects() {
     const menu = document.createElement('div');
     menu.className = 'multiselect-menu';
     menu.hidden = true;
+    keepWheelInList(menu);
     const singleChoice = select.dataset.multiselectSingle === 'true';
     const singleChoiceName = singleChoice ? `multiselect-single-${select.id || Math.random().toString(36).slice(2)}` : '';
     const autoCloseDelay = Number.parseInt(select.dataset.multiselectAutoClose || '', 10);

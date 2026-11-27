@@ -13,7 +13,7 @@ Docker Compose is the recommended service deployment. Production pulls a publish
 | Run the production service | [Production](#production) |
 | Run a development instance | [Development](#development) |
 | Keep the data across restarts | [Persistence](#persistence) · [Backup scope](#backup-scope) |
-| Start, stop and check the service | [Operations](#operations) |
+| Start, stop and check the service | [Operations](#operations) · [Server not answering](#server-not-answering) |
 | Upgrade without losing data | [Safe upgrade](#safe-upgrade) · [Build cache and stale-image checks](#build-cache-and-stale-image-checks) |
 | Connect two servers for transfers | [Server-to-server connectivity](#server-to-server-connectivity) |
 
@@ -115,6 +115,19 @@ Inspect the published architectures:
 ```bash
 docker buildx imagetools inspect IMAGE_REPOSITORY:IMAGE_TAG
 ```
+
+### Server not answering
+
+When the pages load but nothing can be saved (a calculation stays in **Submitting…**, a setting does not save), ask the application what each of its threads is doing **before restarting it**: a restart frees whatever blocks it, and the cause is lost.
+
+```bash
+docker exec drivetest-analyzer kill -USR1 1
+```
+
+- **What it writes:** the time, which thread holds the write lock of each workspace (**Workspace write locks held**), then the stack of every thread by its name, the threads that hold a lock first.
+- **Where:** in the logs of the container and in `data/diagnostics/thread-dump-<date>.txt` (the newest 20 are kept).
+- **If nothing is written** (the main thread is blocked too): `docker exec drivetest-analyzer kill -USR2 1` writes the stacks to the logs, without the thread names and the lock owners.
+- **The service keeps running** as it was; then restart it if it stays blocked.
 
 ## Safe upgrade
 
