@@ -1604,6 +1604,47 @@ def test_the_failure_panels_read_the_counts_of_the_indexing(client, tmp_path, mo
     assert repository.get_workspace_state(nq.POPULATION_COUNTS_STATE_KEY) != 'another indexing'
 
 
+def test_counting_again_never_blocks_a_request_that_keeps_its_writes(client, tmp_path):
+    # Ticket #208: a panel request keeps what it wrote in its shared connection (and so the write lock of the workspace)
+    # until it ends. Asking for the counts then, while another request was counting them again and waiting for the
+    # write lock, left both waiting and nobody could write to the workspace again.
+    import threading
+    import time
+
+    enable_module()
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', serving_voice_rows())
+    login(client)
+    index_cdrs()
+    repository = core.repository
+    repository.set_workspace_state(nq.POPULATION_COUNTS_STATE_KEY, 'another indexing')
+    writing, counting = threading.Event(), threading.Event()
+    results: dict[str, bool] = {}
+
+    def request_that_keeps_its_writes():
+        with repository.shared_connection():
+            repository.set_workspace_state('nq_test_kept_write', 'written')
+            writing.set()
+            counting.wait(5)
+            time.sleep(0.5)
+            results['keeps its writes'] = nq.refresh_population_counts(repository)
+
+    def request_that_counts_again():
+        writing.wait(5)
+        counting.set()
+        results['counts again'] = nq.refresh_population_counts(repository)
+
+    threads = [threading.Thread(target=request_that_keeps_its_writes, daemon=True),
+               threading.Thread(target=request_that_counts_again, daemon=True)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30)
+    assert not any(thread.is_alive() for thread in threads)
+    assert results == {'keeps its writes': True, 'counts again': True}
+    assert repository.get_workspace_state(nq.POPULATION_COUNTS_STATE_KEY) != 'another indexing'
+    repository.set_workspace_state('nq_test_kept_write', 'written again')
+
+
 def test_workspaces_indexed_before_get_the_serving_cell_columns(client, tmp_path):
     enable_module()
     add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', serving_voice_rows())

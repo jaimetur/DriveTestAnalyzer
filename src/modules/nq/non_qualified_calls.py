@@ -54,7 +54,7 @@ from typing import Any, Callable, Iterable, Iterator
 
 from src.modules.cdr import cdr_field_dictionary, l3_dt_logs
 from src.modules.core.kept_reads import kept
-from src.modules.core.repository import uncounted_workspace_writes
+from src.modules.core.repository import uncounted_workspace_writes, workspace_write_lock
 from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr.cdr_stage import CDR_STAGE_LABELS, combined_inclusion, dataset_cdr_stage
 from src.modules.network.cell_identity import nr_cell_bits
@@ -7624,6 +7624,7 @@ def refresh_population_counts(task_repository: Any, counted: list[tuple[Any, ...
     ``counted``: the counts the indexing worked out as it wrote the population (see _population_counts_of)."""
     groups = ', '.join(POPULATION_COUNTS_GROUPS)
     with _population_counts_lock:
+        # Up to date: only read (the copy is a file of its own), so the write lock of the workspace is not needed.
         with task_repository.connection() as connection:
             signature = _population_counts_signature(connection)
             if task_repository.get_workspace_state(POPULATION_COUNTS_STATE_KEY) == signature:
@@ -7632,6 +7633,15 @@ def refresh_population_counts(task_repository: Any, counted: list[tuple[Any, ...
                     # Counted before the copy existed, or the copy was removed: written from the stored counts.
                     _write_population_counts_copy(copy, connection.execute(
                         f'SELECT {groups}, total, nq FROM {NQ_POPULATION_COUNTS_TABLE} ORDER BY rowid').fetchall())
+                return True
+    # Counted again: the write lock of the workspace first, then the counts. A request whose shared connection keeps
+    # what it wrote (and so the write lock) until it ends would otherwise wait for the counts while another request
+    # holding them waited for the write lock: nobody could write to the workspace again (ticket #208).
+    with workspace_write_lock(task_repository.db_path), _population_counts_lock:
+        with task_repository.connection() as connection:
+            signature = _population_counts_signature(connection)
+            if task_repository.get_workspace_state(POPULATION_COUNTS_STATE_KEY) == signature:
+                # Counted by another request meanwhile.
                 return True
             rows = counted if counted is not None else connection.execute(
                 f'SELECT {groups}, COUNT(*), SUM(is_nq) FROM {NQ_CALL_POPULATION_TABLE} NOT INDEXED WHERE is_latest = 1 '
