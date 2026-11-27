@@ -5814,6 +5814,16 @@ function setupCustomMultiSelects() {
         nextSearch.dispatchEvent(new Event('input'));
       }
       nextMenu.scrollTop = reopen.scrollTop;
+      if (nextMenu.scrollTop !== reopen.scrollTop && typeof ResizeObserver === 'function') {
+        // A list the page fits once it is open (the lists of the Scoring dialogs get their height then) is still
+        // taller than that here, so it cannot be scrolled as far yet: it goes back there once it has its height.
+        const keepScroll = new ResizeObserver(() => {
+          nextMenu.scrollTop = reopen.scrollTop;
+          if (nextMenu.scrollTop === reopen.scrollTop) keepScroll.disconnect();
+        });
+        keepScroll.observe(nextMenu);
+        window.setTimeout(() => keepScroll.disconnect(), 1000);
+      }
       if (reopen.focused && reopen.focused !== 'search') {
         nextMenu.querySelector(`input[data-option-value="${CSS.escape(reopen.focused)}"]`)?.focus({preventScroll: true});
       }
